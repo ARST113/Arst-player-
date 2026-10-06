@@ -7902,6 +7902,511 @@ public class PlayerActivity extends Activity {
 
 
 
+    private static final class TrackCandidate {
+        final TrackGroup group;
+        final int trackIndex;
+        final int menuIndex;
+        final Format format;
+        final String label;
+        final String language;
+        final boolean supported;
+        final boolean selected;
+
+        TrackCandidate(TrackGroup group, int trackIndex, int menuIndex, Format format,
+                       String label, String language, boolean supported, boolean selected) {
+            this.group = group;
+            this.trackIndex = trackIndex;
+            this.menuIndex = menuIndex;
+            this.format = format;
+            this.label = label;
+            this.language = language;
+            this.supported = supported;
+            this.selected = selected;
+        }
+    }
+
+    private static final class TrackResult {
+        final String language;
+        final String label;
+        final int ordinal;
+        final int count;
+        final int index;
+
+        TrackResult(String language, String label, int ordinal, int count, int index) {
+            this.language = language;
+            this.label = label;
+            this.ordinal = ordinal;
+            this.count = count;
+            this.index = index;
+        }
+
+        static TrackResult off() {
+            return new TrackResult(null, null, -1, -1, -1);
+        }
+    }
+
+    private List<TrackCandidate> nestedTrackCandidates(final Tracks tracks, final int type) {
+        final ArrayList<TrackCandidate> out = new ArrayList<>();
+        if (tracks == null) {
+            return out;
+        }
+        int menuIndex = 0;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != type) {
+                continue;
+            }
+            final TrackGroup mediaGroup = group.getMediaTrackGroup();
+            for (int i = 0; i < group.length; i++) {
+                final Format format = mediaGroup.getFormat(i);
+                if (type == C.TRACK_TYPE_TEXT && isPhantomClosedCaption(format)) {
+                    continue;
+                }
+                final String rawLabel = trackName(format);
+                String language = Utils.toIso3Language(format.language);
+                if (language == null && rawLabel != null) {
+                    language = Utils.languageInName(rawLabel,
+                            Arrays.asList("eng", "rus", "ukr", "deu", "fra", "spa", "ita", "por",
+                                    "jpn", "kor", "zho", "pol", "ces", "tur", "ara", "hin"));
+                }
+                final boolean supported = type == C.TRACK_TYPE_AUDIO
+                        ? group.isTrackSupported(i, true) : group.isTrackSupported(i);
+                out.add(new TrackCandidate(mediaGroup, i, menuIndex++, format, rawLabel,
+                        language, supported, group.isTrackSelected(i)));
+            }
+        }
+        return out;
+    }
+
+    private void applyNestedTrackRequests(final Tracks tracks) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null
+                || nestedPlaylistError != null) {
+            return;
+        }
+        final int itemIndex = player.getCurrentMediaItemIndex();
+        if (itemIndex < 0 || itemIndex >= nestedPlaylistModel.items.size()) {
+            return;
+        }
+
+        if (nestedAudioChoiceDone != null && !nestedAudioChoiceDone[itemIndex]) {
+            final List<TrackCandidate> audio = nestedTrackCandidates(tracks, C.TRACK_TYPE_AUDIO);
+            if (!audio.isEmpty()) {
+                applyNestedTrackRequest(itemIndex, false, audio);
+            }
+        }
+
+        if (nestedSubtitleChoiceDone != null && !nestedSubtitleChoiceDone[itemIndex]) {
+            final List<TrackCandidate> text = nestedTrackCandidates(tracks, C.TRACK_TYPE_TEXT);
+            if (!text.isEmpty()) {
+                applyNestedTrackRequest(itemIndex, true, text);
+            } else {
+                // A file with no playable subtitle tracks has made its one 2.1.2 choice: nothing.
+                nestedSubtitleChoiceDone[itemIndex] = true;
+            }
+        }
+    }
+
+    private void applyNestedTrackRequest(final int itemIndex, final boolean subtitle,
+                                         final List<TrackCandidate> candidates) {
+        final PlaylistApi.Item item = nestedPlaylistModel.items.get(itemIndex);
+        final PlaylistApi.TrackRequest itemRequest = subtitle ? item.subtitle : item.audio;
+        final PlaylistApi.TrackRequest playlistRequest =
+                subtitle ? nestedPlaylistModel.subtitle : nestedPlaylistModel.audio;
+
+        TrackCandidate chosen = null;
+        String chosenBy = null;
+        boolean off = false;
+
+        // Step 1: a viewer choice from an earlier item in this launch.
+        if (subtitle && nestedViewerSubtitleOff) {
+            off = true;
+            chosenBy = "viewer";
+        } else {
+            final String viewerLabel = subtitle ? nestedViewerSubtitleLabel : nestedViewerAudioLabel;
+            final String viewerLanguage = subtitle ? nestedViewerSubtitleLanguage : nestedViewerAudioLanguage;
+            final int viewerOrdinal = subtitle ? nestedViewerSubtitleOrdinal : nestedViewerAudioOrdinal;
+            final int viewerCount = subtitle ? nestedViewerSubtitleCount : nestedViewerAudioCount;
+            chosen = chooseByViewerMemory(candidates, viewerLabel, viewerLanguage,
+                    viewerOrdinal, viewerCount);
+            if (chosen != null) {
+                chosenBy = "viewer";
+            }
+        }
+
+        // Steps 2/4/5 on the item, then step 6 on the playlist.
+        if (chosen == null && !off) {
+            final TrackDecision itemDecision = chooseByRequest(candidates, itemRequest, subtitle);
+            if (itemDecision.off) {
+                off = true;
+                chosenBy = itemDecision.chosenBy;
+            } else if (itemDecision.candidate != null) {
+                chosen = itemDecision.candidate;
+                chosenBy = itemDecision.chosenBy;
+            }
+        }
+
+        // Step 3 for subtitles: selected external subtitle. It comes after item index and before label.
+        // chooseByRequest deliberately does index first and leaves label/ordinal for the second pass below.
+        if (subtitle && chosen == null && !off) {
+            final TrackCandidate selectedExternal = selectedExternalSubtitleCandidate(item, candidates);
+            if (selectedExternal != null) {
+                chosen = selectedExternal;
+                chosenBy = "selected";
+            }
+        }
+
+        // Item label/ordinal after selected subtitle.
+        if (chosen == null && !off) {
+            final TrackDecision itemNamed = chooseNamedByRequest(candidates, itemRequest);
+            if (itemNamed.candidate != null) {
+                chosen = itemNamed.candidate;
+                chosenBy = itemNamed.chosenBy;
+            }
+        }
+
+        // Playlist index, label, ordinal.
+        if (chosen == null && !off) {
+            final TrackDecision playlistIndex = chooseIndexByRequest(candidates, playlistRequest, subtitle);
+            if (playlistIndex.off) {
+                off = true;
+                chosenBy = playlistIndex.chosenBy;
+            } else if (playlistIndex.candidate != null) {
+                chosen = playlistIndex.candidate;
+                chosenBy = playlistIndex.chosenBy;
+            }
+        }
+        if (chosen == null && !off) {
+            final TrackDecision playlistNamed = chooseNamedByRequest(candidates, playlistRequest);
+            if (playlistNamed.candidate != null) {
+                chosen = playlistNamed.candidate;
+                chosenBy = playlistNamed.chosenBy;
+            }
+        }
+
+        // Step 8: effective item languages, else playlist languages.
+        if (chosen == null && !off) {
+            final String[] languages = itemRequest != null && itemRequest.languages != null
+                    ? itemRequest.languages
+                    : (playlistRequest == null ? null : playlistRequest.languages);
+            if (subtitle && languages != null && languages.length == 0) {
+                off = true;
+                chosenBy = "languages";
+            } else if (languages != null && languages.length > 0) {
+                chosen = chooseByLanguages(candidates, languages, subtitle);
+                if (chosen != null) {
+                    chosenBy = "languages";
+                }
+            }
+        }
+
+        // Step 9: keep what Media3/player settings already selected. Do not invent track zero.
+        if (chosen == null && !off) {
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && candidate.selected) {
+                    chosen = candidate;
+                    chosenBy = "player";
+                    break;
+                }
+            }
+        }
+
+        if (subtitle) {
+            nestedSubtitleChoiceDone[itemIndex] = true;
+        } else {
+            nestedAudioChoiceDone[itemIndex] = true;
+        }
+
+        if (off && subtitle) {
+            disableSubtitles();
+            nestedSubtitleChosenBy[itemIndex] = chosenBy;
+            nestedSubtitleResults[itemIndex] = TrackResult.off();
+            return;
+        }
+
+        if (chosen == null) {
+            return;
+        }
+
+        if (!chosen.selected) {
+            if (subtitle) {
+                applySubtitle(chosen.group, chosen.trackIndex);
+            } else {
+                applyAudioCandidate(chosen);
+            }
+        }
+
+        final TrackResult result = nestedTrackResult(candidates, chosen);
+        if (subtitle) {
+            nestedSubtitleChosenBy[itemIndex] = chosenBy;
+            nestedSubtitleResults[itemIndex] = result;
+        } else {
+            nestedAudioChosenBy[itemIndex] = chosenBy;
+            nestedAudioResults[itemIndex] = result;
+        }
+    }
+
+    private static final class TrackDecision {
+        final TrackCandidate candidate;
+        final boolean off;
+        final String chosenBy;
+
+        TrackDecision(TrackCandidate candidate, boolean off, String chosenBy) {
+            this.candidate = candidate;
+            this.off = off;
+            this.chosenBy = chosenBy;
+        }
+
+        static TrackDecision none() {
+            return new TrackDecision(null, false, null);
+        }
+    }
+
+    private TrackDecision chooseByRequest(final List<TrackCandidate> candidates,
+                                          final PlaylistApi.TrackRequest request,
+                                          final boolean subtitle) {
+        // Only index/off here. Label and ordinal have to come after selected external subtitles.
+        return chooseIndexByRequest(candidates, request, subtitle);
+    }
+
+    private TrackDecision chooseIndexByRequest(final List<TrackCandidate> candidates,
+                                               final PlaylistApi.TrackRequest request,
+                                               final boolean subtitle) {
+        if (request == null) {
+            return TrackDecision.none();
+        }
+        if (subtitle && request.off()) {
+            return new TrackDecision(null, true,
+                    request.index != null && request.index == -1 ? "index" : "languages");
+        }
+        if (request.index == null || request.index < 0) {
+            return TrackDecision.none();
+        }
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.menuIndex != request.index || !candidate.supported) {
+                continue;
+            }
+            if (request.label != null && !nestedLabelsMatch(request.label, candidate.label)) {
+                return TrackDecision.none();
+            }
+            return new TrackDecision(candidate, false, "index");
+        }
+        return TrackDecision.none();
+    }
+
+    private TrackDecision chooseNamedByRequest(final List<TrackCandidate> candidates,
+                                               final PlaylistApi.TrackRequest request) {
+        if (request == null) {
+            return TrackDecision.none();
+        }
+        if (request.label != null) {
+            final TrackCandidate byLabel =
+                    chooseByLabel(candidates, request.label, request.languages);
+            if (byLabel != null) {
+                return new TrackDecision(byLabel, false, "label");
+            }
+        }
+        if (request.ordinal != null && request.languages != null
+                && request.languages.length > 0) {
+            final String language = request.languages[0];
+            final ArrayList<TrackCandidate> inLanguage = new ArrayList<>();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && language.equals(candidate.language)) {
+                    inLanguage.add(candidate);
+                }
+            }
+            if ((request.count == null || request.count == inLanguage.size())
+                    && request.ordinal >= 0 && request.ordinal < inLanguage.size()) {
+                return new TrackDecision(inLanguage.get(request.ordinal), false, "language_ordinal");
+            }
+        }
+        return TrackDecision.none();
+    }
+
+    private TrackCandidate chooseByViewerMemory(final List<TrackCandidate> candidates,
+                                                final String label, final String language,
+                                                final int ordinal, final int count) {
+        if (label != null) {
+            final TrackCandidate byLabel = chooseByLabel(candidates, label,
+                    language == null ? null : new String[]{language});
+            if (byLabel != null) {
+                return byLabel;
+            }
+        }
+        if (language != null && ordinal >= 0) {
+            final ArrayList<TrackCandidate> same = new ArrayList<>();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && language.equals(candidate.language)) {
+                    same.add(candidate);
+                }
+            }
+            if ((count < 0 || count == same.size()) && ordinal < same.size()) {
+                return same.get(ordinal);
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate chooseByLabel(final List<TrackCandidate> candidates, final String label,
+                                         @Nullable final String[] languages) {
+        if (languages != null && languages.length > 0) {
+            for (String language : languages) {
+                for (TrackCandidate candidate : candidates) {
+                    if (candidate.supported && language.equals(candidate.language)
+                            && nestedLabelsMatch(label, candidate.label)) {
+                        return candidate;
+                    }
+                }
+            }
+            return null;
+        }
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.supported && nestedLabelsMatch(label, candidate.label)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate chooseByLanguages(final List<TrackCandidate> candidates,
+                                             final String[] languages,
+                                             final boolean subtitle) {
+        for (String language : languages) {
+            TrackCandidate fallback = null;
+            for (TrackCandidate candidate : candidates) {
+                if (!candidate.supported || !language.equals(candidate.language)) {
+                    continue;
+                }
+                if (fallback == null) {
+                    fallback = candidate;
+                }
+                if (subtitle) {
+                    final int flags = candidate.format.selectionFlags;
+                    final boolean forced = (flags & C.SELECTION_FLAG_FORCED) != 0;
+                    final boolean sdh = (candidate.format.roleFlags & C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND) != 0;
+                    if (!forced && !sdh) {
+                        return candidate;
+                    }
+                } else {
+                    final boolean commentary =
+                            (candidate.format.roleFlags & C.ROLE_FLAG_COMMENTARY) != 0;
+                    if (!commentary) {
+                        return candidate;
+                    }
+                }
+            }
+            if (fallback != null) {
+                return fallback;
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate selectedExternalSubtitleCandidate(final PlaylistApi.Item item,
+                                                             final List<TrackCandidate> candidates) {
+        if (item == null) {
+            return null;
+        }
+        for (PlaylistApi.ExternalSubtitle subtitle : item.activeSubtitles()) {
+            if (!subtitle.selected) {
+                continue;
+            }
+            final String id = subtitle.uri.toString();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && id.equals(candidate.format.id)) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void applyAudioCandidate(final TrackCandidate candidate) {
+        if (player == null || candidate == null) {
+            return;
+        }
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setOverrideForType(new TrackSelectionOverride(
+                        candidate.group, Collections.singletonList(candidate.trackIndex)))
+                .build());
+    }
+
+    private TrackResult nestedTrackResult(final List<TrackCandidate> candidates,
+                                          final TrackCandidate selected) {
+        final String rawLanguage = selected.format.language;
+        final String isoLanguage = selected.language;
+        int ordinal = -1;
+        int count = -1;
+        if (isoLanguage != null && rawLanguage != null && !rawLanguage.trim().isEmpty()
+                && !"und".equalsIgnoreCase(rawLanguage)) {
+            count = 0;
+            for (TrackCandidate candidate : candidates) {
+                if (!candidate.supported || !isoLanguage.equals(candidate.language)) {
+                    continue;
+                }
+                if (candidate == selected) {
+                    ordinal = count;
+                }
+                count++;
+            }
+        }
+        return new TrackResult(rawLanguage,
+                cleanResultTrackLabel(selected.label),
+                ordinal, count, selected.menuIndex);
+    }
+
+    private static String cleanResultTrackLabel(@Nullable final String label) {
+        if (label == null) {
+            return null;
+        }
+        final String value = label.trim();
+        if (value.isEmpty() || value.matches("(?i)^(rus|eng|ukr|deu|fra|spa|ita|por|jpn|kor|zho)\\d+$")) {
+            return null;
+        }
+        return value;
+    }
+
+    /**
+     * Safe subset of the official 2.1.2 label matcher: whole-word, case-insensitive matching after
+     * codec/channel/language noise is removed. Studio aliases are layered on separately below.
+     */
+    private static boolean nestedLabelsMatch(@Nullable final String wanted,
+                                             @Nullable final String actual) {
+        if (wanted == null || actual == null) {
+            return false;
+        }
+        final String a = normalizeNestedTrackLabel(wanted);
+        final String b = normalizeNestedTrackLabel(actual);
+        if (a.isEmpty() || b.isEmpty()) {
+            return false;
+        }
+        if (a.equals(b) || a.replace(" ", "").equals(b.replace(" ", ""))) {
+            return true;
+        }
+        final Set<String> aw = new LinkedHashSet<>(Arrays.asList(a.split(" +")));
+        final Set<String> bw = new LinkedHashSet<>(Arrays.asList(b.split(" +")));
+        return aw.size() <= bw.size() ? bw.containsAll(aw) : aw.containsAll(bw);
+    }
+
+    private static String normalizeNestedTrackLabel(final String value) {
+        String s = value.toLowerCase(Locale.ROOT)
+                .replace("ё", "е")
+                .replaceAll("\\[[^]]*]|\\([^)]*\\)", " ")
+                .replaceAll("\\b(aac|ac3|eac3|dts|truehd|flac|opus|mp3|atmos|stereo|mono|"
+                        + "2\\.0|5\\.1|7\\.1|48khz|44khz|kbps|rus|eng|ukr|ru|en|uk)\\b", " ")
+                .replaceAll("[^\\p{L}\\p{N}+]+", " ")
+                .trim()
+                .replaceAll(" +", " ");
+        // High-value aliases visible in common Lampa sources. Exact official alias data is ported
+        // separately from the APK; these prevent the obvious spellings from splitting meanwhile.
+        s = s.replace("rezka studio", "hdrezka")
+                .replace("rezkastudio", "hdrezka")
+                .replace("hdrezka studio", "hdrezka")
+                .replace("lost film", "lostfilm")
+                .replace("new studio", "newstudio");
+        return s;
+    }
+
     private static class AudioChoice {
         final String label;
         final String detail; // the codec, channels and bitrate; null when the track declares none
