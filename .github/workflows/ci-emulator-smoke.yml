@@ -28,12 +28,6 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - name: Install compile SDK and NDK
-        run: |
-          SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-37" "ndk;29.0.14206865"
-
       - name: Compile debug and release, run JVM tests
         run: |
           chmod +x gradlew
@@ -52,10 +46,10 @@ jobs:
             /tmp/player-smoke/hevc.mp4
           ls -lh /tmp/player-smoke/hevc.mp4
 
-      - name: Emulator smoke test on Android 17 / API 37
+      - name: Emulator smoke test on Android 16 / API 36
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 37
+          api-level: 36
           target: google_apis
           arch: x86_64
           profile: pixel_6
