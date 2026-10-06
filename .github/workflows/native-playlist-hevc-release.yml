@@ -58,4 +58,4 @@ jobs:
         with:
           name: native-playlist-ffmpeg-hevc-release
           if-no-files-found: error
-          path: /tmp/JustPlus.Player.native-playlist-hevc-release.apk
+          path: /tmp/JustPlus.Player.native-playlist-ffmpeg-hevc-release.apk
