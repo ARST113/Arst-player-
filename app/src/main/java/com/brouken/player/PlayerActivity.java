@@ -420,6 +420,11 @@ public class PlayerActivity extends Activity {
     // Read by the codec selector on the playback thread.
     private volatile boolean forceHevcForDolbyVision;
     private boolean pendingStuckRecovery;
+    // Generic HEVC recovery, kept separate from the upstream Dolby Vision path so external-player
+    // behaviour (including playlists) remains untouched. 0 = normal, 1 = c2.android software,
+    // 2 = legacy OMX.google software alias.
+    private volatile int forceHevcSoftwareStage;
+    private boolean pendingHevcSoftwareRecovery;
     // Installed for this player build when Dolby Vision profile 7 is being rewritten as profile 8.1;
     // null when it is not. Kept only so the dump can say which mode the stream actually got.
     @Nullable
@@ -11620,6 +11625,11 @@ public class PlayerActivity extends Activity {
         } else {
             forceHevcForDolbyVision = mPrefs.refuseDolbyVision;
         }
+        if (pendingHevcSoftwareRecovery) {
+            pendingHevcSoftwareRecovery = false;
+        } else {
+            forceHevcSoftwareStage = 0;
+        }
 
         // A fresh player, but not a fresh budget when it is the same stream: the rebuild rungs
         // (tunneling, Dolby Vision, an audio mime) go through here, and each one used to hand the source
@@ -12060,7 +12070,7 @@ public class PlayerActivity extends Activity {
                 // reads back as "exceeds capabilities" — which plays, but drops those renditions out of
                 // the quality list. The refusal means no Dolby Vision anywhere, so mapping it is free.
                 .setMapDV7ToHevc(mPrefs.mapDV7ToHevc || mPrefs.refuseDolbyVision);
-        if (forceHevcForDolbyVision || isTvBox) {
+        if (forceHevcForDolbyVision || forceHevcSoftwareStage > 0 || isTvBox) {
             // One combined codec selector for two independent needs:
             // - heavy MKV audio on a TV: no platform decoder for those codecs, so they passthrough (if
             //   the sink supports it) or fall back to ffmpeg (see above).
@@ -12085,6 +12095,27 @@ public class PlayerActivity extends Activity {
                     infos.addAll(MediaCodecSelector.DEFAULT.getDecoderInfos(
                             mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
                     return infos;
+                }
+                if (forceHevcSoftwareStage > 0 && MimeTypes.VIDEO_H265.equals(mimeType)
+                        && !requiresSecureDecoder && !requiresTunnelingDecoder) {
+                    if (forceHevcSoftwareStage == 2) {
+                        final MediaCodecInfo legacy = legacyGoogleHevcDecoder();
+                        if (legacy != null) {
+                            return Collections.singletonList(legacy);
+                        }
+                    } else {
+                        final List<MediaCodecInfo> all = MediaCodecSelector.DEFAULT.getDecoderInfos(
+                                mimeType, false, false);
+                        final List<MediaCodecInfo> software = new ArrayList<>();
+                        for (MediaCodecInfo info : all) {
+                            if (info.name.startsWith("c2.android.")) {
+                                software.add(info);
+                            }
+                        }
+                        if (!software.isEmpty()) {
+                            return software;
+                        }
+                    }
                 }
                 return MediaCodecSelector.DEFAULT.getDecoderInfos(
                         mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
@@ -13919,6 +13950,11 @@ public class PlayerActivity extends Activity {
                             ((ExoPlaybackException) error).rendererFormat)) {
                 return;
             }
+            if (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
+                    && error instanceof ExoPlaybackException
+                    && recoverHevcSoftwareDecoder(((ExoPlaybackException) error).rendererFormat)) {
+                return;
+            }
             // The clip can no longer be opened: a foreign app's one-off URI grant has expired (a video
             // streamed from a messenger, reopened after that app restarted) or the file is gone. Expected
             // external state, not an app bug, so a notice rather than a report. The player stays where it
@@ -14110,6 +14146,87 @@ public class PlayerActivity extends Activity {
         Utils.log("source retry " + sourceRetries + "/" + MAX_SOURCE_RETRIES + " in " + delayMs + " ms");
         playerView.postDelayed(sourceRetryRunnable, delayMs);
         return true;
+    }
+
+    /**
+     * Pixel/Android 17 can accept an ordinary HEVC track in the Tensor hardware codec and fail on the
+     * first buffer with 0x80000000. Re-preparing hands it to the same codec, so after the upstream retry
+     * budget is spent try the platform software implementations one at a time.
+     */
+    private boolean recoverHevcSoftwareDecoder(@Nullable final Format failingFormat) {
+        if (player == null || failingFormat == null
+                || !MimeTypes.VIDEO_H265.equals(failingFormat.sampleMimeType)
+                || forceHevcSoftwareStage >= 2) {
+            return false;
+        }
+        if (forceHevcSoftwareStage == 0) {
+            boolean hasCodec2Software = false;
+            try {
+                for (MediaCodecInfo info : MediaCodecSelector.DEFAULT.getDecoderInfos(
+                        MimeTypes.VIDEO_H265, false, false)) {
+                    if (info.name.startsWith("c2.android.")) {
+                        hasCodec2Software = true;
+                        break;
+                    }
+                }
+            } catch (MediaCodecUtil.DecoderQueryException ignored) {
+                return false;
+            }
+            if (!hasCodec2Software) {
+                return false;
+            }
+            forceHevcSoftwareStage = 1;
+            Utils.log("rebuild: HEVC " + failingFormat.codecs + " with c2.android software decoder");
+        } else {
+            if (videoDecoderName == null || !videoDecoderName.startsWith("c2.android.")
+                    || legacyGoogleHevcDecoder() == null) {
+                return false;
+            }
+            forceHevcSoftwareStage = 2;
+            Utils.log("rebuild: HEVC " + failingFormat.codecs + " with OMX.google software decoder");
+        }
+        pendingHevcSoftwareRecovery = true;
+        restorePlayState = player.getPlayWhenReady();
+        sourceSwitchKeepPaused = !restorePlayState;
+        playerView.post(() -> {
+            releasePlayer();
+            initializePlayer();
+        });
+        return true;
+    }
+
+    /**
+     * Media3 may hide OMX.google.hevc.decoder as an alias of the Codec2 software decoder. Android's own
+     * MediaCodecList still exposes it on Pixel 10, so construct the Media3 descriptor from the framework
+     * capabilities and let the normal MediaCodec adapter instantiate it by name.
+     */
+    @Nullable
+    private static MediaCodecInfo legacyGoogleHevcDecoder() {
+        try {
+            final android.media.MediaCodecInfo[] codecs =
+                    new MediaCodecList(MediaCodecList.ALL_CODECS).getCodecInfos();
+            for (android.media.MediaCodecInfo codec : codecs) {
+                if (codec.isEncoder() || !"OMX.google.hevc.decoder".equals(codec.getName())) {
+                    continue;
+                }
+                for (String type : codec.getSupportedTypes()) {
+                    if (MimeTypes.VIDEO_H265.equalsIgnoreCase(type)) {
+                        final android.media.MediaCodecInfo.CodecCapabilities caps =
+                                codec.getCapabilitiesForType(type);
+                        return MediaCodecInfo.newInstance(
+                                codec.getName(), MimeTypes.VIDEO_H265, type, caps,
+                                /* hardwareAccelerated= */ false,
+                                /* softwareOnly= */ true,
+                                /* vendor= */ false,
+                                /* forceDisableAdaptive= */ false,
+                                /* forceSecure= */ false);
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            Utils.log("OMX.google HEVC lookup failed: " + e);
+        }
+        return null;
     }
 
     // Rebuild the player forcing a Dolby Vision track through the plain HEVC decoder, bypassing a device
