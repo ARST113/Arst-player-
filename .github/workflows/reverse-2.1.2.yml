@@ -187,6 +187,16 @@ jobs:
             cp "$hit" "reverse/2.1.2/voice-data/$safe"
           done < reverse/2.1.2/voice-data/matches.txt
 
+          # Index release-specific literals/classes that JADX may have moved into obfuscated helpers.
+          {
+            echo "=== HTTP/browser defaults ==="
+            grep -RInE 'Accept-Language|JustPlusPlayer/|CookieJar|saveFromResponse|loadForRequest|User-Agent|Accept: \\*/\\*' /tmp/jp/d212/sources || true
+            echo "=== frame-rate / display mode ==="
+            grep -RInE 'frameRateMatching|allowSystemFrameRate|preferredDisplayModeId|refreshRate|1000\\.0|1001\\.0|23\\.976|29\\.97|59\\.94' /tmp/jp/d212/sources/com/brouken/player || true
+            echo "=== chapters / retry / watched ==="
+            grep -RInE 'Opening|Intro|Credits|Ending|Заставка|Титры|retry|Retry|0\\.95|95' /tmp/jp/d212/sources/com/brouken/player || true
+          } > reverse/2.1.2/literal-index.txt
+
           # Compare the bundled Media3 namespace too. This tells us whether 2.1.2 merely bumped
           # dependencies or actually carries altered ExoPlayer classes (notably AVI extraction).
           mkdir -p reverse/2.1.2/media3
