@@ -1,0 +1,132 @@
+name: Reverse inspect Just+ 2.1.2
+
+on:
+  push:
+    branches:
+      - reverse-2.1.2-analysis
+
+permissions:
+  contents: write
+
+jobs:
+  inspect:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: reverse-2.1.2-analysis
+          fetch-depth: 1
+
+      - name: Download official APKs
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/jp
+          curl -L --fail --retry 4 -o /tmp/jp/211.apk https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.1/JustPlus.Player.apk
+          curl -L --fail --retry 4 -o /tmp/jp/212.apk https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.2/JustPlus.Player.apk
+          sha256sum /tmp/jp/*.apk
+          ls -lh /tmp/jp/*.apk
+
+      - name: Install JADX
+        run: |
+          set -euxo pipefail
+          URL=$(curl -fsSL https://api.github.com/repos/skylot/jadx/releases/latest |
+            jq -r '.assets[] | select(.name | test("^jadx-[0-9].*\\.zip$")) | .browser_download_url' | head -n1)
+          test -n "$URL"
+          curl -L --fail --retry 4 -o /tmp/jadx.zip "$URL"
+          mkdir -p /tmp/jadx
+          unzip -q /tmp/jadx.zip -d /tmp/jadx
+          /tmp/jadx/bin/jadx --version
+
+      - name: Decompile 2.1.1 and 2.1.2
+        run: |
+          set -euxo pipefail
+          /tmp/jadx/bin/jadx -j 4 -d /tmp/jp/d211 /tmp/jp/211.apk >/tmp/jp/jadx211.log 2>&1 || true
+          /tmp/jadx/bin/jadx -j 4 -d /tmp/jp/d212 /tmp/jp/212.apk >/tmp/jp/jadx212.log 2>&1 || true
+          test -d /tmp/jp/d211/sources/com/brouken/player
+          test -d /tmp/jp/d212/sources/com/brouken/player
+
+      - name: Build reverse-engineering report
+        run: |
+          set -euxo pipefail
+          rm -rf reverse/2.1.2
+          mkdir -p reverse/2.1.2/changed_sources/2.1.1 reverse/2.1.2/changed_sources/2.1.2
+
+          {
+            echo "# Official APK comparison: 2.1.1 -> 2.1.2"
+            echo
+            echo "Generated from official release APKs with JADX."
+            echo
+            echo "## APK hashes"
+            sha256sum /tmp/jp/211.apk /tmp/jp/212.apk
+            echo
+            echo "## APK sizes"
+            stat -c '%n %s bytes' /tmp/jp/211.apk /tmp/jp/212.apk
+            echo
+            echo "## Changed com.brouken.player source files"
+          } > reverse/2.1.2/REPORT.md
+
+          diff -qr /tmp/jp/d211/sources/com/brouken/player /tmp/jp/d212/sources/com/brouken/player             | tee /tmp/jp/diff-q.txt || true
+          cat /tmp/jp/diff-q.txt >> reverse/2.1.2/REPORT.md
+
+          # Keep the unified Java diff. This is the most useful artifact for porting.
+          diff -ruN /tmp/jp/d211/sources/com/brouken/player /tmp/jp/d212/sources/com/brouken/player             > reverse/2.1.2/player-java.diff || true
+
+          # Copy only files that differ so they can be inspected directly in GitHub.
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, shutil
+
+          a = Path('/tmp/jp/d211/sources/com/brouken/player')
+          b = Path('/tmp/jp/d212/sources/com/brouken/player')
+          outa = Path('reverse/2.1.2/changed_sources/2.1.1')
+          outb = Path('reverse/2.1.2/changed_sources/2.1.2')
+
+          paths = sorted({p.relative_to(a) for p in a.rglob('*.java')} |
+                         {p.relative_to(b) for p in b.rglob('*.java')})
+          changed = []
+          for rel in paths:
+              pa, pb = a/rel, b/rel
+              ba = pa.read_bytes() if pa.exists() else b''
+              bb = pb.read_bytes() if pb.exists() else b''
+              if ba != bb:
+                  changed.append(rel)
+                  if pa.exists():
+                      (outa/rel).parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copy2(pa, outa/rel)
+                  if pb.exists():
+                      (outb/rel).parent.mkdir(parents=True, exist_ok=True)
+                      shutil.copy2(pb, outb/rel)
+
+          Path('reverse/2.1.2/changed-files.txt').write_text(
+              '\n'.join(map(str, changed)) + '\n', encoding='utf-8')
+          PY
+
+          # Useful decoded metadata/resources.
+          for v in 211 212; do
+            if [ -f /tmp/jp/d$v/resources/AndroidManifest.xml ]; then
+              cp /tmp/jp/d$v/resources/AndroidManifest.xml reverse/2.1.2/AndroidManifest-$v.xml
+            fi
+          done
+          diff -u reverse/2.1.2/AndroidManifest-211.xml reverse/2.1.2/AndroidManifest-212.xml             > reverse/2.1.2/manifest.diff || true
+
+          {
+            echo
+            echo "## JADX status"
+            echo "### 2.1.1"
+            tail -n 30 /tmp/jp/jadx211.log
+            echo "### 2.1.2"
+            tail -n 30 /tmp/jp/jadx212.log
+          } >> reverse/2.1.2/REPORT.md
+
+          wc -c reverse/2.1.2/player-java.diff
+          sed -n '1,240p' reverse/2.1.2/REPORT.md
+
+      - name: Commit report
+        run: |
+          set -euxo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add reverse/2.1.2
+          git commit -m "Reverse inspect official Just+ Player 2.1.2 [skip ci]"
+          git push origin HEAD:reverse-2.1.2-analysis
