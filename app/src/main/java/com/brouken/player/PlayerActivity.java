@@ -14020,6 +14020,7 @@ public class PlayerActivity extends Activity {
      * hold had just filled.
      */
     private final Runnable frameRateGiveUpRunnable = this::frameRateSettled;
+    private final Runnable frameRatePauseRunnable = this::frameRateSettled;
 
     /**
      * Nothing more to wait for from the display: disarm the listener armed for a mode change and spend
@@ -14035,6 +14036,7 @@ public class PlayerActivity extends Activity {
     void frameRateSettled() {
         earlyModeSwitchRequested = false;
         playerView.removeCallbacks(frameRateGiveUpRunnable);
+        playerView.removeCallbacks(frameRatePauseRunnable);
         if (displayManager != null && displayListener != null) {
             displayManager.unregisterDisplayListener(displayListener);
         }
@@ -14042,6 +14044,20 @@ public class PlayerActivity extends Activity {
             play = false;
             playPending();
         }
+    }
+
+    /**
+     * Just+ Player 2.1.2 can deliberately hold playback after the display reports a mode change.
+     * Some TVs report the new mode before the HDMI link has finished its black-screen renegotiation.
+     */
+    private void displayModeChanged() {
+        playerView.removeCallbacks(frameRateGiveUpRunnable);
+        playerView.removeCallbacks(frameRatePauseRunnable);
+        if (!play || mPrefs.modeSwitchPauseMs <= 0) {
+            frameRateSettled();
+            return;
+        }
+        playerView.postDelayed(frameRatePauseRunnable, Math.min(5_000, mPrefs.modeSwitchPauseMs));
     }
 
     /**
@@ -14091,7 +14107,7 @@ public class PlayerActivity extends Activity {
 
                         @Override
                         public void onDisplayChanged(int displayId) {
-                            frameRateSettled();
+                            displayModeChanged();
                         }
                     };
                 }
