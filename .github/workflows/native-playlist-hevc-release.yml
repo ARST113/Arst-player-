@@ -1,10 +1,6 @@
 name: ARX TPlayer release
 
 on:
-  push:
-    branches:
-      - ffmpeg-hevc-nextlib-2026-10-06
-      - master
   workflow_dispatch:
 
 permissions:
