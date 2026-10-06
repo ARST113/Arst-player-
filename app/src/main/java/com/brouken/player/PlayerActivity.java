@@ -1105,6 +1105,7 @@ public class PlayerActivity extends Activity {
     PlaylistApi.Playlist nestedPlaylistModel;
     String nestedPlaylistError;
     String nestedViewerVoiceLabel;
+    PlaylistTrackMatcher nestedTrackMatcher;
     boolean[] nestedAudioChoiceDone;
     boolean[] nestedSubtitleChoiceDone;
     String[] nestedAudioChosenBy;
@@ -8215,7 +8216,7 @@ public class PlayerActivity extends Activity {
             if (candidate.menuIndex != request.index || !candidate.supported) {
                 continue;
             }
-            if (request.label != null && !nestedLabelsMatch(request.label, candidate.label)) {
+            if (request.label != null && !nestedTrackLabelsMatch(request.label, candidate.label)) {
                 return TrackDecision.none();
             }
             return new TrackDecision(candidate, false, "index");
@@ -8282,7 +8283,7 @@ public class PlayerActivity extends Activity {
             for (String language : languages) {
                 for (TrackCandidate candidate : candidates) {
                     if (candidate.supported && language.equals(candidate.language)
-                            && nestedLabelsMatch(label, candidate.label)) {
+                            && nestedTrackLabelsMatch(label, candidate.label)) {
                         return candidate;
                     }
                 }
@@ -8290,7 +8291,7 @@ public class PlayerActivity extends Activity {
             return null;
         }
         for (TrackCandidate candidate : candidates) {
-            if (candidate.supported && nestedLabelsMatch(label, candidate.label)) {
+            if (candidate.supported && nestedTrackLabelsMatch(label, candidate.label)) {
                 return candidate;
             }
         }
@@ -8401,41 +8402,12 @@ public class PlayerActivity extends Activity {
      * Safe subset of the official 2.1.2 label matcher: whole-word, case-insensitive matching after
      * codec/channel/language noise is removed. Studio aliases are layered on separately below.
      */
-    private static boolean nestedLabelsMatch(@Nullable final String wanted,
-                                             @Nullable final String actual) {
-        if (wanted == null || actual == null) {
-            return false;
+    private boolean nestedTrackLabelsMatch(@Nullable final String wanted,
+                                           @Nullable final String actual) {
+        if (nestedTrackMatcher == null) {
+            nestedTrackMatcher = PlaylistTrackMatcher.load(this);
         }
-        final String a = normalizeNestedTrackLabel(wanted);
-        final String b = normalizeNestedTrackLabel(actual);
-        if (a.isEmpty() || b.isEmpty()) {
-            return false;
-        }
-        if (a.equals(b) || a.replace(" ", "").equals(b.replace(" ", ""))) {
-            return true;
-        }
-        final Set<String> aw = new LinkedHashSet<>(Arrays.asList(a.split(" +")));
-        final Set<String> bw = new LinkedHashSet<>(Arrays.asList(b.split(" +")));
-        return aw.size() <= bw.size() ? bw.containsAll(aw) : aw.containsAll(bw);
-    }
-
-    private static String normalizeNestedTrackLabel(final String value) {
-        String s = value.toLowerCase(Locale.ROOT)
-                .replace("ё", "е")
-                .replaceAll("\\[[^]]*]|\\([^)]*\\)", " ")
-                .replaceAll("\\b(aac|ac3|eac3|dts|truehd|flac|opus|mp3|atmos|stereo|mono|"
-                        + "2\\.0|5\\.1|7\\.1|48khz|44khz|kbps|rus|eng|ukr|ru|en|uk)\\b", " ")
-                .replaceAll("[^\\p{L}\\p{N}+]+", " ")
-                .trim()
-                .replaceAll(" +", " ");
-        // High-value aliases visible in common Lampa sources. Exact official alias data is ported
-        // separately from the APK; these prevent the obvious spellings from splitting meanwhile.
-        s = s.replace("rezka studio", "hdrezka")
-                .replace("rezkastudio", "hdrezka")
-                .replace("hdrezka studio", "hdrezka")
-                .replace("lost film", "lostfilm")
-                .replace("new studio", "newstudio");
-        return s;
+        return nestedTrackMatcher.labelsMatch(wanted, actual);
     }
 
     private static class AudioChoice {
