@@ -140,6 +140,24 @@ jobs:
             done
           done
 
+          # Find obfuscated 2.1.2 helpers by stable API strings. In particular the dub/studio
+          # matcher carries a large alias dictionary that must not be approximated.
+          mkdir -p reverse/2.1.2/string-matched
+          for needle in 'LostFilm' 'HDrezka' 'audio_chosen_by' 'subtitle_chosen_by' 'ask_open' 'language_ordinal'; do
+            safe=$(printf '%s' "$needle" | tr -cd 'A-Za-z0-9_-')
+            mkdir -p "reverse/2.1.2/string-matched/$safe"
+            grep -RIl --include='*.java' "$needle" /tmp/jp/d212/sources | head -n 30 > "/tmp/jp/$safe.files" || true
+            n=0
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              rel=${f#/tmp/jp/d212/sources/}
+              mkdir -p "reverse/2.1.2/string-matched/$safe/$(dirname "$rel")"
+              cp "$f" "reverse/2.1.2/string-matched/$safe/$rel"
+              n=$((n+1))
+            done < "/tmp/jp/$safe.files"
+            printf '%s\n' "$n files matched $needle" >> reverse/2.1.2/string-matched/README.txt
+          done
+
           # Compare the bundled Media3 namespace too. This tells us whether 2.1.2 merely bumped
           # dependencies or actually carries altered ExoPlayer classes (notably AVI extraction).
           mkdir -p reverse/2.1.2/media3
