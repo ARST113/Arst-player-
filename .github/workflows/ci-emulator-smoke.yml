@@ -28,13 +28,10 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install compile SDK and NDK
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-37" "ndk;29.0.14206865"
+          sdkmanager "platform-tools" "platforms;android-37" "ndk;29.0.14206865"
 
       - name: Compile debug and release, run JVM tests
         run: |
