@@ -53,6 +53,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
+import android.os.Parcel;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.provider.DocumentsContract;
@@ -1103,6 +1104,8 @@ public class PlayerActivity extends Activity {
     String nestedResumeMode;
     PlaylistApi.Playlist nestedPlaylistModel;
     String nestedPlaylistError;
+    final PlaylistSessionJournal nestedJournal = new PlaylistSessionJournal();
+    byte[] nestedLastCallbackPayload;
     final List<MediaItem> apiMediaItems = new ArrayList<>();
     final List<String> apiPlaylistSegments = new ArrayList<>();
     int apiPlaylistStartIndex;
@@ -2975,6 +2978,12 @@ public class PlayerActivity extends Activity {
         super.onStop();
         alive = false;
         Utils.log("onStop" + (isFinishing() ? ", finishing" : ""));
+        if (nestedPlaylistSession && !isChangingConfigurations()) {
+            touchNestedJournal();
+            sendNestedPlaylistCallback(buildNestedPlaylistResult(
+                    nestedPlaylistError != null ? "error" : (playbackFinished ? "completion" : "user")));
+        }
+        cancelNestedReportTimer();
         if (Build.VERSION.SDK_INT >= 31) {
             playerView.removeCallbacks(barsHider);
         }
@@ -3064,6 +3073,7 @@ public class PlayerActivity extends Activity {
      */
     @Override
     protected void onDestroy() {
+        cancelNestedReportTimer();
         if (!handedOver) {
             releasePlayer(false);
         }
@@ -3357,6 +3367,12 @@ public class PlayerActivity extends Activity {
                 intent.setDataAndType(uri, type);
             } else {
                 Utils.log("playlist refused: invalid nested playlist");
+                if (nestedPlaylistSession && nestedPlaylistError != null) {
+                    // A malformed 2.1.2 request is a completed API session, not a legacy launch.
+                    // finish() builds the documented error snapshot and sends the callback.
+                    finish();
+                    return;
+                }
             }
         }
 
@@ -4169,6 +4185,9 @@ public class PlayerActivity extends Activity {
         nestedResumeMode = null;
         nestedPlaylistModel = null;
         nestedPlaylistError = null;
+        nestedJournal.clear();
+        nestedLastCallbackPayload = null;
+        cancelNestedReportTimer();
         apiMediaItems.clear();
         apiPlaylistSegments.clear();
         apiPlaylistStartIndex = 0;
@@ -5782,6 +5801,22 @@ public class PlayerActivity extends Activity {
 
     private Bundle buildNestedPlaylistResult(final String endBy) {
         final Bundle result = new Bundle();
+
+        if (nestedPlaylistError != null) {
+            result.putString("uri", null);
+            result.putInt("index", -1);
+            result.putLong("position_ms", 0L);
+            result.putInt("position_sec", 0);
+            result.putLong("duration_ms", 0L);
+            result.putInt("duration_sec", 0);
+            result.putLongArray("positions_ms", new long[0]);
+            result.putIntArray("positions_sec", new int[0]);
+            result.putParcelableArray("history", new Bundle[0]);
+            result.putString("end_by", "error");
+            result.putString("error_message", nestedPlaylistError);
+            return result;
+        }
+
         int index = player != null ? player.getCurrentMediaItemIndex() : apiPlaylistStartIndex;
         if (index < 0 || index >= apiMediaItems.size()) {
             index = apiPlaylistStartIndex >= 0 && apiPlaylistStartIndex < apiMediaItems.size()
@@ -5799,6 +5834,9 @@ public class PlayerActivity extends Activity {
             if (duration != C.TIME_UNSET && duration > 0) {
                 durationMs = duration;
             }
+            nestedJournal.touch(index,
+                    positionMs == C.TIME_UNSET ? 0L : positionMs,
+                    durationMs == C.TIME_UNSET ? -1L : durationMs);
         } else if (index >= 0 && apiPlaylistPositions != null
                 && index < apiPlaylistPositions.length) {
             positionMs = apiPlaylistPositions[index];
@@ -5838,14 +5876,92 @@ public class PlayerActivity extends Activity {
         }
         result.putLongArray("positions_ms", positionsMs);
         result.putIntArray("positions_sec", positions);
+        result.putParcelableArray("history", nestedJournal.bundles());
         result.putString("end_by", endBy);
+
+        if (nestedPlaylistModel != null && index >= 0 && index < nestedPlaylistModel.items.size()) {
+            final String voice = nestedPlaylistModel.items.get(index).voiceLabel();
+            if (voice != null) {
+                result.putString("voice_label", voice);
+            }
+            final List<String> warnings = nestedPlaylistModel.warnings;
+            if (warnings != null && !warnings.isEmpty()) {
+                final int count = Math.min(20, warnings.size());
+                final String[] out = new String[count];
+                for (int i = 0; i < count; i++) {
+                    out[i] = warnings.get(i);
+                }
+                if (warnings.size() > 20) {
+                    out[19] = "… " + (warnings.size() - 19) + " more";
+                }
+                result.putStringArray("warnings", out);
+            }
+        }
         return result;
     }
+
+    private void touchNestedJournal() {
+        if (!nestedPlaylistSession || nestedPlaylistError != null || player == null) {
+            return;
+        }
+        final int index = player.getCurrentMediaItemIndex();
+        if (index < 0 || index >= apiMediaItems.size()) {
+            return;
+        }
+        final long position = player.isCurrentMediaItemSeekable()
+                ? Math.max(0L, player.getCurrentPosition()) : 0L;
+        final long duration = player.getDuration();
+        nestedJournal.touch(index, position,
+                duration == C.TIME_UNSET || duration <= 0 ? -1L : duration);
+    }
+
+    private void armNestedReportTimer() {
+        if (playerView == null || nestedResultCallback == null || nestedReportIntervalMs <= 0) {
+            return;
+        }
+        playerView.removeCallbacks(nestedReportRunnable);
+        playerView.postDelayed(nestedReportRunnable, nestedReportIntervalMs);
+    }
+
+    private void cancelNestedReportTimer() {
+        if (playerView != null) {
+            playerView.removeCallbacks(nestedReportRunnable);
+        }
+    }
+
+    private final Runnable nestedReportRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!nestedPlaylistSession || nestedPlaylistError != null || player == null
+                    || !player.isPlaying()) {
+                return;
+            }
+            touchNestedJournal();
+            sendNestedPlaylistCallback(buildNestedPlaylistResult("user"));
+            armNestedReportTimer();
+        }
+    };
 
     private void sendNestedPlaylistCallback(final Bundle result) {
         if (nestedResultCallback == null || result == null) {
             return;
         }
+
+        // 2.1.2 suppresses identical snapshots. Parcel bytes are deterministic for this Bundle shape
+        // (primitive values, arrays and nested Bundles), and preserve distinctions such as -1 vs 0.
+        final Parcel parcel = Parcel.obtain();
+        final byte[] payload;
+        try {
+            parcel.writeBundle(result);
+            payload = parcel.marshall();
+        } finally {
+            parcel.recycle();
+        }
+        if (Arrays.equals(nestedLastCallbackPayload, payload)) {
+            return;
+        }
+        nestedLastCallbackPayload = payload;
+
         final Intent fillIn = new Intent();
         fillIn.putExtras(new Bundle(result));
         try {
@@ -13816,6 +13932,9 @@ public class PlayerActivity extends Activity {
             if (oldIndex != newIndex) {
                 final boolean playedToEnd = reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION;
                 final long leftAt = playedToEnd ? 0 : oldPosition.positionMs;
+                if (nestedPlaylistSession) {
+                    nestedJournal.close(oldIndex, Math.max(0L, oldPosition.positionMs), -1L);
+                }
                 rememberEpisodePosition(oldIndex, leftAt);
                 // And on disk, keyed by the episode's own uri: the array above lives for this session
                 // and goes back to the launcher, but "have I watched this" is a question the next
@@ -14044,6 +14163,14 @@ public class PlayerActivity extends Activity {
         public void onIsPlayingChanged(boolean isPlaying) {
             Utils.log("playing=" + isPlaying + (player != null ? " playWhenReady=" + player.getPlayWhenReady()
                     + " state=" + stateName(player.getPlaybackState()) : ""));
+            if (nestedPlaylistSession) {
+                touchNestedJournal();
+                if (isPlaying) {
+                    armNestedReportTimer();
+                } else {
+                    cancelNestedReportTimer();
+                }
+            }
             // Subtitles are painted off the media position, which only moves while this is true.
             if (subtitleOffset != null) {
                 subtitleOffset.wake();
