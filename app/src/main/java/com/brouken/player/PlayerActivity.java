@@ -11803,6 +11803,15 @@ public class PlayerActivity extends Activity {
                 super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector,
                         enableDecoderFallback, eventHandler, eventListener,
                         allowedVideoJoiningTimeMs, out);
+                // Keep MediaCodec first for formats the device fully supports. NextLib/libavcodec is a
+                // second video renderer, so Media3 can select it when the platform renderer reports
+                // FORMAT_EXCEEDS_CAPABILITIES (notably HEVC Range Extensions profiles on devices whose
+                // hardware HEVC decoder accepts configuration but fails on the first buffer).
+                out.add(new io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegVideoRenderer(
+                        allowedVideoJoiningTimeMs, eventHandler, eventListener,
+                        MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
+                        Math.min(4, Runtime.getRuntime().availableProcessors()),
+                        /* numInputBuffers= */ 4, /* numOutputBuffers= */ 4));
                 // The same dav1d renderer the base class just built, with its pipeline opened up. The
                 // base class can only reach the four-argument constructor by reflection, and that one
                 // takes DEFAULT_MAX_FRAME_DELAY = 2: two frames in flight, whatever the device has.
