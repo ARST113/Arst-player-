@@ -1,5 +1,5 @@
---- reverse/2.1.2/AndroidManifest-211.xml	2026-10-06 20:18:03.480470100 +0000
-+++ reverse/2.1.2/AndroidManifest-212.xml	2026-10-06 20:18:03.481643505 +0000
+--- reverse/2.1.2/AndroidManifest-211.xml	2026-10-06 20:30:25.490744783 +0000
++++ reverse/2.1.2/AndroidManifest-212.xml	2026-10-06 20:30:25.492276173 +0000
 @@ -1,7 +1,7 @@
  <?xml version="1.0" encoding="utf-8"?>
  <manifest xmlns:android="http://schemas.android.com/apk/res/android"
