@@ -1,0 +1,39 @@
+name: Sync Media3 1.11.1 AARs
+
+on:
+  push:
+    branches:
+      - arx-2.1.2-port-wip
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arx-2.1.2-port-wip
+          fetch-depth: 1
+      - name: Sync upstream Media3 1.11.1 AARs
+        run: |
+          set -euxo pipefail
+          base=https://raw.githubusercontent.com/moneytoo/Player/aa85148f6ccbfdf931fe207bb75ec77c478d8eb0/app/libs
+          for f in             lib-decoder-av1-release.aar             lib-decoder-ffmpeg-release.aar             lib-decoder-iamf-release.aar             lib-decoder-mpegh-release.aar             lib-exoplayer-release.aar             lib-ui-release.aar
+          do
+            curl -L --fail --retry 4 -o "app/libs/$f" "$base/$f"
+          done
+          sha256sum app/libs/lib-*.aar
+      - name: Commit synchronized binaries
+        run: |
+          set -euxo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/libs/lib-*.aar
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Sync Media3 1.11.1 AARs for 2.1.2 [skip ci]"
+          git push origin HEAD:arx-2.1.2-port-wip
