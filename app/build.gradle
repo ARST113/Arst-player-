@@ -145,7 +145,7 @@ android {
 }
 
 dependencies {
-    def media3_version = '1.11.0'
+    def media3_version = '1.11.1'
     implementation "androidx.media3:media3-session:$media3_version"
     implementation "androidx.media3:media3-datasource:$media3_version"
     // Media reads go through OkHttp rather than HttpURLConnection, for the connection pool (see
@@ -159,12 +159,12 @@ dependencies {
     implementation "androidx.media3:media3-container:$media3_version"
     implementation "androidx.media3:media3-extractor:$media3_version"
     // Software video fallback used by the proven Lampa Native build. The version prefix must
-    // match Media3: this artifact is built for 1.11.0 and provides FFmpeg/libavcodec video decoding
+    // match Media3: this artifact is built for 1.11.1 and provides FFmpeg/libavcodec video decoding
     // (including HEVC RExt profiles that Android MediaCodec may reject).
-    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.0-0.15.0") {
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.1-0.16.0") {
         // Just+ ships a patched media3-exoplayer AAR locally; pulling Google's stock module beside it
         // duplicates every androidx.media3.exoplayer class. NextLib only needs the API, which the local
-        // AAR provides at the same 1.11.0 level.
+        // AAR provides at the same 1.11.1 level.
         exclude group: "androidx.media3", module: "media3-exoplayer"
     }
     implementation("androidx.media3:media3-exoplayer-dash:$media3_version") {
