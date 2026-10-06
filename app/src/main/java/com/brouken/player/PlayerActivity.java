@@ -1058,6 +1058,7 @@ public class PlayerActivity extends Activity {
     static final String API_THUMBNAIL = "thumbnail";
     static final String API_SEGMENTS = "segments";
     static final String API_HEADERS = "headers";
+    static final String API_NESTED_PLAYLIST = "playlist";
     static final String API_VIDEO_LIST = "video_list";
     static final String API_VIDEO_LIST_NAME = "video_list.name";
     static final String API_VIDEO_LIST_FILENAME = "video_list.filename";
@@ -1605,7 +1606,7 @@ public class PlayerActivity extends Activity {
                     focusPlay = true;
                 }
             }
-        } else if (launchIntent.getData() != null) {
+        } else if (launchIntent.getData() != null || launchIntent.hasExtra(API_NESTED_PLAYLIST)) {
             handleViewIntent(launchIntent);
         } else if (inheritedIntent != null && inheritedIntent.getData() != null) {
             // The icon was tapped while a session was playing. The screen that owned it cannot be brought
@@ -3318,6 +3319,7 @@ public class PlayerActivity extends Activity {
     // activity, and its extras have to replace the previous ones instead of being ignored.
     void handleViewIntent(Intent intent) {
         resetApiAccess();
+        adaptNestedPlaylistIntent(intent);
         final Uri uri = intent.getData();
         final String type = intent.getType();
         if (SubtitleUtils.isSubtitle(uri, type)) {
@@ -3409,7 +3411,8 @@ public class PlayerActivity extends Activity {
 
             if (handleRoomIntent(intent)) {
                 // An invite link carries only a room code; what to play arrives over its channel.
-            } else if (Intent.ACTION_VIEW.equals(action) && uri != null) {
+            } else if (Intent.ACTION_VIEW.equals(action)
+                    && (uri != null || intent.hasExtra(API_NESTED_PLAYLIST))) {
                 // Keep getIntent() pointing at what is actually playing (used by the intent report).
                 setIntent(intent);
                 handleViewIntent(intent);
@@ -5375,6 +5378,195 @@ public class PlayerActivity extends Activity {
         if (playerView != null) {
             playerView.removeCallbacks(skipRunnable);
         }
+    }
+
+    /**
+     * Compatibility adapter for Lampa 1.13.3's nested Just+ Player API.
+     *
+     * <p>The public source tree still contains the older flat {@code video_list.*} parser while the
+     * current Lampa release sends one {@code playlist} Bundle. Normalize that Bundle into the existing
+     * internal contract so the rest of the player (playlist panel, next/previous, per-item metadata,
+     * subtitles and quality switching) stays on its battle-tested path.
+     */
+    private void adaptNestedPlaylistIntent(final Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        final Bundle playlist = intent.getBundleExtra(API_NESTED_PLAYLIST);
+        if (playlist == null) {
+            return;
+        }
+        final Parcelable[] rawItems = getSmartParcelableArray(playlist, "items");
+        if (rawItems == null || rawItems.length == 0) {
+            Utils.log("nested playlist: no items");
+            return;
+        }
+
+        final ArrayList<Uri> urls = new ArrayList<>();
+        final ArrayList<String> names = new ArrayList<>();
+        final ArrayList<String> filenames = new ArrayList<>();
+        final ArrayList<String> thumbnails = new ArrayList<>();
+        final ArrayList<String> segments = new ArrayList<>();
+        final ArrayList<String> seasons = new ArrayList<>();
+        final ArrayList<String> episodes = new ArrayList<>();
+        final ArrayList<String> imdbIds = new ArrayList<>();
+        final ArrayList<String> tmdbIds = new ArrayList<>();
+        final ArrayList<Bundle> subtitles = new ArrayList<>();
+        final ArrayList<Integer> sourceIndexes = new ArrayList<>();
+
+        final String rootTitle = playlist.getString("title");
+
+        for (int sourceIndex = 0; sourceIndex < rawItems.length; sourceIndex++) {
+            if (!(rawItems[sourceIndex] instanceof Bundle)) {
+                continue;
+            }
+            final Bundle item = (Bundle) rawItems[sourceIndex];
+            String uriText = item.getString("uri");
+
+            // Lampa currently supplies uri, but the nested contract also permits an item backed only by
+            // qualities. Pick selected, else first, so such an item still reaches the legacy playlist.
+            final Parcelable[] qualities = getSmartParcelableArray(item, "qualities");
+            if ((uriText == null || uriText.trim().isEmpty()) && qualities != null) {
+                Bundle first = null;
+                Bundle selected = null;
+                for (Parcelable value : qualities) {
+                    if (!(value instanceof Bundle)) {
+                        continue;
+                    }
+                    final Bundle q = (Bundle) value;
+                    if (q.getString("uri") == null || q.getString("label") == null) {
+                        continue;
+                    }
+                    if (first == null) {
+                        first = q;
+                    }
+                    if (q.getBoolean("selected")) {
+                        selected = q;
+                        break;
+                    }
+                }
+                final Bundle chosen = selected != null ? selected : first;
+                uriText = chosen == null ? null : chosen.getString("uri");
+            }
+            if (uriText == null || uriText.trim().isEmpty()) {
+                continue;
+            }
+
+            final Uri uri = Uri.parse(uriText);
+            urls.add(uri);
+            sourceIndexes.add(sourceIndex);
+
+            String title = item.getString("episode_title");
+            if (title == null || title.trim().isEmpty()) {
+                title = item.getString("title");
+            }
+            if (title == null || title.trim().isEmpty()) {
+                title = rootTitle;
+            }
+            names.add(title == null ? "" : title);
+            filenames.add(uri.getLastPathSegment() == null ? "" : uri.getLastPathSegment());
+            thumbnails.add(item.getString("thumbnail", ""));
+            segments.add(item.getString("segments", ""));
+            seasons.add(item.containsKey("season") ? String.valueOf(item.getInt("season")) : "");
+            episodes.add(item.containsKey("episode") ? String.valueOf(item.getInt("episode")) : "");
+            imdbIds.add(item.getString("imdb_id", ""));
+            tmdbIds.add(item.getString("tmdb_id", ""));
+
+            final Bundle legacySubs = new Bundle();
+            final ArrayList<Uri> subUris = new ArrayList<>();
+            final ArrayList<String> subNames = new ArrayList<>();
+            final Parcelable[] nestedSubs = getSmartParcelableArray(item, "subtitles");
+            if (nestedSubs != null) {
+                for (Parcelable value : nestedSubs) {
+                    if (!(value instanceof Bundle)) {
+                        continue;
+                    }
+                    final Bundle sub = (Bundle) value;
+                    final String subUri = sub.getString("uri");
+                    if (subUri == null || subUri.trim().isEmpty()) {
+                        continue;
+                    }
+                    subUris.add(Uri.parse(subUri));
+                    String label = sub.getString("label");
+                    subNames.add(label == null ? "" : label);
+                }
+            }
+            legacySubs.putParcelableArray("uris", subUris.toArray(new Uri[0]));
+            legacySubs.putStringArray("names", subNames.toArray(new String[0]));
+            subtitles.add(legacySubs);
+
+            if (qualities != null) {
+                final ArrayList<String> labels = new ArrayList<>();
+                final ArrayList<Uri> qualityUris = new ArrayList<>();
+                for (Parcelable value : qualities) {
+                    if (!(value instanceof Bundle)) {
+                        continue;
+                    }
+                    final Bundle q = (Bundle) value;
+                    final String label = q.getString("label");
+                    final String qUri = q.getString("uri");
+                    if (label == null || label.trim().isEmpty()
+                            || qUri == null || qUri.trim().isEmpty()) {
+                        continue;
+                    }
+                    labels.add(label);
+                    qualityUris.add(Uri.parse(qUri));
+                }
+                if (!labels.isEmpty()) {
+                    final int legacyIndex = urls.size() - 1;
+                    intent.putExtra(API_VIDEO_LIST_QUALITY_LEVELS + "." + legacyIndex,
+                            labels.toArray(new String[0]));
+                    intent.putExtra(API_VIDEO_LIST_QUALITY_URLS + "." + legacyIndex,
+                            qualityUris.toArray(new Uri[0]));
+                }
+            }
+        }
+
+        if (urls.isEmpty()) {
+            Utils.log("nested playlist: no playable items");
+            return;
+        }
+
+        int requestedStart = playlist.getInt("start_index", 0);
+        if (requestedStart < 0 || requestedStart >= rawItems.length) {
+            requestedStart = 0;
+        }
+        int start = sourceIndexes.indexOf(requestedStart);
+        if (start < 0) {
+            start = 0;
+        }
+
+        intent.putExtra(API_VIDEO_LIST, urls.toArray(new Uri[0]));
+        intent.putStringArrayListExtra(API_VIDEO_LIST_NAME, names);
+        intent.putStringArrayListExtra(API_VIDEO_LIST_FILENAME, filenames);
+        intent.putStringArrayListExtra(API_VIDEO_LIST_THUMBNAIL, thumbnails);
+        intent.putStringArrayListExtra(API_VIDEO_LIST_SEGMENTS, segments);
+        intent.putStringArrayListExtra(API_VIDEO_LIST_SEASON, seasons);
+        intent.putStringArrayListExtra(API_VIDEO_LIST_EPISODE, episodes);
+        intent.putStringArrayListExtra(API_VIDEO_LIST_IMDB_ID, imdbIds);
+        intent.putStringArrayListExtra(API_VIDEO_LIST_ID, tmdbIds);
+        intent.putParcelableArrayListExtra(API_VIDEO_LIST_SUBTITLES, subtitles);
+
+        final String[] headers = getSmartStringArray(playlist, "headers");
+        if (headers != null) {
+            intent.putExtra(API_HEADERS, headers);
+        }
+        if (rootTitle != null && !rootTitle.trim().isEmpty()) {
+            intent.putExtra(API_TITLE, rootTitle);
+        }
+
+        final Bundle startItem = rawItems[requestedStart] instanceof Bundle
+                ? (Bundle) rawItems[requestedStart] : null;
+        if (startItem != null && startItem.containsKey("position_sec")) {
+            final long positionMs = Math.max(0L, (long) startItem.getInt("position_sec")) * 1000L;
+            intent.putExtra(API_POSITION, (int) Math.min(Integer.MAX_VALUE, positionMs));
+        }
+        // The legacy player already knows how to return a final Activity result. Lampa 1.13.3 also
+        // supplies a PendingIntent callback; periodic callback reports are intentionally left for a
+        // separate implementation rather than faked here.
+        intent.putExtra(API_RETURN_RESULT, true);
+        intent.setDataAndType(urls.get(start), "video/*");
+        Utils.log("nested playlist adapted: " + urls.size() + " items, start=" + start);
     }
 
     private void parseApiPlaylist(Bundle bundle, Uri dataUri) {
