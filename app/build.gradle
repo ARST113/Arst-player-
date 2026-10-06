@@ -146,6 +146,12 @@ android {
 
 dependencies {
     def media3_version = '1.11.0'
+    // Same FFmpeg video renderer used by Lampa Native 1.13.0-native.2. Keep Media3 itself sourced
+    // from this project (including the local patched exoplayer AAR); NextLib only supplies its renderer
+    // classes and native FFmpeg libraries.
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.0-0.15.0") {
+        transitive = false
+    }
     implementation "androidx.media3:media3-session:$media3_version"
     implementation "androidx.media3:media3-datasource:$media3_version"
     // Media reads go through OkHttp rather than HttpURLConnection, for the connection pool (see
