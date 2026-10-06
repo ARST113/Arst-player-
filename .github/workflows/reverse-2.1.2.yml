@@ -119,13 +119,15 @@ jobs:
             tail -n 30 /tmp/jp/jadx212.log
           } >> reverse/2.1.2/REPORT.md
 
-          # Pull out the obfuscated helper classes that implement the 2.1.2 playlist/session model.
+          # Pull out obfuscated helpers from defpackage explicitly; generic filename search can
+          # accidentally pick desugar/library classes with the same short R8 name.
           mkdir -p reverse/2.1.2/helpers/2.1.1 reverse/2.1.2/helpers/2.1.2
           for v in 211 212; do
-            for cls in ha1 vp2 vs1 rs1 us1 c7 b7; do
-              f=$(find /tmp/jp/d$v/sources -type f -name "$cls.java" | head -n1 || true)
-              if [ -n "$f" ]; then
-                cp "$f" "reverse/2.1.2/helpers/2.1.$([ "$v" = 211 ] && echo 1 || echo 2)/$cls.java"
+            out="reverse/2.1.2/helpers/2.1.$([ "$v" = 211 ] && echo 1 || echo 2)"
+            for cls in ha1 vp2 vs1 rs1 us1 c7 b7 xp1 ge2 ay0 lj1; do
+              f="/tmp/jp/d$v/sources/defpackage/$cls.java"
+              if [ -f "$f" ]; then
+                cp "$f" "$out/$cls.java"
               fi
             done
           done
@@ -134,8 +136,13 @@ jobs:
           mkdir -p reverse/2.1.2/resources/2.1.1 reverse/2.1.2/resources/2.1.2
           for v in 211 212; do
             out="reverse/2.1.2/resources/2.1.$([ "$v" = 211 ] && echo 1 || echo 2)"
-            for f in strings.xml arrays.xml preferences.xml root_preferences.xml player.xml activity_player.xml; do
-              hit=$(find /tmp/jp/d$v/resources -type f -name "$f" | head -n1 || true)
+            # Exact unqualified resources are the English/default values used by the APK.
+            for f in strings.xml arrays.xml; do
+              hit="/tmp/jp/d$v/resources/res/values/$f"
+              [ ! -f "$hit" ] || cp "$hit" "$out/default-$f"
+            done
+            for f in root_preferences.xml player.xml activity_player.xml; do
+              hit=$(find /tmp/jp/d$v/resources/res -type f -name "$f" -print -quit 2>/dev/null || true)
               [ -z "$hit" ] || cp "$hit" "$out/$f"
             done
             mkdir -p "$out/xml"
