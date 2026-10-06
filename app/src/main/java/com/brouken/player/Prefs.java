@@ -73,6 +73,11 @@ class Prefs {
     private static final String PREF_KEY_HOLD_SPEED_MODE = "holdSpeedMode";
     private static final String PREF_KEY_TUNNELING = "tunneling";
     private static final String PREF_KEY_FRAMERATE_MATCHING = "frameRateMatching";
+    private static final String PREF_KEY_FRAMERATE_CORRECTION = "frameRateCorrection";
+    private static final String PREF_KEY_FRAMERATE_DOUBLING = "frameRateDoubling";
+    private static final String PREF_KEY_MODE_SWITCH_PAUSE_MS = "modeSwitchPauseMs";
+    private static final String PREF_KEY_RESUME_MODE = "resumeMode";
+    private static final String PREF_KEY_ASK_STILL_WATCHING = "askStillWatching";
     private static final String PREF_KEY_BACK_BUFFER_MS = "backBufferMs";
     private static final String PREF_KEY_DISPLAY_RESOLUTION_MATCHING = "displayResolutionMatching";
     private static final String PREF_KEY_ALLOW_SYSTEM_FRAMERATE = "allowSystemFrameRate";
@@ -237,6 +242,11 @@ class Prefs {
 
     public boolean tunneling = false;
     public boolean frameRateMatching = false;
+    public boolean frameRateCorrection = false;
+    public boolean frameRateDoubling = false;
+    public int modeSwitchPauseMs = 0;
+    public String resumeMode = "askOpen";
+    public boolean askStillWatching = false;
     // How much played media to keep behind the playhead, in milliseconds, so that a step back lands in
     // memory instead of in a new request. Streams only — see initializePlayer.
     //
@@ -476,6 +486,12 @@ class Prefs {
         holdSpeedMode = getHoldSpeedMode(mContext);
         tunneling = mSharedPreferences.getBoolean(PREF_KEY_TUNNELING, tunneling);
         frameRateMatching = mSharedPreferences.getBoolean(PREF_KEY_FRAMERATE_MATCHING, frameRateMatching);
+        frameRateCorrection = mSharedPreferences.getBoolean(PREF_KEY_FRAMERATE_CORRECTION, frameRateCorrection);
+        frameRateDoubling = mSharedPreferences.getBoolean(PREF_KEY_FRAMERATE_DOUBLING, frameRateDoubling);
+        modeSwitchPauseMs = Integer.parseInt(mSharedPreferences.getString(
+                PREF_KEY_MODE_SWITCH_PAUSE_MS, String.valueOf(modeSwitchPauseMs)));
+        resumeMode = mSharedPreferences.getString(PREF_KEY_RESUME_MODE, resumeMode);
+        askStillWatching = mSharedPreferences.getBoolean(PREF_KEY_ASK_STILL_WATCHING, askStillWatching);
         backBufferMs = Integer.parseInt(mSharedPreferences.getString(PREF_KEY_BACK_BUFFER_MS,
                 String.valueOf(backBufferMs)));
         displayResolutionMatching = mSharedPreferences.getBoolean(PREF_KEY_DISPLAY_RESOLUTION_MATCHING,
