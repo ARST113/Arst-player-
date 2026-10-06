@@ -1105,6 +1105,21 @@ public class PlayerActivity extends Activity {
     PlaylistApi.Playlist nestedPlaylistModel;
     String nestedPlaylistError;
     String nestedViewerVoiceLabel;
+    boolean[] nestedAudioChoiceDone;
+    boolean[] nestedSubtitleChoiceDone;
+    String[] nestedAudioChosenBy;
+    String[] nestedSubtitleChosenBy;
+    TrackResult[] nestedAudioResults;
+    TrackResult[] nestedSubtitleResults;
+    String nestedViewerAudioLabel;
+    String nestedViewerAudioLanguage;
+    int nestedViewerAudioOrdinal = -1;
+    int nestedViewerAudioCount = -1;
+    String nestedViewerSubtitleLabel;
+    String nestedViewerSubtitleLanguage;
+    int nestedViewerSubtitleOrdinal = -1;
+    int nestedViewerSubtitleCount = -1;
+    boolean nestedViewerSubtitleOff;
     final PlaylistSessionJournal nestedJournal = new PlaylistSessionJournal();
     byte[] nestedLastCallbackPayload;
     final List<MediaItem> apiMediaItems = new ArrayList<>();
@@ -4187,6 +4202,21 @@ public class PlayerActivity extends Activity {
         nestedPlaylistModel = null;
         nestedPlaylistError = null;
         nestedViewerVoiceLabel = null;
+        nestedAudioChoiceDone = null;
+        nestedSubtitleChoiceDone = null;
+        nestedAudioChosenBy = null;
+        nestedSubtitleChosenBy = null;
+        nestedAudioResults = null;
+        nestedSubtitleResults = null;
+        nestedViewerAudioLabel = null;
+        nestedViewerAudioLanguage = null;
+        nestedViewerAudioOrdinal = -1;
+        nestedViewerAudioCount = -1;
+        nestedViewerSubtitleLabel = null;
+        nestedViewerSubtitleLanguage = null;
+        nestedViewerSubtitleOrdinal = -1;
+        nestedViewerSubtitleCount = -1;
+        nestedViewerSubtitleOff = false;
         nestedJournal.clear();
         nestedLastCallbackPayload = null;
         cancelNestedReportTimer();
@@ -5505,6 +5535,12 @@ public class PlayerActivity extends Activity {
         apiExtrasIndex = model.startIndex;
         apiPlaylistPositions = new long[model.items.size()];
         Arrays.fill(apiPlaylistPositions, C.TIME_UNSET);
+        nestedAudioChoiceDone = new boolean[model.items.size()];
+        nestedSubtitleChoiceDone = new boolean[model.items.size()];
+        nestedAudioChosenBy = new String[model.items.size()];
+        nestedSubtitleChosenBy = new String[model.items.size()];
+        nestedAudioResults = new TrackResult[model.items.size()];
+        nestedSubtitleResults = new TrackResult[model.items.size()];
 
         Uri startUri = null;
         Uri startPoster = null;
@@ -7961,8 +7997,23 @@ public class PlayerActivity extends Activity {
         final boolean resume = player.getPlayWhenReady();
 
         savePlayer();
+        final PlaylistApi.Voice oldVoice = item.currentVoice();
+        final boolean subtitleSourceChanges =
+                (oldVoice != null && oldVoice.subtitles != null)
+                        || voice.subtitles != null;
         item.selectedVoice = voiceIndex;
         item.uri = voice.uri;
+        if (nestedAudioChoiceDone != null && itemIndex < nestedAudioChoiceDone.length) {
+            nestedAudioChoiceDone[itemIndex] = false;
+            nestedAudioChosenBy[itemIndex] = null;
+            nestedAudioResults[itemIndex] = null;
+        }
+        if (subtitleSourceChanges && nestedSubtitleChoiceDone != null
+                && itemIndex < nestedSubtitleChoiceDone.length) {
+            nestedSubtitleChoiceDone[itemIndex] = false;
+            nestedSubtitleChosenBy[itemIndex] = null;
+            nestedSubtitleResults[itemIndex] = null;
+        }
         if (viewerChoice) {
             nestedViewerVoiceLabel = voice.label;
         }
@@ -14180,8 +14231,10 @@ public class PlayerActivity extends Activity {
             Utils.log("tracks: video=" + selectedMime(tracks, C.TRACK_TYPE_VIDEO)
                     + " audio=" + selectedMime(tracks, C.TRACK_TYPE_AUDIO)
                     + " passthrough=" + (audioSink != null && audioSink.isPassthrough()));
-            // Tracks are now known — (re)map any container names onto them, then refresh the header.
+            // Tracks are now known — (re)map any container names onto them first, because launcher
+            // labels are matched against the same human-readable names the menu shows.
             resolveTrackNames();
+            applyNestedTrackRequests(tracks);
             updateMediaInfo();
             // In-stream renditions are known only now, so the quality button's visibility can change.
             updateQualityButton();
