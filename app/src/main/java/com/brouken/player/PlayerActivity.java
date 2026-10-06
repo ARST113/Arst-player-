@@ -1104,6 +1104,7 @@ public class PlayerActivity extends Activity {
     String nestedResumeMode;
     PlaylistApi.Playlist nestedPlaylistModel;
     String nestedPlaylistError;
+    String nestedViewerVoiceLabel;
     final PlaylistSessionJournal nestedJournal = new PlaylistSessionJournal();
     byte[] nestedLastCallbackPayload;
     final List<MediaItem> apiMediaItems = new ArrayList<>();
@@ -4185,6 +4186,7 @@ public class PlayerActivity extends Activity {
         nestedResumeMode = null;
         nestedPlaylistModel = null;
         nestedPlaylistError = null;
+        nestedViewerVoiceLabel = null;
         nestedJournal.clear();
         nestedLastCallbackPayload = null;
         cancelNestedReportTimer();
@@ -7916,13 +7918,90 @@ public class PlayerActivity extends Activity {
         return choices;
     }
 
-    // Shows the audio button only when there is more than one audio track to pick from.
+    private PlaylistApi.Item currentNestedItem() {
+        if (nestedPlaylistModel == null || player == null) {
+            return null;
+        }
+        final int index = player.getCurrentMediaItemIndex();
+        return index >= 0 && index < nestedPlaylistModel.items.size()
+                ? nestedPlaylistModel.items.get(index) : null;
+    }
+
+    private boolean hasNestedVoiceChoices() {
+        final PlaylistApi.Item item = currentNestedItem();
+        return item != null && item.voices.size() >= 2;
+    }
+
+    // Shows the audio button when either the stream exposes multiple tracks or the launcher supplied
+    // multiple 2.1.2 voices (one dub per source).
     private void updateAudioButton() {
         if (buttonAudio == null) {
             return;
         }
-        final boolean show = player != null && buildAudioChoices().size() >= 2;
+        final boolean show = player != null
+                && (buildAudioChoices().size() >= 2 || hasNestedVoiceChoices());
         buttonAudio.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    private void applyNestedVoice(final int voiceIndex, final boolean viewerChoice) {
+        if (player == null || nestedPlaylistModel == null) {
+            return;
+        }
+        final int itemIndex = player.getCurrentMediaItemIndex();
+        if (itemIndex < 0 || itemIndex >= nestedPlaylistModel.items.size()) {
+            return;
+        }
+        final PlaylistApi.Item item = nestedPlaylistModel.items.get(itemIndex);
+        if (voiceIndex < 0 || voiceIndex >= item.voices.size() || voiceIndex == item.selectedVoice) {
+            return;
+        }
+
+        final PlaylistApi.Voice voice = item.voices.get(voiceIndex);
+        final long position = Math.max(0L, player.getCurrentPosition());
+        final boolean resume = player.getPlayWhenReady();
+
+        savePlayer();
+        item.selectedVoice = voiceIndex;
+        item.uri = voice.uri;
+        if (viewerChoice) {
+            nestedViewerVoiceLabel = voice.label;
+        }
+
+        final MediaItem old = apiMediaItems.get(itemIndex);
+        final MediaItem.Builder updated = old.buildUpon().setUri(voice.uri);
+        final List<MediaItem.SubtitleConfiguration> subs =
+                buildNestedSubtitleConfigurations(item.activeSubtitles());
+        updated.setSubtitleConfigurations(subs);
+        apiMediaItems.set(itemIndex, updated.build());
+        apiPlaylistQuality.set(itemIndex, qualityMap(item.activeQualities()));
+        apiHeaders = mergedHeaders(nestedPlaylistModel.headers, item.headers);
+        apiPlaylistStartIndex = itemIndex;
+        apiExtrasIndex = itemIndex;
+
+        mPrefs.updatePosition(position);
+        sourceSwitchKeepPaused = !resume;
+        restorePlayState = resume;
+        initializePlayer();
+    }
+
+    /** Carry a voice explicitly picked by the viewer to the next episode when that label exists there. */
+    private void applyNestedViewerVoiceToCurrentItem() {
+        if (nestedViewerVoiceLabel == null || player == null || nestedPlaylistModel == null) {
+            return;
+        }
+        final PlaylistApi.Item item = currentNestedItem();
+        if (item == null || item.voices.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < item.voices.size(); i++) {
+            final PlaylistApi.Voice voice = item.voices.get(i);
+            if (nestedViewerVoiceLabel.equals(voice.label)) {
+                if (i != item.selectedVoice) {
+                    applyNestedVoice(i, false);
+                }
+                return;
+            }
+        }
     }
 
     // Media3 keeps the subtitle button visible-but-disabled while loading; we instead hide it entirely
@@ -8113,10 +8192,26 @@ public class PlayerActivity extends Activity {
 
     private void showAudioDialog() {
         final ArrayList<AudioChoice> choices = buildAudioChoices();
-        if (choices.size() < 2) {
+        final PlaylistApi.Item nestedItem = currentNestedItem();
+        final boolean voices = nestedItem != null && nestedItem.voices.size() >= 2;
+        if (choices.size() < 2 && !voices) {
             return;
         }
         final List<Dialogs.MenuItem> items = new ArrayList<>();
+
+        if (voices) {
+            for (int i = 0; i < nestedItem.voices.size(); i++) {
+                final int voiceIndex = i;
+                final PlaylistApi.Voice voice = nestedItem.voices.get(i);
+                items.add(new Dialogs.MenuItem(voice.label, null,
+                        i == nestedItem.selectedVoice,
+                        () -> applyNestedVoice(voiceIndex, true)));
+            }
+            if (!choices.isEmpty()) {
+                items.add(Dialogs.MenuItem.rule());
+            }
+        }
+
         String selectedLanguage = null;
         for (final AudioChoice choice : choices) {
             if (!choice.supported) {
@@ -14119,10 +14214,14 @@ public class PlayerActivity extends Activity {
             // The track list is what decides whether anything is missing, so this is the first moment
             // the question can be asked at all.
             maybeSearchSubtitlesOnline(tracks);
-            // Apply a sticky quality choice to a freshly auto-advanced episode once its variants are known.
-            // Posted so the reinitialisation never runs while listeners are being dispatched.
+            // Apply sticky launcher-source choices only after the new item and its tracks are settled.
+            // Voice goes first because it may replace the source entirely; quality then applies inside
+            // the chosen voice.
             if (playerView != null) {
-                playerView.post(PlayerActivity.this::applyStickyQuality);
+                playerView.post(() -> {
+                    applyNestedViewerVoiceToCurrentItem();
+                    applyStickyQuality();
+                });
             }
         }
 
