@@ -421,8 +421,10 @@ public class PlayerActivity extends Activity {
     private volatile boolean forceHevcForDolbyVision;
     private boolean pendingStuckRecovery;
     // Generic HEVC recovery, kept separate from the upstream Dolby Vision path so external-player
-    // behaviour (including playlists) remains untouched. 0 = normal, 1 = c2.android software,
-    // 2 = legacy OMX.google software alias.
+    // behaviour (including playlists) remains untouched. 0 = normal hardware selection, 1 = bundled
+    // NextLib/FFmpeg libavcodec, 2 = c2.android software MediaCodec, 3 = legacy OMX.google alias.
+    // Stage 1 is the important one for HEVC RExt / 4:4:4 10-bit: the Pixel platform codecs reject or
+    // fail those profiles, while the exact NextLib renderer used by Lampa Native plays them in software.
     private volatile int forceHevcSoftwareStage;
     private boolean pendingHevcSoftwareRecovery;
     // Installed for this player build when Dolby Vision profile 7 is being rewritten as profile 8.1;
@@ -12213,6 +12215,15 @@ public class PlayerActivity extends Activity {
                                 /* numOutputBuffers= */ 6, /* useCustomAllocator= */ false));
                     }
                 }
+                // The exact software video renderer used by Lampa Native 1.13.0-native.2. It stays after
+                // MediaCodec, so ordinary H.264/HEVC keeps hardware acceleration. If MediaCodec reports
+                // an HEVC RExt profile as exceeding capabilities, Media3 can select this fully-supported
+                // renderer instead; a runtime codec crash is handled by forceHevcSoftwareStage below.
+                out.add(new io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegVideoRenderer(
+                        allowedVideoJoiningTimeMs, eventHandler, eventListener,
+                        MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
+                        Math.min(4, Runtime.getRuntime().availableProcessors()),
+                        /* numInputBuffers= */ 4, /* numOutputBuffers= */ 4));
                 if (platform >= out.size()
                         || !(out.get(platform) instanceof MediaCodecVideoRenderer)) {
                     return;
@@ -12466,7 +12477,11 @@ public class PlayerActivity extends Activity {
                 }
                 if (forceHevcSoftwareStage > 0 && MimeTypes.VIDEO_H265.equals(mimeType)
                         && !requiresSecureDecoder && !requiresTunnelingDecoder) {
-                    if (forceHevcSoftwareStage == 2) {
+                    if (forceHevcSoftwareStage == 1) {
+                        // Make the platform renderer report HEVC unsupported. The separate NextLib
+                        // FfmpegVideoRenderer above then owns the track and decodes it with libavcodec.
+                        return Collections.emptyList();
+                    } else if (forceHevcSoftwareStage == 3) {
                         final MediaCodecInfo legacy = legacyGoogleHevcDecoder();
                         if (legacy != null) {
                             return Collections.singletonList(legacy);
@@ -14517,17 +14532,22 @@ public class PlayerActivity extends Activity {
     }
 
     /**
-     * Pixel/Android 17 can accept an ordinary HEVC track in the Tensor hardware codec and fail on the
-     * first buffer with 0x80000000. Re-preparing hands it to the same codec, so after the upstream retry
-     * budget is spent try the platform software implementations one at a time.
+     * Recover ordinary HEVC after a decoder dies at runtime. Stage 1 is the bundled NextLib FFmpeg
+     * renderer — the same software path that already proved it can play HEVC RExt 4:4:4 10-bit in
+     * Lampa Native. The platform software codecs are retained only as later fallbacks for streams where
+     * libavcodec itself cannot make progress.
      */
     private boolean recoverHevcSoftwareDecoder(@Nullable final Format failingFormat) {
         if (player == null || failingFormat == null
                 || !MimeTypes.VIDEO_H265.equals(failingFormat.sampleMimeType)
-                || forceHevcSoftwareStage >= 2) {
+                || forceHevcSoftwareStage >= 3) {
             return false;
         }
+
         if (forceHevcSoftwareStage == 0) {
+            forceHevcSoftwareStage = 1;
+            Utils.log("rebuild: HEVC " + failingFormat.codecs + " with NextLib FFmpeg/libavcodec");
+        } else if (forceHevcSoftwareStage == 1) {
             boolean hasCodec2Software = false;
             try {
                 for (MediaCodecInfo info : MediaCodecSelector.DEFAULT.getDecoderInfos(
@@ -14543,16 +14563,17 @@ public class PlayerActivity extends Activity {
             if (!hasCodec2Software) {
                 return false;
             }
-            forceHevcSoftwareStage = 1;
+            forceHevcSoftwareStage = 2;
             Utils.log("rebuild: HEVC " + failingFormat.codecs + " with c2.android software decoder");
         } else {
             if (videoDecoderName == null || !videoDecoderName.startsWith("c2.android.")
                     || legacyGoogleHevcDecoder() == null) {
                 return false;
             }
-            forceHevcSoftwareStage = 2;
+            forceHevcSoftwareStage = 3;
             Utils.log("rebuild: HEVC " + failingFormat.codecs + " with OMX.google software decoder");
         }
+
         pendingHevcSoftwareRecovery = true;
         restorePlayState = player.getPlayWhenReady();
         sourceSwitchKeepPaused = !restorePlayState;
