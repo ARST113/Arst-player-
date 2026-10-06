@@ -5478,6 +5478,7 @@ public class PlayerActivity extends Activity {
         for (int i = 0; i < apiPlaylistPositions.length; i++) {
             apiPlaylistPositions[i] = C.TIME_UNSET;
         }
+        Utils.log("api playlist: " + apiMediaItems.size() + " items, start=" + apiPlaylistStartIndex);
     }
 
     /**
