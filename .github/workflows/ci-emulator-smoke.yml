@@ -48,6 +48,10 @@ jobs:
             /tmp/player-smoke/hevc.mp4
           ls -lh /tmp/player-smoke/hevc.mp4
 
+      - name: Accept Android SDK licenses
+        run: |
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+
       - name: Emulator smoke test on Android 16 / API 36
         uses: reactivecircus/android-emulator-runner@v2
         with:
