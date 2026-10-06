@@ -1095,11 +1095,12 @@ public class PlayerActivity extends Activity {
     Uri apiThumbnailUri;
     String apiSegments;
     String[] apiHeaders;
-    // Native Just+ 2.1.1 playlist session. The official APK reads one nested "playlist" Bundle
+    // Native Just+ 2.1.2 playlist session. The official APK reads one nested "playlist" Bundle
     // directly instead of rewriting it into the legacy video_list contract.
     boolean nestedPlaylistSession;
     PendingIntent nestedResultCallback;
-    int nestedReportIntervalSec;
+    long nestedReportIntervalMs;
+    String nestedResumeMode;
     final List<MediaItem> apiMediaItems = new ArrayList<>();
     final List<String> apiPlaylistSegments = new ArrayList<>();
     int apiPlaylistStartIndex;
@@ -3422,7 +3423,14 @@ public class PlayerActivity extends Activity {
             }
 
             if (nestedPlaylistSession) {
-                final long startPosition = savedPlaylistPosition(apiPlaylistStartIndex);
+                long startPosition = savedPlaylistPosition(apiPlaylistStartIndex);
+                if ("never".equals(nestedResumeMode)
+                        && (apiPlaylistPositions == null
+                        || apiPlaylistStartIndex < 0
+                        || apiPlaylistStartIndex >= apiPlaylistPositions.length
+                        || apiPlaylistPositions[apiPlaylistStartIndex] == C.TIME_UNSET)) {
+                    startPosition = 0L;
+                }
                 mPrefs.updatePosition(startPosition == C.TIME_UNSET ? 0L : startPosition);
             } else if (bundle != null) {
                 intentReturnResult = bundle.getBoolean(API_RETURN_RESULT);
@@ -4155,7 +4163,8 @@ public class PlayerActivity extends Activity {
         apiHeaders = null;
         nestedPlaylistSession = false;
         nestedResultCallback = null;
-        nestedReportIntervalSec = 0;
+        nestedReportIntervalMs = 0L;
+        nestedResumeMode = null;
         apiMediaItems.clear();
         apiPlaylistSegments.clear();
         apiPlaylistStartIndex = 0;
@@ -5466,9 +5475,22 @@ public class PlayerActivity extends Activity {
 
         final Object callback = playlist.get("result_callback");
         nestedResultCallback = callback instanceof PendingIntent ? (PendingIntent) callback : null;
-        final Integer reportInterval = getNestedInt(playlist, "report_interval_sec");
-        nestedReportIntervalSec = reportInterval != null && reportInterval > 0
-                ? Math.max(30, reportInterval) : 0;
+
+        // 2.1.2 accepts every time value in either milliseconds or seconds, with *_ms winning.
+        final Long reportIntervalMs = getNestedTimeMs(playlist, "report_interval");
+        nestedReportIntervalMs = reportIntervalMs != null && reportIntervalMs > 0
+                ? Math.max(30_000L, reportIntervalMs) : 0L;
+
+        final String resumeMode = getNestedString(playlist, "resume_mode");
+        if ("ask_open".equals(resumeMode) || "ask_every".equals(resumeMode)
+                || "always".equals(resumeMode) || "never".equals(resumeMode)) {
+            nestedResumeMode = resumeMode;
+        } else {
+            nestedResumeMode = null;
+            if (resumeMode != null) {
+                Utils.log("playlist.resume_mode ignored: " + resumeMode);
+            }
+        }
 
         apiMediaItems.clear();
         apiPlaylistSegments.clear();
@@ -5540,9 +5562,9 @@ public class PlayerActivity extends Activity {
             apiPlaylistTmdbIds.add(tmdbId);
             apiPlaylistQuality.add(readNestedQualityMap(item));
 
-            final Integer positionSec = getNestedInt(item, "position_sec");
-            if (positionSec != null && positionSec >= 0) {
-                apiPlaylistPositions[i] = positionSec * 1000L;
+            final Long positionMs = getNestedTimeMs(item, "position");
+            if (positionMs != null && positionMs >= 0) {
+                apiPlaylistPositions[i] = positionMs;
             }
 
             if (i == requestedStart) {
@@ -5560,7 +5582,8 @@ public class PlayerActivity extends Activity {
         Utils.log("nested playlist parsed natively: " + apiMediaItems.size()
                 + " items, start=" + apiPlaylistStartIndex
                 + ", callback=" + (nestedResultCallback != null)
-                + ", report=" + nestedReportIntervalSec + "s");
+                + ", report=" + nestedReportIntervalMs + "ms"
+                + ", resume=" + nestedResumeMode);
         return startUri;
     }
 
@@ -5656,6 +5679,40 @@ public class PlayerActivity extends Activity {
     }
 
     @Nullable
+    private static Long getNestedTimeMs(final Bundle bundle, final String baseKey) {
+        if (bundle == null) {
+            return null;
+        }
+        final Double ms = getNestedNumber(bundle, baseKey + "_ms");
+        if (ms != null) {
+            return (long) Math.floor(ms);
+        }
+        final Double sec = getNestedNumber(bundle, baseKey + "_sec");
+        return sec == null ? null : (long) Math.floor(sec * 1000.0d);
+    }
+
+    @Nullable
+    private static Double getNestedNumber(final Bundle bundle, final String key) {
+        if (bundle == null || !bundle.containsKey(key)) {
+            return null;
+        }
+        final Object value = bundle.get(key);
+        if (value instanceof Number) {
+            final double number = ((Number) value).doubleValue();
+            return Double.isNaN(number) || Double.isInfinite(number) ? null : number;
+        }
+        if (value instanceof String) {
+            try {
+                final double number = Double.parseDouble(((String) value).trim());
+                return Double.isNaN(number) || Double.isInfinite(number) ? null : number;
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    @Nullable
     private static Integer getNestedInt(final Bundle bundle, final String key) {
         if (bundle == null || !bundle.containsKey(key)) {
             return null;
@@ -5711,27 +5768,36 @@ public class PlayerActivity extends Activity {
         final Uri uri = index >= 0 ? playlistUri(index) : null;
         result.putString("uri", uri == null ? null : uri.toString());
         result.putInt("index", index);
-        result.putInt("position_sec", positionMs == C.TIME_UNSET
-                ? 0 : (int) Math.min(Integer.MAX_VALUE, Math.max(0L, positionMs / 1000L)));
-        result.putInt("duration_sec", durationMs == C.TIME_UNSET
-                ? 0 : (int) Math.min(Integer.MAX_VALUE, durationMs / 1000L));
+        final long safePositionMs = positionMs == C.TIME_UNSET ? 0L : Math.max(0L, positionMs);
+        final long safeDurationMs = durationMs == C.TIME_UNSET ? 0L : Math.max(0L, durationMs);
+        result.putLong("position_ms", safePositionMs);
+        result.putInt("position_sec", (int) Math.min(Integer.MAX_VALUE, safePositionMs / 1000L));
+        result.putLong("duration_ms", safeDurationMs);
+        result.putInt("duration_sec", (int) Math.min(Integer.MAX_VALUE, safeDurationMs / 1000L));
 
+        final long[] positionsMs = new long[apiMediaItems.size()];
         final int[] positions = new int[apiMediaItems.size()];
         for (int i = 0; i < positions.length; i++) {
             final long saved = apiPlaylistPositions != null && i < apiPlaylistPositions.length
                     ? apiPlaylistPositions[i] : C.TIME_UNSET;
-            positions[i] = saved == C.TIME_UNSET ? -1
-                    : (int) Math.min(Integer.MAX_VALUE, Math.max(0L, saved / 1000L));
+            positionsMs[i] = saved == C.TIME_UNSET ? -1L : Math.max(0L, saved);
+            positions[i] = positionsMs[i] < 0 ? -1
+                    : (int) Math.min(Integer.MAX_VALUE, positionsMs[i] / 1000L);
         }
         if (index >= 0 && index < positions.length && positionMs != C.TIME_UNSET) {
-            positions[index] = (int) Math.min(Integer.MAX_VALUE, Math.max(0L, positionMs / 1000L));
+            positionsMs[index] = Math.max(0L, positionMs);
+            positions[index] = (int) Math.min(Integer.MAX_VALUE, positionsMs[index] / 1000L);
         }
         if ("completion".equals(endBy) && index >= 0 && index < positions.length
                 && durationMs != C.TIME_UNSET) {
-            final int durationSec = (int) Math.min(Integer.MAX_VALUE, durationMs / 1000L);
+            final long completedMs = Math.max(0L, durationMs);
+            final int durationSec = (int) Math.min(Integer.MAX_VALUE, completedMs / 1000L);
+            positionsMs[index] = completedMs;
             positions[index] = durationSec;
+            result.putLong("position_ms", completedMs);
             result.putInt("position_sec", durationSec);
         }
+        result.putLongArray("positions_ms", positionsMs);
         result.putIntArray("positions_sec", positions);
         result.putString("end_by", endBy);
         return result;
@@ -13725,7 +13791,8 @@ public class PlayerActivity extends Activity {
             // (gapless) keeps starting the next episode from the beginning, as it should. The follow-up
             // seek lands with oldIndex == newIndex, so it neither loops nor overwrites the saved slot.
             if (reason == Player.DISCONTINUITY_REASON_SEEK && oldIndex != newIndex
-                    && newPosition.positionMs < 1000) {
+                    && newPosition.positionMs < 1000
+                    && !"never".equals(nestedResumeMode)) {
                 final long saved = savedPlaylistPosition(newIndex);
                 if (saved > 0) {
                     // Exactly where it was left, and exact is also what keeps this off the trap in
