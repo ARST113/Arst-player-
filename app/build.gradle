@@ -158,6 +158,10 @@ dependencies {
     implementation "androidx.media3:media3-common:$media3_version"
     implementation "androidx.media3:media3-container:$media3_version"
     implementation "androidx.media3:media3-extractor:$media3_version"
+    // Software video fallback used by the proven Lampa Native build. The version prefix must
+    // match Media3: this artifact is built for 1.11.0 and provides FFmpeg/libavcodec video decoding
+    // (including HEVC RExt profiles that Android MediaCodec may reject).
+    implementation "io.github.anilbeesetti:nextlib-media3ext:1.11.0-0.15.0"
     implementation("androidx.media3:media3-exoplayer-dash:$media3_version") {
         exclude group: "androidx.media3", module: "media3-exoplayer"
     }
