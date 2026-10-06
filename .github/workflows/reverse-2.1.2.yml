@@ -119,7 +119,34 @@ jobs:
             tail -n 30 /tmp/jp/jadx212.log
           } >> reverse/2.1.2/REPORT.md
 
-          wc -c reverse/2.1.2/player-java.diff
+          # Pull out the obfuscated helper classes that implement the 2.1.2 playlist/session model.
+          mkdir -p reverse/2.1.2/helpers/2.1.1 reverse/2.1.2/helpers/2.1.2
+          for v in 211 212; do
+            for cls in ha1 vp2 vs1 rs1 us1 c7 b7; do
+              f=$(find /tmp/jp/d$v/sources -type f -name "$cls.java" | head -n1 || true)
+              if [ -n "$f" ]; then
+                cp "$f" "reverse/2.1.2/helpers/2.1.$([ "$v" = 211 ] && echo 1 || echo 2)/$cls.java"
+              fi
+            done
+          done
+
+          # Resource changes matter for settings/UI additions in 2.1.2.
+          mkdir -p reverse/2.1.2/resources/2.1.1 reverse/2.1.2/resources/2.1.2
+          for v in 211 212; do
+            out="reverse/2.1.2/resources/2.1.$([ "$v" = 211 ] && echo 1 || echo 2)"
+            for f in strings.xml arrays.xml preferences.xml player.xml activity_player.xml; do
+              hit=$(find /tmp/jp/d$v/resources -type f -name "$f" | head -n1 || true)
+              [ -z "$hit" ] || cp "$hit" "$out/$f"
+            done
+          done
+
+          # Compare the bundled Media3 namespace too. This tells us whether 2.1.2 merely bumped
+          # dependencies or actually carries altered ExoPlayer classes (notably AVI extraction).
+          mkdir -p reverse/2.1.2/media3
+          diff -qr /tmp/jp/d211/sources/androidx/media3 /tmp/jp/d212/sources/androidx/media3             > reverse/2.1.2/media3/changed-files.txt || true
+          diff -ruN /tmp/jp/d211/sources/androidx/media3 /tmp/jp/d212/sources/androidx/media3             > reverse/2.1.2/media3/media3-java.diff || true
+
+          wc -c reverse/2.1.2/player-java.diff reverse/2.1.2/media3/media3-java.diff
           sed -n '1,240p' reverse/2.1.2/REPORT.md
 
       - name: Commit report
