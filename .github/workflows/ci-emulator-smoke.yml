@@ -59,11 +59,11 @@ jobs:
             ls -l /dev/kvm
           fi
 
-      - name: Emulator smoke test on Android 16 / API 36
+      - name: Emulator smoke test on AOSP API 35
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
-          target: google_apis
+          api-level: 35
+          target: default
           arch: x86_64
           profile: pixel_6
           disable-animations: true
