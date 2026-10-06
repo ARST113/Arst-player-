@@ -132,6 +132,15 @@ jobs:
             done
           done
 
+          # Exact settings resources needed by the 2.1.2 preference screen.
+          mkdir -p reverse/2.1.2/exact-res/drawable reverse/2.1.2/exact-res/layout
+          for f in ic_theaters_24dp.xml ic_double_arrow_24dp.xml ic_bug_report_24dp.xml; do
+            hit=$(find /tmp/jp/d212/resources -type f -name "$f" | head -n1 || true)
+            [ -z "$hit" ] || cp "$hit" reverse/2.1.2/exact-res/drawable/"$f"
+          done
+          hit=$(find /tmp/jp/d212/resources -type f -name preference_about_deco.xml | head -n1 || true)
+          [ -z "$hit" ] || cp "$hit" reverse/2.1.2/exact-res/layout/preference_about_deco.xml
+
           # Resource changes matter for settings/UI additions in 2.1.2.
           mkdir -p reverse/2.1.2/resources/2.1.1 reverse/2.1.2/resources/2.1.2
           for v in 211 212; do
