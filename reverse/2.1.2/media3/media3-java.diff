@@ -1,6 +1,6 @@
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/DecoderInputBuffer.java /tmp/jp/d212/sources/androidx/media3/decoder/DecoderInputBuffer.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/DecoderInputBuffer.java	2026-10-06 20:29:42.907295427 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/DecoderInputBuffer.java	2026-10-06 20:30:08.639219822 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/DecoderInputBuffer.java	2026-10-06 20:48:48.844242205 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/DecoderInputBuffer.java	2026-10-06 20:49:15.604341083 +0000
 @@ -1,33 +1,33 @@
  package androidx.media3.decoder;
  
@@ -64,8 +64,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/DecoderInputBuffer.java /
          super.clear();
          ByteBuffer byteBuffer = this.data;
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/SimpleDecoderOutputBuffer.java /tmp/jp/d212/sources/androidx/media3/decoder/SimpleDecoderOutputBuffer.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/SimpleDecoderOutputBuffer.java	2026-10-06 20:29:50.567543732 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/SimpleDecoderOutputBuffer.java	2026-10-06 20:30:16.499051991 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/SimpleDecoderOutputBuffer.java	2026-10-06 20:48:56.932153667 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/SimpleDecoderOutputBuffer.java	2026-10-06 20:49:24.303543791 +0000
 @@ -1,22 +1,22 @@
  package androidx.media3.decoder;
  
@@ -117,8 +117,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/SimpleDecoderOutputBuffer
          this.owner.b(this);
      }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/VideoDecoderOutputBuffer.java /tmp/jp/d212/sources/androidx/media3/decoder/VideoDecoderOutputBuffer.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/VideoDecoderOutputBuffer.java	2026-10-06 20:29:42.230348883 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/VideoDecoderOutputBuffer.java	2026-10-06 20:30:08.122294873 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/VideoDecoderOutputBuffer.java	2026-10-06 20:48:48.197040121 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/VideoDecoderOutputBuffer.java	2026-10-06 20:49:14.906968698 +0000
 @@ -1,13 +1,13 @@
  package androidx.media3.decoder;
  
@@ -172,8 +172,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/VideoDecoderOutputBuffer.
          this.owner.b(this);
      }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dDecoder.java /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dDecoder.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dDecoder.java	2026-10-06 20:29:56.128150311 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dDecoder.java	2026-10-06 20:30:22.204810780 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dDecoder.java	2026-10-06 20:49:02.487013753 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dDecoder.java	2026-10-06 20:49:29.737615414 +0000
 @@ -3,19 +3,19 @@
  import android.view.Surface;
  import androidx.media3.decoder.DecoderInputBuffer;
@@ -362,8 +362,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dDecoder.java /tm
          synchronized (this.lock) {
              this.outputStartTimeUs = j;
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dDecoderException.java /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dDecoderException.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dDecoderException.java	2026-10-06 20:29:39.077870794 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dDecoderException.java	2026-10-06 20:30:05.249349653 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dDecoderException.java	2026-10-06 20:48:44.863032602 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dDecoderException.java	2026-10-06 20:49:11.749136304 +0000
 @@ -1,8 +1,8 @@
  package androidx.media3.decoder.av1;
  
@@ -377,8 +377,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dDecoderException
 +public final class Dav1dDecoderException extends v10 {
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dLibrary.java /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dLibrary.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dLibrary.java	2026-10-06 20:29:41.200640339 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dLibrary.java	2026-10-06 20:30:07.620938074 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dLibrary.java	2026-10-06 20:48:47.212550890 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/av1/Dav1dLibrary.java	2026-10-06 20:49:14.418306879 +0000
 @@ -1,20 +1,20 @@
  package androidx.media3.decoder.av1;
  
@@ -408,8 +408,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/av1/Dav1dLibrary.java /tm
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/av1/Libdav1dVideoRenderer.java /tmp/jp/d212/sources/androidx/media3/decoder/av1/Libdav1dVideoRenderer.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/av1/Libdav1dVideoRenderer.java	2026-10-06 20:29:56.174068253 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/av1/Libdav1dVideoRenderer.java	2026-10-06 20:30:22.245276635 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/av1/Libdav1dVideoRenderer.java	2026-10-06 20:49:02.512391985 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/av1/Libdav1dVideoRenderer.java	2026-10-06 20:49:29.778625233 +0000
 @@ -4,31 +4,31 @@
  import android.os.Trace;
  import android.view.Surface;
@@ -519,8 +519,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/av1/Libdav1dVideoRenderer
          this.X = i4;
          this.Y = i2;
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoRenderer.java /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoRenderer.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoRenderer.java	2026-10-06 20:29:54.571190625 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoRenderer.java	2026-10-06 20:30:20.524582385 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoRenderer.java	2026-10-06 20:49:00.945670022 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoRenderer.java	2026-10-06 20:49:28.124971957 +0000
 @@ -1,33 +1,33 @@
  package androidx.media3.decoder.ffmpeg;
  
@@ -573,8 +573,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/ExperimentalFfmpeg
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder.java /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder.java	2026-10-06 20:29:54.671768496 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder.java	2026-10-06 20:30:20.644407107 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder.java	2026-10-06 20:49:01.096458494 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder.java	2026-10-06 20:49:28.232535231 +0000
 @@ -3,18 +3,18 @@
  import androidx.media3.decoder.DecoderInputBuffer;
  import androidx.media3.decoder.SimpleDecoderOutputBuffer;
@@ -699,8 +699,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioDecoder
          super.release();
          ffmpegRelease(this.e);
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioRenderer.java /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioRenderer.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioRenderer.java	2026-10-06 20:29:53.276891906 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioRenderer.java	2026-10-06 20:30:18.877861983 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioRenderer.java	2026-10-06 20:48:59.450266036 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioRenderer.java	2026-10-06 20:49:26.491485413 +0000
 @@ -1,23 +1,23 @@
  package androidx.media3.decoder.ffmpeg;
  
@@ -735,8 +735,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegAudioRendere
          return 8;
      }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java	2026-10-06 20:29:39.078094422 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java	2026-10-06 20:30:05.249520148 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java	2026-10-06 20:48:44.863269081 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java	2026-10-06 20:49:11.749301904 +0000
 @@ -1,8 +1,8 @@
  package androidx.media3.decoder.ffmpeg;
  
@@ -750,8 +750,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegDecoderExcep
 +public final class FfmpegDecoderException extends v10 {
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegLibrary.java /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegLibrary.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegLibrary.java	2026-10-06 20:29:48.522428735 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegLibrary.java	2026-10-06 20:30:14.443137911 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegLibrary.java	2026-10-06 20:48:54.801286001 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/ffmpeg/FfmpegLibrary.java	2026-10-06 20:49:21.779713493 +0000
 @@ -1,27 +1,27 @@
  package androidx.media3.decoder.ffmpeg;
  
@@ -799,8 +799,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/ffmpeg/FfmpegLibrary.java
      }
  
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfAudioRenderer.java /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfAudioRenderer.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfAudioRenderer.java	2026-10-06 20:29:56.809139205 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfAudioRenderer.java	2026-10-06 20:30:23.084251151 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfAudioRenderer.java	2026-10-06 20:49:03.128253839 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfAudioRenderer.java	2026-10-06 20:49:30.596638966 +0000
 @@ -2,27 +2,27 @@
  
  import android.os.Handler;
@@ -1063,8 +1063,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfAudioRenderer.ja
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfDecoder.java /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfDecoder.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfDecoder.java	2026-10-06 20:29:55.103825944 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfDecoder.java	2026-10-06 20:30:21.092497075 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfDecoder.java	2026-10-06 20:49:01.539634090 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfDecoder.java	2026-10-06 20:49:28.812535937 +0000
 @@ -2,12 +2,12 @@
  
  import androidx.media3.decoder.DecoderInputBuffer;
@@ -1183,8 +1183,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfDecoder.java /tm
          super.release();
          iamfClose(this.a);
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfDecoderException.java /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfDecoderException.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfDecoderException.java	2026-10-06 20:29:39.078261615 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfDecoderException.java	2026-10-06 20:30:05.249693880 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfDecoderException.java	2026-10-06 20:48:44.863238586 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfDecoderException.java	2026-10-06 20:49:11.754822022 +0000
 @@ -1,8 +1,8 @@
  package androidx.media3.decoder.iamf;
  
@@ -1198,8 +1198,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfDecoderException
 +public final class IamfDecoderException extends v10 {
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfLibrary.java /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfLibrary.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfLibrary.java	2026-10-06 20:29:41.207397414 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfLibrary.java	2026-10-06 20:30:07.609868269 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfLibrary.java	2026-10-06 20:48:47.216372855 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/iamf/IamfLibrary.java	2026-10-06 20:49:14.385537881 +0000
 @@ -1,24 +1,24 @@
  package androidx.media3.decoder.iamf;
  
@@ -1234,8 +1234,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/iamf/IamfLibrary.java /tm
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghAudioRenderer.java /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghAudioRenderer.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghAudioRenderer.java	2026-10-06 20:29:57.815310182 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghAudioRenderer.java	2026-10-06 20:30:24.106032961 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghAudioRenderer.java	2026-10-06 20:49:04.189742895 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghAudioRenderer.java	2026-10-06 20:49:31.610038986 +0000
 @@ -2,29 +2,29 @@
  
  import android.os.Handler;
@@ -1412,8 +1412,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghAudioRenderer.
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoder.java /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoder.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoder.java	2026-10-06 20:29:54.707438826 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoder.java	2026-10-06 20:30:20.687754793 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoder.java	2026-10-06 20:49:01.174074894 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoder.java	2026-10-06 20:49:28.294045516 +0000
 @@ -2,20 +2,20 @@
  
  import androidx.media3.decoder.DecoderInputBuffer;
@@ -1569,8 +1569,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoder.java /
              }
              this.uiManager = null;
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoderException.java /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoderException.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoderException.java	2026-10-06 20:29:39.078934564 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoderException.java	2026-10-06 20:30:05.254051768 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoderException.java	2026-10-06 20:48:44.864371257 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoderException.java	2026-10-06 20:49:11.753441336 +0000
 @@ -1,10 +1,10 @@
  package androidx.media3.decoder.mpegh;
  
@@ -1586,8 +1586,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoderExcepti
          super(str, new Throwable());
      }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoderJni.java /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoderJni.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoderJni.java	2026-10-06 20:29:37.877158674 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoderJni.java	2026-10-06 20:30:04.127488206 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoderJni.java	2026-10-06 20:48:43.838428080 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghDecoderJni.java	2026-10-06 20:49:10.667095530 +0000
 @@ -2,7 +2,7 @@
  
  import java.nio.ByteBuffer;
@@ -1598,8 +1598,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghDecoderJni.jav
  public class MpeghDecoderJni {
      private long decoderHandle;
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghLibrary.java /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghLibrary.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghLibrary.java	2026-10-06 20:29:41.208599084 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghLibrary.java	2026-10-06 20:30:07.613139019 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghLibrary.java	2026-10-06 20:48:47.217455763 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghLibrary.java	2026-10-06 20:49:14.386216949 +0000
 @@ -1,17 +1,17 @@
  package androidx.media3.decoder.mpegh;
  
@@ -1626,8 +1626,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghLibrary.java /
                  System.loadLibrary(str);
              }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghUiCommandHelper.java /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghUiCommandHelper.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghUiCommandHelper.java	2026-10-06 20:29:54.310890989 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghUiCommandHelper.java	2026-10-06 20:30:19.685567062 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghUiCommandHelper.java	2026-10-06 20:49:00.379010962 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghUiCommandHelper.java	2026-10-06 20:49:27.503882478 +0000
 @@ -1,10 +1,10 @@
  package androidx.media3.decoder.mpegh;
  
@@ -1717,8 +1717,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghUiCommandHelpe
      }
  
 diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghUiManagerJni.java /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghUiManagerJni.java
---- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghUiManagerJni.java	2026-10-06 20:29:37.882532198 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghUiManagerJni.java	2026-10-06 20:30:04.131252825 +0000
+--- /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghUiManagerJni.java	2026-10-06 20:48:43.840352695 +0000
++++ /tmp/jp/d212/sources/androidx/media3/decoder/mpegh/MpeghUiManagerJni.java	2026-10-06 20:49:10.670403689 +0000
 @@ -2,7 +2,7 @@
  
  import java.nio.ByteBuffer;
@@ -1729,8 +1729,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/decoder/mpegh/MpeghUiManagerJni.j
  public final class MpeghUiManagerJni {
      private long uiManagerHandle;
 diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/ExoPlayer.java /tmp/jp/d212/sources/androidx/media3/exoplayer/ExoPlayer.java
---- /tmp/jp/d211/sources/androidx/media3/exoplayer/ExoPlayer.java	2026-10-06 20:29:45.269002623 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/exoplayer/ExoPlayer.java	2026-10-06 20:30:11.104690233 +0000
+--- /tmp/jp/d211/sources/androidx/media3/exoplayer/ExoPlayer.java	2026-10-06 20:48:51.249726496 +0000
++++ /tmp/jp/d212/sources/androidx/media3/exoplayer/ExoPlayer.java	2026-10-06 20:49:18.387963504 +0000
 @@ -1,11 +1,11 @@
  package androidx.media3.exoplayer;
  
@@ -1747,8 +1747,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/ExoPlayer.java /tmp/jp/
  
      void setImageOutput(ImageOutput imageOutput);
 diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/dash/DashMediaSource$Factory.java /tmp/jp/d212/sources/androidx/media3/exoplayer/dash/DashMediaSource$Factory.java
---- /tmp/jp/d211/sources/androidx/media3/exoplayer/dash/DashMediaSource$Factory.java	2026-10-06 20:29:58.589331830 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/exoplayer/dash/DashMediaSource$Factory.java	2026-10-06 20:30:25.231108936 +0000
+--- /tmp/jp/d211/sources/androidx/media3/exoplayer/dash/DashMediaSource$Factory.java	2026-10-06 20:49:05.154116756 +0000
++++ /tmp/jp/d212/sources/androidx/media3/exoplayer/dash/DashMediaSource$Factory.java	2026-10-06 20:49:32.594376350 +0000
 @@ -1,73 +1,73 @@
  package androidx.media3.exoplayer.dash;
  
@@ -1870,8 +1870,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/dash/DashMediaSource$Fa
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/hls/HlsMediaSource$Factory.java /tmp/jp/d212/sources/androidx/media3/exoplayer/hls/HlsMediaSource$Factory.java
---- /tmp/jp/d211/sources/androidx/media3/exoplayer/hls/HlsMediaSource$Factory.java	2026-10-06 20:29:58.177666178 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/exoplayer/hls/HlsMediaSource$Factory.java	2026-10-06 20:30:24.639420679 +0000
+--- /tmp/jp/d211/sources/androidx/media3/exoplayer/hls/HlsMediaSource$Factory.java	2026-10-06 20:49:04.760518608 +0000
++++ /tmp/jp/d212/sources/androidx/media3/exoplayer/hls/HlsMediaSource$Factory.java	2026-10-06 20:49:32.170656437 +0000
 @@ -1,98 +1,98 @@
  package androidx.media3.exoplayer.hls;
  
@@ -2034,8 +2034,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/hls/HlsMediaSource$Fact
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/image/ImageOutput.java /tmp/jp/d212/sources/androidx/media3/exoplayer/image/ImageOutput.java
---- /tmp/jp/d211/sources/androidx/media3/exoplayer/image/ImageOutput.java	2026-10-06 20:29:39.375197898 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/exoplayer/image/ImageOutput.java	2026-10-06 20:30:05.509519353 +0000
+--- /tmp/jp/d211/sources/androidx/media3/exoplayer/image/ImageOutput.java	2026-10-06 20:48:45.175968300 +0000
++++ /tmp/jp/d212/sources/androidx/media3/exoplayer/image/ImageOutput.java	2026-10-06 20:49:12.013295618 +0000
 @@ -1,12 +1,12 @@
  package androidx.media3.exoplayer.image;
  
@@ -2053,8 +2053,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/image/ImageOutput.java 
      void a();
  
 diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/rtsp/RtspMediaSource$Factory.java /tmp/jp/d212/sources/androidx/media3/exoplayer/rtsp/RtspMediaSource$Factory.java
---- /tmp/jp/d211/sources/androidx/media3/exoplayer/rtsp/RtspMediaSource$Factory.java	2026-10-06 20:29:57.737475538 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/exoplayer/rtsp/RtspMediaSource$Factory.java	2026-10-06 20:30:23.946986763 +0000
+--- /tmp/jp/d211/sources/androidx/media3/exoplayer/rtsp/RtspMediaSource$Factory.java	2026-10-06 20:49:04.082966821 +0000
++++ /tmp/jp/d212/sources/androidx/media3/exoplayer/rtsp/RtspMediaSource$Factory.java	2026-10-06 20:49:31.483700164 +0000
 @@ -1,48 +1,48 @@
  package androidx.media3.exoplayer.rtsp;
  
@@ -2132,8 +2132,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/rtsp/RtspMediaSource$Fa
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/smoothstreaming/SsMediaSource$Factory.java /tmp/jp/d212/sources/androidx/media3/exoplayer/smoothstreaming/SsMediaSource$Factory.java
---- /tmp/jp/d211/sources/androidx/media3/exoplayer/smoothstreaming/SsMediaSource$Factory.java	2026-10-06 20:29:58.205112117 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/exoplayer/smoothstreaming/SsMediaSource$Factory.java	2026-10-06 20:30:24.697194721 +0000
+--- /tmp/jp/d211/sources/androidx/media3/exoplayer/smoothstreaming/SsMediaSource$Factory.java	2026-10-06 20:49:04.786904083 +0000
++++ /tmp/jp/d212/sources/androidx/media3/exoplayer/smoothstreaming/SsMediaSource$Factory.java	2026-10-06 20:49:32.232279638 +0000
 @@ -1,69 +1,69 @@
  package androidx.media3.exoplayer.smoothstreaming;
  
@@ -2249,8 +2249,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/exoplayer/smoothstreaming/SsMedia
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/session/BluetoothValidationActivity.java /tmp/jp/d212/sources/androidx/media3/session/BluetoothValidationActivity.java
---- /tmp/jp/d211/sources/androidx/media3/session/BluetoothValidationActivity.java	2026-10-06 20:29:37.891889725 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/session/BluetoothValidationActivity.java	2026-10-06 20:30:04.137188172 +0000
+--- /tmp/jp/d211/sources/androidx/media3/session/BluetoothValidationActivity.java	2026-10-06 20:48:43.850877508 +0000
++++ /tmp/jp/d212/sources/androidx/media3/session/BluetoothValidationActivity.java	2026-10-06 20:49:10.676554478 +0000
 @@ -3,7 +3,7 @@
  import android.app.Activity;
  import android.os.Bundle;
@@ -2261,8 +2261,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/session/BluetoothValidationActivi
  public final class BluetoothValidationActivity extends Activity {
      @Override // android.app.Activity
 diff -ruN /tmp/jp/d211/sources/androidx/media3/ui/AspectRatioFrameLayout.java /tmp/jp/d212/sources/androidx/media3/ui/AspectRatioFrameLayout.java
---- /tmp/jp/d211/sources/androidx/media3/ui/AspectRatioFrameLayout.java	2026-10-06 20:29:44.680491420 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/ui/AspectRatioFrameLayout.java	2026-10-06 20:30:10.535792393 +0000
+--- /tmp/jp/d211/sources/androidx/media3/ui/AspectRatioFrameLayout.java	2026-10-06 20:48:50.400230754 +0000
++++ /tmp/jp/d212/sources/androidx/media3/ui/AspectRatioFrameLayout.java	2026-10-06 20:49:17.671495878 +0000
 @@ -4,15 +4,15 @@
  import android.content.res.TypedArray;
  import android.util.AttributeSet;
@@ -2323,8 +2323,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/ui/AspectRatioFrameLayout.java /t
  
      public void setResizeMode(int i) {
 diff -ruN /tmp/jp/d211/sources/androidx/media3/ui/PlayerView.java /tmp/jp/d212/sources/androidx/media3/ui/PlayerView.java
---- /tmp/jp/d211/sources/androidx/media3/ui/PlayerView.java	2026-10-06 20:29:57.051463946 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/ui/PlayerView.java	2026-10-06 20:30:23.411188592 +0000
+--- /tmp/jp/d211/sources/androidx/media3/ui/PlayerView.java	2026-10-06 20:49:03.460737591 +0000
++++ /tmp/jp/d212/sources/androidx/media3/ui/PlayerView.java	2026-10-06 20:49:30.872463648 +0000
 @@ -27,29 +27,29 @@
  import androidx.media3.ui.PlayerView;
  import com.justplus.player.R;
@@ -3302,8 +3302,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/ui/PlayerView.java /tmp/jp/d212/s
      }
  }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/ui/SubtitleView.java /tmp/jp/d212/sources/androidx/media3/ui/SubtitleView.java
---- /tmp/jp/d211/sources/androidx/media3/ui/SubtitleView.java	2026-10-06 20:29:55.013548746 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/ui/SubtitleView.java	2026-10-06 20:30:21.010514121 +0000
+--- /tmp/jp/d211/sources/androidx/media3/ui/SubtitleView.java	2026-10-06 20:49:01.522432375 +0000
++++ /tmp/jp/d212/sources/androidx/media3/ui/SubtitleView.java	2026-10-06 20:49:28.630889299 +0000
 @@ -8,77 +8,77 @@
  import android.view.View;
  import android.view.accessibility.CaptioningManager;
@@ -3477,8 +3477,8 @@ diff -ruN /tmp/jp/d211/sources/androidx/media3/ui/SubtitleView.java /tmp/jp/d212
          this.s = i;
      }
 diff -ruN /tmp/jp/d211/sources/androidx/media3/ui/TrackSelectionView.java /tmp/jp/d212/sources/androidx/media3/ui/TrackSelectionView.java
---- /tmp/jp/d211/sources/androidx/media3/ui/TrackSelectionView.java	2026-10-06 20:29:54.326438774 +0000
-+++ /tmp/jp/d212/sources/androidx/media3/ui/TrackSelectionView.java	2026-10-06 20:30:19.701256293 +0000
+--- /tmp/jp/d211/sources/androidx/media3/ui/TrackSelectionView.java	2026-10-06 20:49:00.384678906 +0000
++++ /tmp/jp/d212/sources/androidx/media3/ui/TrackSelectionView.java	2026-10-06 20:49:27.521209797 +0000
 @@ -8,18 +8,18 @@
  import android.view.ViewGroup;
  import android.widget.CheckedTextView;

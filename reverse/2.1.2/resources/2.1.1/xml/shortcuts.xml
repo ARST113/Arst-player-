@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:icon="@mipmap/shortcut_videos"
+        android:enabled="true"
+        android:shortcutId="videos"
+        android:shortcutShortLabel="@string/shortcut_videos">
+        <intent
+            android:targetPackage="com.justplus.player"
+            android:action="android.intent.action.MAIN"
+            android:targetClass="com.brouken.player.BrowserActivity"/>
+    </shortcut>
+</shortcuts>

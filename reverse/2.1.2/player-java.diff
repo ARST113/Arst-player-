@@ -1,6 +1,6 @@
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/App.java /tmp/jp/d212/sources/com/brouken/player/App.java
---- /tmp/jp/d211/sources/com/brouken/player/App.java	2026-10-06 20:29:57.512826294 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/App.java	2026-10-06 20:30:23.694055072 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/App.java	2026-10-06 20:49:03.755656173 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/App.java	2026-10-06 20:49:31.192007445 +0000
 @@ -8,24 +8,24 @@
  import android.os.SystemClock;
  import com.brouken.player.ErrorActivity;
@@ -120,8 +120,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/App.java /tmp/jp/d212/sources/
              public final void uncaughtException(Thread thread, Throwable th2) {
                  Context context = applicationContext;
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/BottomBarLayout.java /tmp/jp/d212/sources/com/brouken/player/BottomBarLayout.java
---- /tmp/jp/d211/sources/com/brouken/player/BottomBarLayout.java	2026-10-06 20:29:38.104575015 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/BottomBarLayout.java	2026-10-06 20:30:04.336490115 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/BottomBarLayout.java	2026-10-06 20:48:44.044797312 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/BottomBarLayout.java	2026-10-06 20:49:10.849505650 +0000
 @@ -4,7 +4,7 @@
  import android.util.AttributeSet;
  import android.widget.FrameLayout;
@@ -132,8 +132,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/BottomBarLayout.java /tmp/jp/d
  public class BottomBarLayout extends FrameLayout {
      public BottomBarLayout(Context context, AttributeSet attributeSet) {
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/BrandWash.java /tmp/jp/d212/sources/com/brouken/player/BrandWash.java
---- /tmp/jp/d211/sources/com/brouken/player/BrandWash.java	2026-10-06 20:29:55.580291197 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/BrandWash.java	2026-10-06 20:30:21.633896243 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/BrandWash.java	2026-10-06 20:49:02.034139871 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/BrandWash.java	2026-10-06 20:49:29.306905342 +0000
 @@ -12,12 +12,12 @@
  import android.view.View;
  import android.view.animation.LinearInterpolator;
@@ -182,8 +182,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/BrandWash.java /tmp/jp/d212/so
      }
  
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/BrowserActivity.java /tmp/jp/d212/sources/com/brouken/player/BrowserActivity.java
---- /tmp/jp/d211/sources/com/brouken/player/BrowserActivity.java	2026-10-06 20:29:56.786895235 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/BrowserActivity.java	2026-10-06 20:30:23.053324024 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/BrowserActivity.java	2026-10-06 20:49:03.158891125 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/BrowserActivity.java	2026-10-06 20:49:30.633008111 +0000
 @@ -37,76 +37,76 @@
  import com.google.android.material.appbar.MaterialToolbar;
  import com.google.android.material.button.MaterialButton;
@@ -1820,8 +1820,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/BrowserActivity.java /tmp/jp/d
      }
  }
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/CustomDefaultTimeBar.java /tmp/jp/d212/sources/com/brouken/player/CustomDefaultTimeBar.java
---- /tmp/jp/d211/sources/com/brouken/player/CustomDefaultTimeBar.java	2026-10-06 20:29:43.275560519 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/CustomDefaultTimeBar.java	2026-10-06 20:30:09.280858565 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/CustomDefaultTimeBar.java	2026-10-06 20:48:49.111845598 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/CustomDefaultTimeBar.java	2026-10-06 20:49:16.269059063 +0000
 @@ -11,15 +11,15 @@
  import android.view.MotionEvent;
  import android.view.animation.PathInterpolator;
@@ -1963,8 +1963,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/CustomDefaultTimeBar.java /tmp
          super.setUnplayedColor(i);
          this.l0.setColor(i);
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/ErrorActivity.java /tmp/jp/d212/sources/com/brouken/player/ErrorActivity.java
---- /tmp/jp/d211/sources/com/brouken/player/ErrorActivity.java	2026-10-06 20:29:57.486806578 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/ErrorActivity.java	2026-10-06 20:30:23.669278369 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/ErrorActivity.java	2026-10-06 20:49:03.724081731 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/ErrorActivity.java	2026-10-06 20:49:31.177861219 +0000
 @@ -26,22 +26,22 @@
  import com.google.android.material.appbar.MaterialToolbar;
  import com.google.android.material.button.MaterialButton;
@@ -2362,8 +2362,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/ErrorActivity.java /tmp/jp/d21
              materialButton.setText(i);
          }
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/LevelBar.java /tmp/jp/d212/sources/com/brouken/player/LevelBar.java
---- /tmp/jp/d211/sources/com/brouken/player/LevelBar.java	2026-10-06 20:29:38.119780445 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/LevelBar.java	2026-10-06 20:30:04.349406278 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/LevelBar.java	2026-10-06 20:48:44.052426582 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/LevelBar.java	2026-10-06 20:49:10.866880959 +0000
 @@ -7,7 +7,7 @@
  import android.view.View;
  import com.justplus.player.R;
@@ -2374,8 +2374,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/LevelBar.java /tmp/jp/d212/sou
  public class LevelBar extends View {
      public final Paint l;
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/PlayerActivity.java /tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java
---- /tmp/jp/d211/sources/com/brouken/player/PlayerActivity.java	2026-10-06 20:29:52.883435864 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java	2026-10-06 20:30:18.841221036 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/PlayerActivity.java	2026-10-06 20:48:59.035707181 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java	2026-10-06 20:49:26.547204671 +0000
 @@ -13,6 +13,7 @@
  import android.content.Intent;
  import android.content.IntentFilter;
@@ -25154,8 +25154,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/PlayerActivity.java /tmp/jp/d2
      }
  }
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/RatioFrame.java /tmp/jp/d212/sources/com/brouken/player/RatioFrame.java
---- /tmp/jp/d211/sources/com/brouken/player/RatioFrame.java	2026-10-06 20:29:38.124545627 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/RatioFrame.java	2026-10-06 20:30:04.353663145 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/RatioFrame.java	2026-10-06 20:48:44.055037973 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/RatioFrame.java	2026-10-06 20:49:10.872500954 +0000
 @@ -5,7 +5,7 @@
  import android.view.View;
  import android.widget.FrameLayout;
@@ -25166,8 +25166,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/RatioFrame.java /tmp/jp/d212/s
  public final class RatioFrame extends FrameLayout {
      public RatioFrame(Context context, AttributeSet attributeSet) {
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/SettingsActivity.java /tmp/jp/d212/sources/com/brouken/player/SettingsActivity.java
---- /tmp/jp/d211/sources/com/brouken/player/SettingsActivity.java	2026-10-06 20:29:56.769169690 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/SettingsActivity.java	2026-10-06 20:30:23.218336962 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/SettingsActivity.java	2026-10-06 20:49:03.356948709 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/SettingsActivity.java	2026-10-06 20:49:30.808531675 +0000
 @@ -24,6 +24,7 @@
  import android.view.View;
  import android.view.ViewGroup;
@@ -26290,8 +26290,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/SettingsActivity.java /tmp/jp/
          }
          recyclerView.invalidate();
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/b.java /tmp/jp/d212/sources/com/brouken/player/b.java
---- /tmp/jp/d211/sources/com/brouken/player/b.java	2026-10-06 20:29:43.347140531 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/b.java	2026-10-06 20:30:09.305496895 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/b.java	2026-10-06 20:48:49.125075058 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/b.java	2026-10-06 20:49:16.280094851 +0000
 @@ -1,27 +1,27 @@
  package com.brouken.player;
  
@@ -26327,8 +26327,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/b.java /tmp/jp/d212/sources/co
      }
  }
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/c.java /tmp/jp/d212/sources/com/brouken/player/c.java
---- /tmp/jp/d211/sources/com/brouken/player/c.java	2026-10-06 20:29:58.333577233 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/c.java	2026-10-06 20:30:24.747570277 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/c.java	2026-10-06 20:49:04.872434249 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/c.java	2026-10-06 20:49:32.293227259 +0000
 @@ -32,34 +32,34 @@
  import com.google.android.material.button.MaterialButtonToggleGroup;
  import com.google.android.material.card.MaterialCardView;
@@ -26705,8 +26705,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/c.java /tmp/jp/d212/sources/co
                  r1.setBackground(gradientDrawable2);
              }
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/d.java /tmp/jp/d212/sources/com/brouken/player/d.java
---- /tmp/jp/d211/sources/com/brouken/player/d.java	2026-10-06 20:29:49.985230036 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/d.java	2026-10-06 20:30:15.691678019 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/d.java	2026-10-06 20:48:56.443691694 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/d.java	2026-10-06 20:49:23.345210590 +0000
 @@ -1,13 +1,13 @@
  package com.brouken.player;
  
@@ -26725,8 +26725,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/d.java /tmp/jp/d212/sources/co
          iArr[1] = i;
          iArr[0] = i;
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/dtpv/DoubleTapPlayerView.java /tmp/jp/d212/sources/com/brouken/player/dtpv/DoubleTapPlayerView.java
---- /tmp/jp/d211/sources/com/brouken/player/dtpv/DoubleTapPlayerView.java	2026-10-06 20:29:49.111254237 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/dtpv/DoubleTapPlayerView.java	2026-10-06 20:30:14.745459878 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/dtpv/DoubleTapPlayerView.java	2026-10-06 20:48:55.268043798 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/dtpv/DoubleTapPlayerView.java	2026-10-06 20:49:22.273280637 +0000
 @@ -8,27 +8,27 @@
  import android.view.MotionEvent;
  import android.view.View;
@@ -26803,8 +26803,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/dtpv/DoubleTapPlayerView.java 
          if (!this.M0) {
              super.onTouchEvent(motionEvent);
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/YouTubeOverlay.java /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/YouTubeOverlay.java
---- /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/YouTubeOverlay.java	2026-10-06 20:29:58.156937990 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/YouTubeOverlay.java	2026-10-06 20:30:24.597726383 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/YouTubeOverlay.java	2026-10-06 20:49:04.734866380 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/YouTubeOverlay.java	2026-10-06 20:49:32.140013937 +0000
 @@ -15,23 +15,23 @@
  import com.brouken.player.dtpv.youtube.views.CircleClipTapView;
  import com.brouken.player.dtpv.youtube.views.SecondsView;
@@ -26975,8 +26975,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/YouTubeOverlay.ja
  
      @Override // android.view.ViewGroup, android.view.View
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/views/CircleClipTapView.java /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/views/CircleClipTapView.java
---- /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/views/CircleClipTapView.java	2026-10-06 20:29:42.496881765 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/views/CircleClipTapView.java	2026-10-06 20:30:08.864444733 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/views/CircleClipTapView.java	2026-10-06 20:48:48.494982200 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/views/CircleClipTapView.java	2026-10-06 20:49:15.882706767 +0000
 @@ -9,11 +9,11 @@
  import android.util.DisplayMetrics;
  import android.view.View;
@@ -27014,8 +27014,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/views/CircleClipT
          return this.w;
      }
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/views/SecondsView.java /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/views/SecondsView.java
---- /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/views/SecondsView.java	2026-10-06 20:29:49.417454905 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/views/SecondsView.java	2026-10-06 20:30:15.015220020 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/views/SecondsView.java	2026-10-06 20:48:55.532264588 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/dtpv/youtube/views/SecondsView.java	2026-10-06 20:49:22.570515691 +0000
 @@ -9,11 +9,11 @@
  import android.widget.TextView;
  import androidx.constraintlayout.widget.ConstraintLayout;
@@ -27067,8 +27067,8 @@ diff -ruN /tmp/jp/d211/sources/com/brouken/player/dtpv/youtube/views/SecondsView
  
      public final long getCycleDuration() {
 diff -ruN /tmp/jp/d211/sources/com/brouken/player/e.java /tmp/jp/d212/sources/com/brouken/player/e.java
---- /tmp/jp/d211/sources/com/brouken/player/e.java	2026-10-06 20:29:38.125299792 +0000
-+++ /tmp/jp/d212/sources/com/brouken/player/e.java	2026-10-06 20:30:04.354031592 +0000
+--- /tmp/jp/d211/sources/com/brouken/player/e.java	2026-10-06 20:48:44.055408938 +0000
++++ /tmp/jp/d212/sources/com/brouken/player/e.java	2026-10-06 20:49:10.872919798 +0000
 @@ -2,7 +2,7 @@
  
  import android.content.Context;

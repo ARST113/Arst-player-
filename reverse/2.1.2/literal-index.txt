@@ -1,0 +1,72 @@
+=== HTTP/browser defaults ===
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:7353:                    vk1Var.a("User-Agent", "JustPlayer v2.1.2");
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:8030:            treeMap.put("Accept-Language", Locale.getDefault().toLanguageTag());
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:8036:            StringBuilder sbK = jf2.k("JustPlusPlayer/", str, " (Linux;Android ");
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:8039:            treeMap.put("User-Agent", sbK.toString());
+/tmp/jp/d212/sources/io/sentry/b4.java:56:        map.put("User-Agent", sentryClientName);
+/tmp/jp/d212/sources/defpackage/ha2.java:2573:                                                            vk1Var.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:2645:                                                        vk1Var2.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:2837:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:2881:                                                        vk1Var4.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:3406:                                                            vk1Var4.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:3478:                                                        vk1Var5.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:3670:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:3714:                                                        vk1Var6.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:4239:                                                            vk1Var6.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:4311:                                                        vk1Var7.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:4503:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:4547:                                                        vk1Var8.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:5129:                                                            vk1Var8.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:5201:                                                        vk1Var9.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:5393:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:5437:                                                        vk1Var10.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:5962:                                                            vk1Var10.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:6034:                                                        vk1Var11.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:6226:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:6270:                                                        vk1Var12.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:6795:                                                            vk1Var12.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:6867:                                                        vk1Var13.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:7059:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:7103:                                                        vk1Var14.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:7685:                                                            vk1Var14.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:7757:                                                        vk1Var15.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:7949:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:7993:                                                        vk1Var16.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:8518:                                                            vk1Var16.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:8590:                                                        vk1Var17.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:8782:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:8826:                                                        vk1Var18.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:9351:                                                            vk1Var18.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:9423:                                                        vk1Var19.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:9615:                                                                vk1Var3.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ha2.java:9659:                                                        vk1Var110.a("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
+/tmp/jp/d212/sources/defpackage/ix1.java:351:                vk1Var.a("User-Agent", "okhttp/5.5.0");
+/tmp/jp/d212/sources/defpackage/i32.java:104:        if (sj.i(str, "User-Agent")) {
+/tmp/jp/d212/sources/defpackage/i32.java:105:            return "User-Agent";
+/tmp/jp/d212/sources/defpackage/vn.java:1220:                if (gr0Var.a("User-Agent") == null) {
+/tmp/jp/d212/sources/defpackage/vn.java:1221:                    vk1VarN.a("User-Agent", "okhttp/5.5.0");
+/tmp/jp/d212/sources/defpackage/vk2.java:192:            vk1Var.a("User-Agent", "JustPlayer v2.1.2");
+/tmp/jp/d212/sources/defpackage/vk2.java:770:        vk1Var.a("User-Agent", "JustPlayer v2.1.2");
+/tmp/jp/d212/sources/defpackage/n8.java:471:            if (!str.equals("CSeq") && !str.equals("User-Agent") && !str.equals("Session") && !str.equals("Authorization")) {
+/tmp/jp/d212/sources/defpackage/tz0.java:31:            map.put("User-Agent", Collections.singletonList(new uz0(property)));
+/tmp/jp/d212/sources/defpackage/lj1.java:269:                vk1Var.a("User-Agent", "JustPlusPlayer/2.1.2");
+/tmp/jp/d212/sources/defpackage/nf1.java:906:        H("User-Agent", "AndroidXMedia3/1.11.1");
+=== frame-rate / display mode ===
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:2340:            float refreshRate = defaultDisplay == null ? f : defaultDisplay.getRefreshRate();
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:2341:            ge0Var.n(null, (refreshRate > f && fO4 > f) ? G(Math.abs(refreshRate - fO4) < 0.01f ? getString(R.string.stats_display_matched, T1(refreshRate)) : getString(R.string.stats_display, T1(refreshRate), T1(fO4))) : null, 0);
+/tmp/jp/d212/sources/com/brouken/player/SettingsActivity.java:455:            Preference preferenceO5 = O("frameRateMatching");
+/tmp/jp/d212/sources/com/brouken/player/SettingsActivity.java:459:            SwitchPreferenceCompat switchPreferenceCompat = (SwitchPreferenceCompat) O("allowSystemFrameRate");
+/tmp/jp/d212/sources/com/brouken/player/App.java:66:        if (!sharedPreferences2.getBoolean("allowSystemFrameRateTvDefault", false)) {
+/tmp/jp/d212/sources/com/brouken/player/App.java:67:            SharedPreferences.Editor editorPutBoolean = sharedPreferences2.edit().putBoolean("allowSystemFrameRateTvDefault", true);
+/tmp/jp/d212/sources/com/brouken/player/App.java:68:            if (!wt2.F(this) && sharedPreferences2.getBoolean("allowSystemFrameRate", true)) {
+/tmp/jp/d212/sources/com/brouken/player/App.java:71:            editorPutBoolean.putBoolean("allowSystemFrameRate", z).apply();
+=== chapters / retry / watched ===
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:3852:            r10 = 2131951789(0x7f1300ad, float:1.9540002E38)
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:4441:    /* JADX WARN: Code duplicated, block: B:295:0x06b4  */
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:4508:    /* JADX WARN: Code duplicated, block: B:495:0x0c27  */
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:8182:                case 951530617:
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:11162:            r3 = 2131230958(0x7f0800ee, float:1.8077983E38)
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:11163:            r4 = 2131952365(0x7f1302ed, float:1.954117E38)
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:15744:                k51Var.setPositiveButton(R.string.error_retry, new f70(dp1Var, (byte) 3));
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java:15808:            ze2VarZ.g(R.string.error_retry, new pk(dp1Var, (byte) 4));
+/tmp/jp/d212/sources/com/brouken/player/BrowserActivity.java:433:    /* JADX WARN: Code duplicated, block: B:126:? A[Catch: Exception -> 0x01b8, SYNTHETIC, TRY_LEAVE, TryCatch #2 {Exception -> 0x01b8, blocks: (B:95:0x01df, B:94:0x01dc, B:81:0x01b4, B:91:0x01d7), top: B:104:0x00b2, inners: #3 }] */

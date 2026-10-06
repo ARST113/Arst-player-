@@ -1,0 +1,4 @@
+/tmp/jp/d212/resources/res/raw/voice_studios.json
+/tmp/jp/d212/resources/res/values/public.xml
+/tmp/jp/d212/sources/com/justplus/player/R.java
+/tmp/jp/d212/sources/com/brouken/player/PlayerActivity.java
