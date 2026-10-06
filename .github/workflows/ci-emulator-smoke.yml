@@ -38,6 +38,8 @@ jobs:
 
       - name: Generate local HEVC smoke clip
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
           mkdir -p /tmp/player-smoke
           ffmpeg -hide_banner -loglevel error \
             -f lavfi -i "testsrc=size=640x360:rate=24" \
