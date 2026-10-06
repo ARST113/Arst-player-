@@ -123,6 +123,9 @@ public class BrowserActivity extends AppCompatActivity implements Dialogs.Chrome
     private enum Dest { FAVORITES, FILES, NETWORK, IPTV }
 
     private static final int REQUEST_STORAGE = 2;
+    // Compatibility bridge for launchers that used the app's launcher Activity as the player entry point.
+    // Before BrowserActivity became the launcher in 2.1.1 those intents landed directly in PlayerActivity.
+    private static final int REQUEST_EXTERNAL_PLAYER = 3;
     private static final int SEARCH_LIMIT = 500;
 
     private static final String STATE_TRAIL = "trail";
@@ -325,11 +328,111 @@ public class BrowserActivity extends AppCompatActivity implements Dialogs.Chrome
         getTheme().applyStyle(Prefs.accentOverlay(this, Prefs.isLight(this)), true);
     }
 
+    /**
+     * Player compatibility for apps that obtain the package launcher intent and attach the legacy
+     * MX/Lampa playback extras to it. PlayerActivity used to own MAIN/LAUNCHER, so that worked by
+     * accident; since 2.1.1 BrowserActivity owns the launcher and those extras would otherwise stop here.
+     *
+     * <p>Only media-shaped launcher intents are forwarded. A normal icon tap has neither data nor any
+     * of the player API keys and continues into the browser unchanged.
+     */
+    private boolean forwardExternalPlaybackIntent() {
+        final Intent source = getIntent();
+        if (source == null || source.getBooleanExtra(EXTRA_SUBTITLES, false)) {
+            return false;
+        }
+        final Bundle extras = source.getExtras();
+        final boolean hasApiExtras = extras != null && (
+                extras.containsKey(PlayerActivity.API_VIDEO_LIST)
+                        || extras.containsKey(PlayerActivity.API_POSITION)
+                        || extras.containsKey(PlayerActivity.API_RETURN_RESULT)
+                        || extras.containsKey(PlayerActivity.API_SUBS)
+                        || extras.containsKey(PlayerActivity.API_SUBS_ENABLE)
+                        || extras.containsKey(PlayerActivity.API_QUALITY_LEVELS));
+        if (source.getData() == null && !hasApiExtras) {
+            return false;
+        }
+
+        final Intent playerIntent = new Intent(source).setClass(this, PlayerActivity.class);
+        if (playerIntent.getData() == null) {
+            final Uri first = firstLegacyPlaylistUri(extras);
+            if (first != null) {
+                playerIntent.setDataAndType(first,
+                        source.getType() != null ? source.getType() : "video/*");
+            }
+        }
+        // PlayerActivity's onNewIntent path deliberately accepts playback only as VIEW. This also matches
+        // what the old external-player entry point effectively represented even when the package launcher
+        // supplied MAIN as the original action.
+        if (playerIntent.getData() == null) {
+            return false;
+        }
+        playerIntent.setAction(Intent.ACTION_VIEW);
+
+        if (getCallingActivity() != null) {
+            startActivityForResult(playerIntent, REQUEST_EXTERNAL_PLAYER);
+        } else {
+            startActivity(playerIntent);
+            finish();
+        }
+        return true;
+    }
+
+    @Nullable
+    private static Uri firstLegacyPlaylistUri(@Nullable final Bundle extras) {
+        if (extras == null || !extras.containsKey(PlayerActivity.API_VIDEO_LIST)) {
+            return null;
+        }
+        final Object value = extras.get(PlayerActivity.API_VIDEO_LIST);
+        if (value instanceof android.os.Parcelable[]) {
+            for (android.os.Parcelable entry : (android.os.Parcelable[]) value) {
+                if (entry instanceof Uri) {
+                    return (Uri) entry;
+                }
+            }
+        } else if (value instanceof String[]) {
+            for (String entry : (String[]) value) {
+                if (entry != null && !entry.isEmpty()) {
+                    return Uri.parse(entry);
+                }
+            }
+        } else if (value instanceof CharSequence[]) {
+            for (CharSequence entry : (CharSequence[]) value) {
+                if (entry != null && entry.length() > 0) {
+                    return Uri.parse(entry.toString());
+                }
+            }
+        } else if (value instanceof ArrayList) {
+            for (Object entry : (ArrayList<?>) value) {
+                if (entry instanceof Uri) {
+                    return (Uri) entry;
+                }
+                if (entry instanceof CharSequence && ((CharSequence) entry).length() > 0) {
+                    return Uri.parse(entry.toString());
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    protected void onActivityResult(final int requestCode, final int resultCode, @Nullable final Intent data) {
+        if (requestCode == REQUEST_EXTERNAL_PLAYER) {
+            setResult(resultCode, data);
+            finish();
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
     @Override
     protected void onCreate(final Bundle savedInstanceState) {
         // Before super, or AppCompat applies the old mode and then recreates.
         getDelegate().setLocalNightMode(Prefs.getNightMode(this));
         super.onCreate(savedInstanceState);
+        if (savedInstanceState == null && forwardExternalPlaybackIntent()) {
+            return;
+        }
 
         // Prefs.isLight and never getConfiguration().uiMode — the class of defect §2.5 of the design
         // document records four times over. The configuration on this pass can still carry the
