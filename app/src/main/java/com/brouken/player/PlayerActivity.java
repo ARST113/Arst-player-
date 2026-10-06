@@ -422,7 +422,7 @@ public class PlayerActivity extends Activity {
     private boolean pendingStuckRecovery;
     // Generic HEVC recovery, kept separate from the upstream Dolby Vision path so external-player
     // behaviour (including playlists) remains untouched. 0 = normal, 1 = c2.android software,
-    // 2 = legacy OMX.google software alias.
+    // 2 = legacy OMX.google software alias, 3 = NextLib FFmpeg/libavcodec renderer.
     private volatile int forceHevcSoftwareStage;
     private boolean pendingHevcSoftwareRecovery;
     // Installed for this player build when Dolby Vision profile 7 is being rewritten as profile 8.1;
@@ -460,6 +460,11 @@ public class PlayerActivity extends Activity {
     // recovery rebuilds the player, and a screen restart must not hand the track back to the decoder that
     // has already been proven unable to carry it.
     private static final Set<String> sessionFfmpegAudioFormats = new HashSet<>();
+    // Video formats that all MediaCodec attempts have proven unable to decode in this process.
+    // The custom MediaCodecVideoRenderer reports these as unsupported so track selection moves to
+    // the NextLib FFmpeg renderer appended behind it. Keyed by the same stable format key used by
+    // the hardware capability/recovery code; no mime-wide blacklist.
+    private static final Set<String> sessionFfmpegVideoFormats = new HashSet<>();
 
     // Video formats a decoder refused with ERROR_INSUFFICIENT_RESOURCE even though the device's own
     // capability table said it could take them. The table is a promise about geometry and rate; the
@@ -12181,6 +12186,17 @@ public class PlayerActivity extends Activity {
                 super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector,
                         enableDecoderFallback, eventHandler, eventListener,
                         allowedVideoJoiningTimeMs, out);
+                // Keep MediaCodec first. This is the same fallback proven by Lampa Native
+                // 1.13.0-native.2: NextLib's FFmpeg/libavcodec renderer advertises full support for
+                // video/hevc when its bundled decoder is available, including HEVC RExt 4:4:4 10-bit.
+                // A track that MediaCodec reports as EXCEEDS_CAPABILITIES therefore lands here without
+                // ever opening the broken platform codec. Runtime failures can also be routed here by
+                // sessionFfmpegVideoFormats below.
+                out.add(new io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegVideoRenderer(
+                        allowedVideoJoiningTimeMs, eventHandler, eventListener,
+                        MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
+                        Math.min(4, Runtime.getRuntime().availableProcessors()),
+                        /* numInputBuffers= */ 4, /* numOutputBuffers= */ 4));
                 // The same dav1d renderer the base class just built, with its pipeline opened up. The
                 // base class can only reach the four-argument constructor by reflection, and that one
                 // takes DEFAULT_MAX_FRAME_DELAY = 2: two frames in flight, whatever the device has.
@@ -12229,6 +12245,18 @@ public class PlayerActivity extends Activity {
                 out.set(platform, new MediaCodecVideoRenderer(context, getCodecAdapterFactory(),
                         mediaCodecSelector, allowedVideoJoiningTimeMs, enableDecoderFallback,
                         eventHandler, eventListener, MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY) {
+                    @Override
+                    protected int supportsFormat(MediaCodecSelector selector, Format format)
+                            throws MediaCodecUtil.DecoderQueryException {
+                        if (sessionFfmpegVideoFormats.contains(videoFormatKey(format))) {
+                            // Do not hand a format back to a MediaCodec path that has already failed
+                            // through every platform fallback. Reporting unsupported makes Media3 select
+                            // the FFmpeg video renderer appended after this renderer.
+                            return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE);
+                        }
+                        return super.supportsFormat(selector, format);
+                    }
+
                     @Override
                     protected float getCodecOperatingRateV23(float targetPlaybackSpeed, Format format,
                                                              Format[] streamFormats) {
@@ -12464,7 +12492,8 @@ public class PlayerActivity extends Activity {
                             mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
                     return infos;
                 }
-                if (forceHevcSoftwareStage > 0 && MimeTypes.VIDEO_H265.equals(mimeType)
+                if (forceHevcSoftwareStage > 0 && forceHevcSoftwareStage < 3
+                        && MimeTypes.VIDEO_H265.equals(mimeType)
                         && !requiresSecureDecoder && !requiresTunnelingDecoder) {
                     if (forceHevcSoftwareStage == 2) {
                         final MediaCodecInfo legacy = legacyGoogleHevcDecoder();
@@ -14524,7 +14553,7 @@ public class PlayerActivity extends Activity {
     private boolean recoverHevcSoftwareDecoder(@Nullable final Format failingFormat) {
         if (player == null || failingFormat == null
                 || !MimeTypes.VIDEO_H265.equals(failingFormat.sampleMimeType)
-                || forceHevcSoftwareStage >= 2) {
+                || forceHevcSoftwareStage >= 3) {
             return false;
         }
         if (forceHevcSoftwareStage == 0) {
@@ -14538,21 +14567,53 @@ public class PlayerActivity extends Activity {
                     }
                 }
             } catch (MediaCodecUtil.DecoderQueryException ignored) {
+                // A codec query failure is itself enough reason to skip straight to the bundled
+                // decoder rather than ending playback.
+            }
+            if (hasCodec2Software) {
+                forceHevcSoftwareStage = 1;
+                Utils.log("rebuild: HEVC " + failingFormat.codecs
+                        + " with c2.android software decoder");
+            } else if (io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
+                    && io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
+                            .supportsFormat(MimeTypes.VIDEO_H265)) {
+                forceHevcSoftwareStage = 3;
+                sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+                Utils.log("rebuild: HEVC " + failingFormat.codecs
+                        + " with NextLib FFmpeg/libavcodec video decoder");
+            } else {
                 return false;
             }
-            if (!hasCodec2Software) {
+        } else if (forceHevcSoftwareStage == 1) {
+            if (videoDecoderName != null && videoDecoderName.startsWith("c2.android.")
+                    && legacyGoogleHevcDecoder() != null) {
+                forceHevcSoftwareStage = 2;
+                Utils.log("rebuild: HEVC " + failingFormat.codecs
+                        + " with OMX.google software decoder");
+            } else if (io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
+                    && io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
+                            .supportsFormat(MimeTypes.VIDEO_H265)) {
+                forceHevcSoftwareStage = 3;
+                sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+                Utils.log("rebuild: HEVC " + failingFormat.codecs
+                        + " with NextLib FFmpeg/libavcodec video decoder");
+            } else {
                 return false;
             }
-            forceHevcSoftwareStage = 1;
-            Utils.log("rebuild: HEVC " + failingFormat.codecs + " with c2.android software decoder");
         } else {
-            if (videoDecoderName == null || !videoDecoderName.startsWith("c2.android.")
-                    || legacyGoogleHevcDecoder() == null) {
+            // Both Android software codec implementations were tried. This is the path the Pixel 10
+            // RExt sample needs: libavcodec is independent of MediaCodec and supports the profile.
+            if (!io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
+                    || !io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
+                            .supportsFormat(MimeTypes.VIDEO_H265)) {
                 return false;
             }
-            forceHevcSoftwareStage = 2;
-            Utils.log("rebuild: HEVC " + failingFormat.codecs + " with OMX.google software decoder");
+            forceHevcSoftwareStage = 3;
+            sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+            Utils.log("rebuild: HEVC " + failingFormat.codecs
+                    + " with NextLib FFmpeg/libavcodec video decoder");
         }
+
         pendingHevcSoftwareRecovery = true;
         restorePlayState = player.getPlayWhenReady();
         sourceSwitchKeepPaused = !restorePlayState;
