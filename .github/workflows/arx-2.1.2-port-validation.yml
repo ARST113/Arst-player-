@@ -1,0 +1,21 @@
+name: ARX 2.1.2 port validation
+
+on:
+  push:
+    branches:
+      - arx-2.1.2-port-wip
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arx-2.1.2-port-wip
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and test
+        run: ./gradlew :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
