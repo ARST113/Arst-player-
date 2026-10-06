@@ -146,7 +146,7 @@ jobs:
 
           # Preserve the exact studio/alias dictionary used by 2.1.2. JADX may rename the raw
           # file, so locate it by content/resource-name references as well as by filename.
-          mkdir -p reverse/2.1.2/raw
+          mkdir -p reverse/2.1.2/raw reverse/2.1.2/string-matched
           found=$(find /tmp/jp/d212/resources -type f \( -iname '*voice*studio*' -o -iname 'voice_studios*' \) | head -n1 || true)
           if [ -n "$found" ]; then
             cp "$found" reverse/2.1.2/raw/voice_studios.json
