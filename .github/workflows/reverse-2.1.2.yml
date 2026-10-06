@@ -140,6 +140,21 @@ jobs:
             done
           done
 
+          # Preserve the exact studio/alias dictionary used by 2.1.2. JADX may rename the raw
+          # file, so locate it by content/resource-name references as well as by filename.
+          mkdir -p reverse/2.1.2/raw
+          found=$(find /tmp/jp/d212/resources -type f \( -iname '*voice*studio*' -o -iname 'voice_studios*' \) | head -n1 || true)
+          if [ -n "$found" ]; then
+            cp "$found" reverse/2.1.2/raw/voice_studios.json
+          else
+            grep -RIl --exclude='resources.arsc' '"studios"' /tmp/jp/d212/resources 2>/dev/null | head -n1 | while read -r f; do
+              cp "$f" reverse/2.1.2/raw/voice_studios.json
+            done
+          fi
+          if [ -f reverse/2.1.2/raw/voice_studios.json ]; then
+            wc -c reverse/2.1.2/raw/voice_studios.json >> reverse/2.1.2/string-matched/README.txt
+          fi
+
           # Find obfuscated 2.1.2 helpers by stable API strings. In particular the dub/studio
           # matcher carries a large alias dictionary that must not be approximated.
           mkdir -p reverse/2.1.2/string-matched
