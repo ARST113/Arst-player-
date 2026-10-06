@@ -68,6 +68,10 @@ jobs:
             cp "$f" "$out"
           done < /tmp/inspection/matching-files.txt
 
+          for name in ks1 gs1 fp2 js1 x91 b7 a7; do
+            find /tmp/jadx-out/sources -type f -name "$name.java" -print -exec cp {} "/tmp/inspection/$name.java" \; || true
+          done
+
           echo "===== MATCHING FILES ====="
           cat /tmp/inspection/matching-files.txt || true
           echo "===== PLAYERACTIVITY HITS ====="
