@@ -1,9 +1,10 @@
-name: Native playlist HEVC release
+name: Native playlist + FFmpeg HEVC release
 
 on:
   push:
     branches:
       - native-playlist-hevc-2026-10-06
+      - ffmpeg-hevc-nextlib-2026-10-06
   workflow_dispatch:
 
 permissions:
@@ -49,12 +50,12 @@ jobs:
             --ks /tmp/test-release.jks \
             --ks-pass pass:android \
             --key-pass pass:android \
-            --out /tmp/JustPlus.Player.native-playlist-hevc-release.apk \
+            --out /tmp/JustPlus.Player.native-playlist-ffmpeg-hevc-release.apk \
             "$APK"
-          "$APKSIGNER" verify --verbose /tmp/JustPlus.Player.native-playlist-hevc-release.apk
+          "$APKSIGNER" verify --verbose /tmp/JustPlus.Player.native-playlist-ffmpeg-hevc-release.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: native-playlist-hevc-release
+          name: native-playlist-ffmpeg-hevc-release
           if-no-files-found: error
           path: /tmp/JustPlus.Player.native-playlist-hevc-release.apk
