@@ -1,0 +1,77 @@
+name: A-B release parity build
+
+on:
+  push:
+    branches:
+      - ab-control-v211
+      - ab-hevc-v211
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Match official v2.1.1 version metadata
+        run: |
+          git tag -f v2.1.1 HEAD
+          git describe --tags --always
+
+      - name: Build release
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :app:assembleLatestUniversalRelease
+
+      - name: Sign installable release
+        run: |
+          set -eu
+          mkdir -p /tmp/signed
+          KEYSTORE=/tmp/ab-release.jks
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE" \
+            -storepass android \
+            -keypass android \
+            -alias abkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=JustPlus AB Test,O=ARST113,C=RU"
+
+          BUILD_TOOLS="$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
+          INPUT="$(find app/build/outputs/apk/latestUniversal/release -name '*.apk' | head -n 1)"
+          test -n "$INPUT"
+          "$ZIPALIGN" -p -f 4 "$INPUT" /tmp/signed/aligned.apk
+          OUT="/tmp/signed/JustPlus.Player.v2.1.1-${GITHUB_REF_NAME}.apk"
+          "$APKSIGNER" sign \
+            --ks "$KEYSTORE" \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --ks-key-alias abkey \
+            --out "$OUT" \
+            /tmp/signed/aligned.apk
+          "$APKSIGNER" verify --verbose "$OUT"
+          ls -lh "$OUT"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: JustPlus-v2.1.1-${{ github.ref_name }}
+          path: /tmp/signed/JustPlus.Player.v2.1.1-${{ github.ref_name }}.apk
+          if-no-files-found: error
