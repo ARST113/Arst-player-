@@ -1,0 +1,75 @@
+name: Release semantics HEVC test
+
+on:
+  push:
+    branches:
+      - release-signed-hevc-test-2026-10-06
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Build release variant
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace \
+            :app:assembleLatestUniversalRelease \
+            :app:testLatestUniversalDebugUnitTest
+
+      - name: Sign release APK with disposable debug key
+        run: |
+          set -eux
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+          UNSIGNED="$(find app/build/outputs/apk/latestUniversal/release -type f -name '*.apk' | head -n 1)"
+          test -n "$UNSIGNED"
+
+          BUILD_TOOLS="$(find /usr/local/lib/android/sdk/build-tools -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          test -x "$ZIPALIGN"
+          test -x "$APKSIGNER"
+
+          mkdir -p signed
+          "$ZIPALIGN" -f -p 4 "$UNSIGNED" signed/JustPlus.Player.release-semantics-debug-signed.apk
+          "$APKSIGNER" sign \
+            --ks "$HOME/.android/debug.keystore" \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --ks-key-alias androiddebugkey \
+            signed/JustPlus.Player.release-semantics-debug-signed.apk
+          "$APKSIGNER" verify --verbose --print-certs signed/JustPlus.Player.release-semantics-debug-signed.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: just-plus-release-semantics-debug-signed
+          if-no-files-found: error
+          path: signed/JustPlus.Player.release-semantics-debug-signed.apk
