@@ -30,8 +30,9 @@ jobs:
 
       - name: Install compile SDK and NDK
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-37" "ndk;29.0.14206865"
+          SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-37" "ndk;29.0.14206865"
 
       - name: Compile debug and release, run JVM tests
         run: |
