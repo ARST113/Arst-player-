@@ -232,6 +232,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -501,6 +502,9 @@ public class PlayerActivity extends Activity {
             .followRedirects(true)
             .followSslRedirects(true)
             .build();
+    // Just+ 2.1.2 keeps Set-Cookie state for one playback/API session. It is separate from the
+    // process-wide client so rebuilding the player keeps the cookies while a new session clears them.
+    private final SessionCookieInterceptor sessionCookies = new SessionCookieInterceptor();
     private final AnalyticsListener playbackInfoListener = new AnalyticsListener() {
         @Override
         public void onVideoDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName,
@@ -4198,6 +4202,7 @@ public class PlayerActivity extends Activity {
         apiHeaders = null;
         nestedPlaylistSession = false;
         nestedResultCallback = null;
+        sessionCookies.clear();
         nestedReportIntervalMs = 0L;
         nestedResumeMode = null;
         nestedPlaylistModel = null;
@@ -13528,8 +13533,13 @@ public class PlayerActivity extends Activity {
         uncachedUpstream = null;
 
         if (haveMedia && isNetworkUri && mPrefs.mediaUri.getScheme().toLowerCase().startsWith("http")) {
-            HashMap<String, String> headers = new HashMap<>();
-            String userAgent = null;
+            // 2.1.2 starts every HTTP session with browser-like defaults. A launcher's headers then
+            // replace them name-by-name, case-insensitively.
+            final TreeMap<String, String> headers = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            headers.put("Accept", "*/*");
+            headers.put("Accept-Language", Locale.getDefault().toLanguageTag());
+            String userAgent = "JustPlusPlayer/" + BuildConfig.VERSION_NAME
+                    + " (Linux;Android " + Build.VERSION.RELEASE + ") AndroidXMedia3/1.11.1";
 
             // Headers supplied by the launching app as a flat [name, value, name, value, ...] array
             // (MX Player / Lampa convention). Some CDNs require a specific User-Agent to authorize.
@@ -13562,8 +13572,11 @@ public class PlayerActivity extends Activity {
             // files over a connection that never dropped. Give a read the same patience the load watchdog
             // gives the load: past that, the watchdog stops the player with a message that says what to
             // do, instead of a retry storm ending in a broken-stream error.
+            final okhttp3.OkHttpClient sessionHttpClient = MEDIA_HTTP_CLIENT.newBuilder()
+                    .addInterceptor(sessionCookies)
+                    .build();
             final OkHttpDataSource.Factory httpDataSourceFactory =
-                    new OkHttpDataSource.Factory(MEDIA_HTTP_CLIENT);
+                    new OkHttpDataSource.Factory(sessionHttpClient);
             if (userAgent != null) {
                 httpDataSourceFactory.setUserAgent(userAgent);
             }
