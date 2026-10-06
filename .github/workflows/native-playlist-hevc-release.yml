@@ -1,10 +1,10 @@
-name: Native playlist + FFmpeg HEVC release
+name: ARX TPlayer release
 
 on:
   push:
     branches:
-      - native-playlist-hevc-2026-10-06
       - ffmpeg-hevc-nextlib-2026-10-06
+      - master
   workflow_dispatch:
 
 permissions:
@@ -14,6 +14,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      ARX_VERSION: 2.1.1-arx1
+      ARX_TAG: v2.1.1-arx1
+      ARX_KEYSTORE_BASE64: ${{ secrets.ARX_KEYSTORE_BASE64 }}
+      ARX_KEYSTORE_PASSWORD: ${{ secrets.ARX_KEYSTORE_PASSWORD }}
+      ARX_KEY_ALIAS: ${{ secrets.ARX_KEY_ALIAS }}
+      ARX_KEY_PASSWORD: ${{ secrets.ARX_KEY_PASSWORD }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,8 +34,8 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - name: Force test version metadata
-        run: git tag -f v2.1.1-native-playlist
+      - name: Set ARX TPlayer version metadata
+        run: git tag -f "$ARX_TAG"
 
       - name: Build and test
         run: |
@@ -36,42 +44,66 @@ jobs:
             :app:assembleLatestUniversalRelease \
             :app:testLatestUniversalDebugUnitTest
 
-      - name: Sign release with test key
+      - name: Sign release APK
+        shell: bash
         run: |
-          keytool -genkeypair -v \
-            -keystore /tmp/test-release.jks \
-            -storepass android -keypass android \
-            -alias key -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=ARST113 Native Playlist Test,O=ARST113,C=FI"
+          set -euo pipefail
+
+          KEYSTORE=/tmp/arx-release.jks
+          if [ -n "${ARX_KEYSTORE_BASE64:-}" ] && \
+             [ -n "${ARX_KEYSTORE_PASSWORD:-}" ] && \
+             [ -n "${ARX_KEY_ALIAS:-}" ] && \
+             [ -n "${ARX_KEY_PASSWORD:-}" ]; then
+            printf '%s' "$ARX_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            STOREPASS="$ARX_KEYSTORE_PASSWORD"
+            KEYPASS="$ARX_KEY_PASSWORD"
+            ALIAS="$ARX_KEY_ALIAS"
+            echo "Using repository release signing key"
+          else
+            STOREPASS=android
+            KEYPASS=android
+            ALIAS=arx-tplayer
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE" \
+              -storepass "$STOREPASS" -keypass "$KEYPASS" \
+              -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=ARX TPlayer,O=ARST113,C=FI"
+            echo "WARNING: release signing secrets are not configured; using an ephemeral signing key"
+          fi
+
           APK="$(find app/build/outputs/apk/latestUniversal/release -name '*.apk' | head -n 1)"
           test -n "$APK"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          OUT="/tmp/ARX.TPlayer.v${ARX_VERSION}.apk"
+
           "$APKSIGNER" sign \
-            --ks /tmp/test-release.jks \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --out /tmp/JustPlus.Player.native-playlist-ffmpeg-hevc-release.apk \
+            --ks "$KEYSTORE" \
+            --ks-pass "pass:$STOREPASS" \
+            --key-pass "pass:$KEYPASS" \
+            --ks-key-alias "$ALIAS" \
+            --out "$OUT" \
             "$APK"
-          "$APKSIGNER" verify --verbose /tmp/JustPlus.Player.native-playlist-ffmpeg-hevc-release.apk
+
+          "$APKSIGNER" verify --verbose --print-certs "$OUT"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: native-playlist-ffmpeg-hevc-release
+          name: ARX-TPlayer-${{ env.ARX_VERSION }}
           if-no-files-found: error
-          path: /tmp/JustPlus.Player.native-playlist-ffmpeg-hevc-release.apk
+          path: /tmp/ARX.TPlayer.v${{ env.ARX_VERSION }}.apk
 
-
-      - name: Publish GitHub test release
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="hevc-ffmpeg-test-2026-10-06"
-          APK="/tmp/JustPlus.Player.native-playlist-ffmpeg-hevc-release.apk"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --target "${GITHUB_SHA}" \
-              --title "Just+ Player HEVC FFmpeg test" \
-              --notes "Test build: native Lampa playlist API + NextLib FFmpeg/libavcodec HEVC fallback."
+          APK="/tmp/ARX.TPlayer.v${ARX_VERSION}.apk"
+
+          if ! gh release view "$ARX_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$ARX_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "ARX TPlayer ${ARX_VERSION}" \
+              --notes "ARX TPlayer release based on Just+ Player 2.1.1 with the current native playlist API and NextLib FFmpeg/libavcodec HEVC fallback."
           fi
-          gh release upload "$TAG" "$APK" --clobber --repo "${GITHUB_REPOSITORY}"
+
+          gh release upload "$ARX_TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY"
