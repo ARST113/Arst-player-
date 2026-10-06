@@ -1,0 +1,82 @@
+name: Inspect official v2.1.1 APK
+
+on:
+  push:
+    branches:
+      - inspect-official-v211-2026-10-06
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download official APK
+        run: |
+          set -eux
+          curl -L --fail --retry 3 \
+            -o /tmp/JustPlus.Player.v2.1.1.apk \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.1/JustPlus.Player.v2.1.1.apk
+          sha256sum /tmp/JustPlus.Player.v2.1.1.apk
+          ls -lh /tmp/JustPlus.Player.v2.1.1.apk
+
+      - name: Inspect DEX strings
+        run: |
+          set -eux
+          mkdir -p /tmp/dex
+          cd /tmp/dex
+          unzip -q /tmp/JustPlus.Player.v2.1.1.apk 'classes*.dex'
+          for f in classes*.dex; do
+            echo "===== $f ====="
+            strings "$f" | grep -E 'result_callback|positions_sec|report_interval_sec|playlist has no items|start_index|episode_title|voice_label|audio_chosen_by|subtitle_chosen_by' || true
+          done | tee /tmp/dex-strings.txt
+
+      - name: Download JADX
+        run: |
+          set -eux
+          URL="$(curl -sL https://api.github.com/repos/skylot/jadx/releases/latest \
+            | jq -r '.assets[] | select(.name|test("^jadx-[0-9.]+\\.zip$")) | .browser_download_url' \
+            | head -n 1)"
+          test -n "$URL"
+          echo "$URL"
+          curl -L --fail --retry 3 "$URL" -o /tmp/jadx.zip
+          unzip -q /tmp/jadx.zip -d /tmp/jadx
+          /tmp/jadx/bin/jadx --version
+
+      - name: Decompile APK
+        run: |
+          set -eux
+          mkdir -p /tmp/jadx-out
+          /tmp/jadx/bin/jadx --no-res --show-bad-code -d /tmp/jadx-out /tmp/JustPlus.Player.v2.1.1.apk || true
+
+          mkdir -p /tmp/inspection
+          cp /tmp/dex-strings.txt /tmp/inspection/
+
+          grep -RIlE 'result_callback|positions_sec|report_interval_sec|playlist has no items' /tmp/jadx-out/sources \
+            | tee /tmp/inspection/matching-files.txt || true
+
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            rel="${f#/tmp/jadx-out/sources/}"
+            out="/tmp/inspection/${rel//\//__}"
+            cp "$f" "$out"
+          done < /tmp/inspection/matching-files.txt
+
+          echo "===== MATCHING FILES ====="
+          cat /tmp/inspection/matching-files.txt || true
+          echo "===== PLAYERACTIVITY HITS ====="
+          grep -RInE -C 8 'result_callback|positions_sec|report_interval_sec|playlist has no items|start_index|episode_title' \
+            /tmp/jadx-out/sources/com/brouken/player 2>/dev/null | head -n 1200 || true
+
+      - name: Upload inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-v211-decompiled-playlist
+          if-no-files-found: error
+          path: /tmp/inspection/**
