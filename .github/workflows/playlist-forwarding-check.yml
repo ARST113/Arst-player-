@@ -1,0 +1,84 @@
+name: Playlist forwarding emulator check
+
+on:
+  push:
+    branches:
+      - fix-playlist-hevc-2026-10-06
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  playlist-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download fixed APK
+        uses: actions/download-artifact@v4
+        with:
+          name: just-plus-player-fixed-build
+          path: /tmp/fixed-build
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 37464494737
+
+      - name: Prepare HEVC media
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          mkdir -p /tmp/player-smoke
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i "testsrc=size=640x360:rate=24" \
+            -t 5 -an -c:v libx265 -preset ultrafast -pix_fmt yuv420p \
+            -tag:v hvc1 -movflags +faststart /tmp/player-smoke/one.mp4
+          cp /tmp/player-smoke/one.mp4 /tmp/player-smoke/two.mp4
+          find /tmp/fixed-build -type f -name '*debug*.apk' -print
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Verify launcher playlist forwarding
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -eux
+            adb install -r "$(find /tmp/fixed-build -type f -name '*debug*.apk' | head -n 1)"
+            nohup python3 -m http.server 8765 --directory /tmp/player-smoke >/tmp/player-http.log 2>&1 &
+            sleep 2
+            adb logcat -c
+            adb shell am force-stop com.justplus.player
+            adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.justplus.player/com.brouken.player.BrowserActivity -d "http://10.0.2.2:8765/one.mp4" --esa video_list "http://10.0.2.2:8765/one.mp4,http://10.0.2.2:8765/two.mp4" --esa video_list.name "Episode 1,Episode 2"
+            sleep 10
+            adb shell pidof com.justplus.player
+            adb shell dumpsys activity activities > /tmp/activities.txt
+            grep "com.brouken.player.PlayerActivity" /tmp/activities.txt
+            adb logcat -d > /tmp/player-logcat.txt
+            grep -F "api playlist: 2 items" /tmp/player-logcat.txt
+            grep -q "GET /one.mp4" /tmp/player-http.log
+            ! grep -E "FATAL EXCEPTION|Process: com\.justplus\.player.*has died|AndroidRuntime.*com\.justplus\.player" /tmp/player-logcat.txt || { echo "Player crashed"; exit 1; }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playlist-forwarding-logs
+          if-no-files-found: warn
+          path: |
+            /tmp/player-logcat.txt
+            /tmp/player-http.log
+            /tmp/activities.txt
