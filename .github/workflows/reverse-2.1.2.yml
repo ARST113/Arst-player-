@@ -173,6 +173,16 @@ jobs:
             printf '%s\n' "$n files matched $needle" >> reverse/2.1.2/string-matched/README.txt
           done
 
+          # Recover the voice-studio alias database used by the 2.1.2 label matcher (xp2).
+          mkdir -p reverse/2.1.2/voice-data
+          grep -RIl --binary-files=without-match -E 'LostFilm|HDrezka|NewStudio|voice_studios'             /tmp/jp/d212/resources /tmp/jp/d212/sources 2>/dev/null             | head -n 40 > reverse/2.1.2/voice-data/matches.txt || true
+          while IFS= read -r hit; do
+            [ -f "$hit" ] || continue
+            rel="${hit#/tmp/jp/d212/}"
+            safe=$(printf '%s' "$rel" | tr '/' '_')
+            cp "$hit" "reverse/2.1.2/voice-data/$safe"
+          done < reverse/2.1.2/voice-data/matches.txt
+
           # Compare the bundled Media3 namespace too. This tells us whether 2.1.2 merely bumped
           # dependencies or actually carries altered ExoPlayer classes (notably AVI extraction).
           mkdir -p reverse/2.1.2/media3
