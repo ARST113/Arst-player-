@@ -419,6 +419,14 @@ public class PlayerActivity extends Activity {
     // pendingStuckRecovery marks that rebuild so the reset in initializePlayer keeps the flag.
     // Read by the codec selector on the playback thread.
     private volatile boolean forceHevcForDolbyVision;
+    // One-shot recovery for regular HEVC decoder failures on devices where the selected codec
+    // cannot carry a valid HEVC profile/level. The recovery rebuild routes HEVC to the AOSP
+    // software decoder instead of retrying the same failing vendor/Google codec.
+    private volatile boolean forceSoftwareHevc;
+    // Second software fallback for devices that expose both Codec2 and legacy OMX wrappers.
+    // The Pixel 10 / Android 17 field case accepts the stream in c2.android.hevc.decoder and then
+    // fails on the first buffer, while OMX.google.hevc.decoder is also advertised by the platform.
+    private volatile boolean forceLegacySoftwareHevc;
     private boolean pendingStuckRecovery;
     // Installed for this player build when Dolby Vision profile 7 is being rewritten as profile 8.1;
     // null when it is not. Kept only so the dump can say which mode the stream actually got.
@@ -426,6 +434,7 @@ public class PlayerActivity extends Activity {
     private Dv7Converter dv7Converter;
     // Per process, not per player: a device that keeps needing the fallback must not re-report it.
     private static boolean dolbyVisionFallbackReported;
+    private static boolean softwareHevcFallbackReported;
     // Starting the screen over is the last thing left when the decoder will not be re-created (see
     // recoverByRestartingTheScreen). Static because the instance is exactly what that throws away: the
     // budget and the pending resume have to reach the activity that comes next.
@@ -5469,6 +5478,7 @@ public class PlayerActivity extends Activity {
         for (int i = 0; i < apiPlaylistPositions.length; i++) {
             apiPlaylistPositions[i] = C.TIME_UNSET;
         }
+        Utils.log("api playlist: " + apiMediaItems.size() + " items, start=" + apiPlaylistStartIndex);
     }
 
     /**
@@ -11619,6 +11629,8 @@ public class PlayerActivity extends Activity {
             pendingStuckRecovery = false;
         } else {
             forceHevcForDolbyVision = mPrefs.refuseDolbyVision;
+            forceSoftwareHevc = false;
+            forceLegacySoftwareHevc = false;
         }
 
         // A fresh player, but not a fresh budget when it is the same stream: the rebuild rungs
@@ -12060,7 +12072,7 @@ public class PlayerActivity extends Activity {
                 // reads back as "exceeds capabilities" — which plays, but drops those renditions out of
                 // the quality list. The refusal means no Dolby Vision anywhere, so mapping it is free.
                 .setMapDV7ToHevc(mPrefs.mapDV7ToHevc || mPrefs.refuseDolbyVision);
-        if (forceHevcForDolbyVision || isTvBox) {
+        if (forceHevcForDolbyVision || forceSoftwareHevc || forceLegacySoftwareHevc || isTvBox) {
             // One combined codec selector for two independent needs:
             // - heavy MKV audio on a TV: no platform decoder for those codecs, so they passthrough (if
             //   the sink supports it) or fall back to ffmpeg (see above).
@@ -12085,6 +12097,22 @@ public class PlayerActivity extends Activity {
                     infos.addAll(MediaCodecSelector.DEFAULT.getDecoderInfos(
                             mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
                     return infos;
+                }
+                if ((forceSoftwareHevc || forceLegacySoftwareHevc)
+                        && MimeTypes.VIDEO_H265.equals(mimeType)) {
+                    final List<MediaCodecInfo> allDecoders =
+                            MediaCodecSelector.DEFAULT.getDecoderInfos(
+                                    mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
+                    final List<MediaCodecInfo> softwareDecoders = new ArrayList<>();
+                    final String wantedPrefix = forceLegacySoftwareHevc ? "OMX.google." : "c2.android.";
+                    for (MediaCodecInfo decoder : allDecoders) {
+                        if (decoder.name.startsWith(wantedPrefix)) {
+                            softwareDecoders.add(decoder);
+                        }
+                    }
+                    // Recovery only arms a stage after verifying that decoder family exists. Keep the
+                    // normal list as a last-resort guard for unusual vendor codec registries.
+                    return softwareDecoders.isEmpty() ? allDecoders : softwareDecoders;
                 }
                 return MediaCodecSelector.DEFAULT.getDecoderInfos(
                         mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
@@ -13914,10 +13942,14 @@ public class PlayerActivity extends Activity {
             // that error code — a decoder-init failure was already offered the HEVC decoders as fallback
             // candidates, so those have failed too and rebuilding for them would be a pointless teardown.
             if (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
-                    && error instanceof ExoPlaybackException
-                    && recoverByForcingHevcForDolbyVision(error,
-                            ((ExoPlaybackException) error).rendererFormat)) {
-                return;
+                    && error instanceof ExoPlaybackException) {
+                final Format failingFormat = ((ExoPlaybackException) error).rendererFormat;
+                if (recoverByForcingHevcForDolbyVision(error, failingFormat)) {
+                    return;
+                }
+                if (recoverByForcingSoftwareHevc(error, failingFormat)) {
+                    return;
+                }
             }
             // The clip can no longer be opened: a foreign app's one-off URI grant has expired (a video
             // streamed from a messenger, reopened after that app restarted) or the file is gone. Expected
@@ -14161,6 +14193,80 @@ public class PlayerActivity extends Activity {
         sourceSwitchKeepPaused = !restorePlayState;
         // Rebuild on the next loop, after this onPlayerError callback returns, so the player is not
         // released while its own listener is executing.
+        playerView.post(() -> {
+            releasePlayer();
+            initializePlayer();
+        });
+        return true;
+    }
+
+    // Rebuild the player with regular HEVC routed through the AOSP software decoder after a
+    // decoder that was already running fails mid-stream. This is intentionally limited to
+    // ERROR_CODE_DECODING_FAILED: decoder-init failures have already gone through Media3's decoder
+    // fallback list, while a mid-render failure otherwise keeps selecting the same codec on every rebuild.
+    private boolean recoverByForcingSoftwareHevc(PlaybackException error, Format failingFormat) {
+        if (player == null || failingFormat == null
+                || !MimeTypes.VIDEO_H265.equals(failingFormat.sampleMimeType)
+                || forceLegacySoftwareHevc) {
+            return false;
+        }
+        final String decoderName = videoDecoderName;
+
+        // First software decoder already failed. Android still exposes the legacy Google OMX wrapper
+        // on some devices; try it once before giving up. It is deliberately a separate rebuild rather
+        // than another item in Media3's fallback list because this failure happens after codec init.
+        if (forceSoftwareHevc) {
+            if (decoderName == null || !decoderName.startsWith("c2.android.")) {
+                return false;
+            }
+            boolean hasLegacyGoogleHevc = false;
+            try {
+                for (MediaCodecInfo decoder : MediaCodecSelector.DEFAULT.getDecoderInfos(
+                        MimeTypes.VIDEO_H265, false, false)) {
+                    if (decoder.name.startsWith("OMX.google.")) {
+                        hasLegacyGoogleHevc = true;
+                        break;
+                    }
+                }
+            } catch (MediaCodecUtil.DecoderQueryException ignored) {
+                return false;
+            }
+            if (!hasLegacyGoogleHevc) {
+                return false;
+            }
+            Utils.log("rebuild: HEVC " + failingFormat.codecs
+                    + " with legacy Google software decoder after " + decoderName);
+            forceLegacySoftwareHevc = true;
+            pendingStuckRecovery = true;
+            restorePlayState = player.getPlayWhenReady();
+            sourceSwitchKeepPaused = !restorePlayState;
+            playerView.post(() -> {
+                releasePlayer();
+                initializePlayer();
+            });
+            return true;
+        }
+
+        if (decoderName != null && decoderName.startsWith("c2.android.")) {
+            // Already on the first software family without our flag; do not loop back into it.
+            return false;
+        }
+        if (!softwareHevcFallbackReported) {
+            softwareHevcFallbackReported = true;
+            io.sentry.Sentry.captureException(error, scope -> {
+                scope.setFingerprint(Collections.singletonList("hevc-software-fallback"));
+                scope.setLevel(io.sentry.SentryLevel.INFO);
+                enrichPlaybackScope(error, scope);
+                scope.setTag("media.video_codecs", String.valueOf(failingFormat.codecs));
+                scope.setTag("media.video_decoder", String.valueOf(decoderName));
+            });
+        }
+        Utils.log("rebuild: HEVC " + failingFormat.codecs + " with AOSP software decoder"
+                + (decoderName != null ? " after " + decoderName : ""));
+        forceSoftwareHevc = true;
+        pendingStuckRecovery = true;
+        restorePlayState = player.getPlayWhenReady();
+        sourceSwitchKeepPaused = !restorePlayState;
         playerView.post(() -> {
             releasePlayer();
             initializePlayer();
