@@ -1,0 +1,60 @@
+name: Native playlist HEVC release
+
+on:
+  push:
+    branches:
+      - native-playlist-hevc-2026-10-06
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Force test version metadata
+        run: git tag -f v2.1.1-native-playlist
+
+      - name: Build and test
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace \
+            :app:assembleLatestUniversalRelease \
+            :app:testLatestUniversalDebugUnitTest
+
+      - name: Sign release with test key
+        run: |
+          keytool -genkeypair -v \
+            -keystore /tmp/test-release.jks \
+            -storepass android -keypass android \
+            -alias key -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=ARST113 Native Playlist Test,O=ARST113,C=FI"
+          APK="$(find app/build/outputs/apk/latestUniversal/release -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" sign \
+            --ks /tmp/test-release.jks \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out /tmp/JustPlus.Player.native-playlist-hevc-release.apk \
+            "$APK"
+          "$APKSIGNER" verify --verbose /tmp/JustPlus.Player.native-playlist-hevc-release.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-playlist-hevc-release
+          if-no-files-found: error
+          path: /tmp/JustPlus.Player.native-playlist-hevc-release.apk
