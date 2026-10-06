@@ -1101,6 +1101,8 @@ public class PlayerActivity extends Activity {
     PendingIntent nestedResultCallback;
     long nestedReportIntervalMs;
     String nestedResumeMode;
+    PlaylistApi.Playlist nestedPlaylistModel;
+    String nestedPlaylistError;
     final List<MediaItem> apiMediaItems = new ArrayList<>();
     final List<String> apiPlaylistSegments = new ArrayList<>();
     int apiPlaylistStartIndex;
@@ -4165,6 +4167,8 @@ public class PlayerActivity extends Activity {
         nestedResultCallback = null;
         nestedReportIntervalMs = 0L;
         nestedResumeMode = null;
+        nestedPlaylistModel = null;
+        nestedPlaylistError = null;
         apiMediaItems.clear();
         apiPlaylistSegments.clear();
         apiPlaylistStartIndex = 0;
@@ -5439,58 +5443,33 @@ public class PlayerActivity extends Activity {
      */
     @Nullable
     private Uri parseNestedPlaylist(final Bundle playlist) {
-        final Parcelable[] rawItems = getSmartParcelableArray(playlist, "items");
-        if (rawItems == null || rawItems.length == 0) {
-            Utils.log("playlist refused: playlist has no items");
+        final PlaylistApi.Parsed parsed = PlaylistApi.parse(playlist);
+        if (!parsed.ok()) {
+            // Official 2.1.2 treats a structurally bad playlist as a real API session that failed,
+            // rather than falling through to the legacy flat intent parser.
+            nestedPlaylistSession = true;
+            apiAccess = true;
+            mPrefs.setPersistent(false);
+            nestedPlaylistError = parsed.error;
+            final Object callback = playlist == null ? null : playlist.get("result_callback");
+            nestedResultCallback = callback instanceof PendingIntent ? (PendingIntent) callback : null;
+            Utils.log("playlist refused: " + nestedPlaylistError);
             return null;
         }
 
-        final Integer requestedStartValue = getNestedInt(playlist, "start_index");
-        final int requestedStart = requestedStartValue == null ? 0 : requestedStartValue;
-        if (requestedStart < 0 || requestedStart >= rawItems.length) {
-            Utils.log("playlist refused: start_index " + requestedStart
-                    + " is out of range 0.." + (rawItems.length - 1));
-            return null;
-        }
-
-        // Validate the item shape before changing live session state. Lampa sends uri on every item,
-        // while the documented contract also allows a quality-only item.
-        for (int i = 0; i < rawItems.length; i++) {
-            if (!(rawItems[i] instanceof Bundle)) {
-                Utils.log("playlist refused: items[" + i + "] is not a Bundle");
-                return null;
-            }
-            if (resolveNestedItemUri((Bundle) rawItems[i]) == null) {
-                Utils.log("playlist refused: items[" + i + "] has neither uri nor qualities");
-                return null;
-            }
-        }
-
+        final PlaylistApi.Playlist model = parsed.playlist;
         nestedPlaylistSession = true;
         apiAccess = true;
         mPrefs.setPersistent(false);
+        nestedPlaylistModel = model;
+        nestedPlaylistError = null;
 
-        apiTitle = Utils.unescapeHtml(getNestedString(playlist, "title"));
-        apiHeaders = getSmartStringArray(playlist, "headers");
-
-        final Object callback = playlist.get("result_callback");
-        nestedResultCallback = callback instanceof PendingIntent ? (PendingIntent) callback : null;
-
-        // 2.1.2 accepts every time value in either milliseconds or seconds, with *_ms winning.
-        final Long reportIntervalMs = getNestedTimeMs(playlist, "report_interval");
-        nestedReportIntervalMs = reportIntervalMs != null && reportIntervalMs > 0
-                ? Math.max(30_000L, reportIntervalMs) : 0L;
-
-        final String resumeMode = getNestedString(playlist, "resume_mode");
-        if ("ask_open".equals(resumeMode) || "ask_every".equals(resumeMode)
-                || "always".equals(resumeMode) || "never".equals(resumeMode)) {
-            nestedResumeMode = resumeMode;
-        } else {
-            nestedResumeMode = null;
-            if (resumeMode != null) {
-                Utils.log("playlist.resume_mode ignored: " + resumeMode);
-            }
-        }
+        apiTitle = Utils.unescapeHtml(model.title);
+        apiHeaders = mergedHeaders(model.headers, model.items.get(model.startIndex).headers);
+        nestedResultCallback = model.resultCallback instanceof PendingIntent
+                ? (PendingIntent) model.resultCallback : null;
+        nestedReportIntervalMs = model.reportIntervalMs;
+        nestedResumeMode = model.resumeMode;
 
         apiMediaItems.clear();
         apiPlaylistSegments.clear();
@@ -5500,23 +5479,22 @@ public class PlayerActivity extends Activity {
         apiPlaylistImdbIds.clear();
         apiPlaylistTmdbIds.clear();
         apiPlaylistQuality.clear();
-        apiPlaylistStartIndex = requestedStart;
-        apiExtrasIndex = requestedStart;
-        apiPlaylistPositions = new long[rawItems.length];
-        for (int i = 0; i < apiPlaylistPositions.length; i++) {
-            apiPlaylistPositions[i] = C.TIME_UNSET;
-        }
+
+        apiPlaylistStartIndex = model.startIndex;
+        apiExtrasIndex = model.startIndex;
+        apiPlaylistPositions = new long[model.items.size()];
+        Arrays.fill(apiPlaylistPositions, C.TIME_UNSET);
 
         Uri startUri = null;
         Uri startPoster = null;
 
-        for (int i = 0; i < rawItems.length; i++) {
-            final Bundle item = (Bundle) rawItems[i];
-            final Uri uri = resolveNestedItemUri(item);
+        for (int i = 0; i < model.items.size(); i++) {
+            final PlaylistApi.Item item = model.items.get(i);
+            final Uri uri = item.uri;
 
-            String title = getNestedString(item, "episode_title");
+            String title = item.episodeTitle;
             if (title == null) {
-                title = getNestedString(item, "title");
+                title = item.title;
             }
             if (title == null) {
                 title = apiTitle;
@@ -5526,65 +5504,126 @@ public class PlayerActivity extends Activity {
                 title = uri.getLastPathSegment();
             }
 
-            Uri poster = null;
-            final String thumbnail = getNestedString(item, "thumbnail");
-            if (thumbnail != null) {
-                poster = Uri.parse(thumbnail);
-            }
-
             final MediaMetadata.Builder metadataBuilder = new MediaMetadata.Builder()
                     .setTitle(title)
                     .setDisplayTitle(title);
-            if (poster != null) {
-                metadataBuilder.setArtworkUri(poster);
+            if (item.thumbnail != null) {
+                metadataBuilder.setArtworkUri(item.thumbnail);
             }
 
             final MediaItem.Builder itemBuilder = new MediaItem.Builder()
                     .setUri(uri)
                     .setMediaMetadata(metadataBuilder.build());
-            final List<MediaItem.SubtitleConfiguration> itemSubs = readNestedSubtitles(item);
+
+            final List<MediaItem.SubtitleConfiguration> itemSubs =
+                    buildNestedSubtitleConfigurations(item.activeSubtitles());
             if (!itemSubs.isEmpty()) {
                 itemBuilder.setSubtitleConfigurations(itemSubs);
             }
-            apiMediaItems.add(itemBuilder.build());
 
-            final String segments = getNestedString(item, "segments");
-            final Integer season = getNestedInt(item, "season");
-            final Integer episode = getNestedInt(item, "episode");
-            final String imdbId = getNestedString(item, "imdb_id");
-            final String tmdbId = getNestedString(item, "tmdb_id");
-
-            apiPlaylistSegments.add(segments);
-            apiPlaylistSeasons.add(season);
-            apiPlaylistEpisodes.add(episode);
-            apiPlaylistNames.add(getNestedString(item, "episode_title"));
-            apiPlaylistImdbIds.add(imdbId);
-            apiPlaylistTmdbIds.add(tmdbId);
-            apiPlaylistQuality.add(readNestedQualityMap(item));
-
-            final Long positionMs = getNestedTimeMs(item, "position");
-            if (positionMs != null && positionMs >= 0) {
-                apiPlaylistPositions[i] = positionMs;
+            if (item.clipStartMs > 0 || item.clipEndMs != Long.MIN_VALUE) {
+                final MediaItem.ClippingConfiguration.Builder clipping =
+                        new MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(Math.max(0L, item.clipStartMs));
+                if (item.clipEndMs != Long.MIN_VALUE) {
+                    clipping.setEndPositionMs(item.clipEndMs);
+                }
+                itemBuilder.setClippingConfiguration(clipping.build());
             }
 
-            if (i == requestedStart) {
+            apiMediaItems.add(itemBuilder.build());
+            apiPlaylistSegments.add(item.segments);
+            apiPlaylistSeasons.add(item.season >= 0 ? item.season : null);
+            apiPlaylistEpisodes.add(item.episode >= 0 ? item.episode : null);
+            apiPlaylistNames.add(item.episodeTitle);
+            apiPlaylistImdbIds.add(item.imdbId);
+            apiPlaylistTmdbIds.add(item.tmdbId);
+            apiPlaylistQuality.add(qualityMap(item.activeQualities()));
+
+            if (item.positionMs != PlaylistApi.TIME_UNSET) {
+                apiPlaylistPositions[i] = item.positionMs;
+            }
+
+            if (i == model.startIndex) {
                 startUri = uri;
-                startPoster = poster;
-                apiSegments = segments;
-                apiSeason = season == null ? -1 : season;
-                apiEpisode = episode == null ? -1 : episode;
-                apiImdbId = imdbId;
-                apiTmdbId = tmdbId;
+                startPoster = item.thumbnail;
+                apiSegments = item.segments;
+                apiSeason = item.season;
+                apiEpisode = item.episode;
+                apiImdbId = item.imdbId;
+                apiTmdbId = item.tmdbId;
             }
         }
 
         apiThumbnailUri = startPoster;
+        for (String warning : model.warnings) {
+            Utils.log("playlist key dropped: " + warning);
+        }
         Utils.log("nested playlist parsed natively: " + apiMediaItems.size()
                 + " items, start=" + apiPlaylistStartIndex
                 + ", callback=" + (nestedResultCallback != null)
                 + ", report=" + nestedReportIntervalMs + "ms"
                 + ", resume=" + nestedResumeMode);
         return startUri;
+    }
+
+    private List<MediaItem.SubtitleConfiguration> buildNestedSubtitleConfigurations(
+            final List<PlaylistApi.ExternalSubtitle> subtitles) {
+        final List<MediaItem.SubtitleConfiguration> result = new ArrayList<>();
+        if (subtitles == null) {
+            return result;
+        }
+        for (PlaylistApi.ExternalSubtitle subtitle : subtitles) {
+            result.add(SubtitleUtils.buildSubtitle(this, subtitle.uri, subtitle.mime,
+                    subtitle.language, subtitle.label, subtitle.selected));
+        }
+        return result;
+    }
+
+    private static LinkedHashMap<String, String> qualityMap(final List<PlaylistApi.Quality> qualities) {
+        final LinkedHashMap<String, String> result = new LinkedHashMap<>();
+        if (qualities == null) {
+            return result;
+        }
+        final ArrayList<PlaylistApi.Quality> sorted = new ArrayList<>(qualities);
+        Collections.sort(sorted, (a, b) ->
+                Integer.compare(qualityNumber(b.label), qualityNumber(a.label)));
+        for (PlaylistApi.Quality quality : sorted) {
+            result.put(quality.label, quality.uri.toString());
+        }
+        return result;
+    }
+
+    /**
+     * Playlist headers are inherited name-by-name, case-insensitively; item headers replace the
+     * playlist value while preserving the flat name/value array expected by the existing HTTP layer.
+     */
+    private static String[] mergedHeaders(@Nullable final String[] parent,
+                                          @Nullable final String[] child) {
+        final LinkedHashMap<String, String[]> values = new LinkedHashMap<>();
+        mergeHeaderPairs(values, parent);
+        mergeHeaderPairs(values, child);
+        final ArrayList<String> out = new ArrayList<>(values.size() * 2);
+        for (String[] pair : values.values()) {
+            out.add(pair[0]);
+            out.add(pair[1]);
+        }
+        return out.isEmpty() ? null : out.toArray(new String[0]);
+    }
+
+    private static void mergeHeaderPairs(final LinkedHashMap<String, String[]> values,
+                                         @Nullable final String[] headers) {
+        if (headers == null) {
+            return;
+        }
+        for (int i = 0; i + 1 < headers.length; i += 2) {
+            final String name = headers[i];
+            final String value = headers[i + 1];
+            if (name == null || value == null) {
+                continue;
+            }
+            values.put(name.toLowerCase(Locale.ROOT), new String[]{name, value});
+        }
     }
 
     @Nullable
