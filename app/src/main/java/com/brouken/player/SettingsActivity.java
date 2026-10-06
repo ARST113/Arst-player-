@@ -1508,6 +1508,11 @@ public class SettingsActivity extends AppCompatActivity
                 setDivider(null);
                 setDividerHeight(0);
                 cardList.addItemDecoration(new GroupCards(cardList.getContext()));
+                // 2.1.2: the TV focus frame changes which divider edges are visible. Item decorations
+                // are otherwise not invalidated by focus alone, leaving a hairline drawn through the
+                // newly focused card until something else happens to repaint the list.
+                cardList.getViewTreeObserver().addOnGlobalFocusChangeListener(
+                        (oldFocus, newFocus) -> cardList.invalidate());
                 bindRemote(cardList);
                 // Toggling a switch re-binds its row, and cross-fading the old text over the new one
                 // reads as a flicker in a list that is otherwise still.

@@ -190,6 +190,7 @@ import androidx.media3.ui.TimeBar;
 
 import com.brouken.player.dtpv.DoubleTapPlayerView;
 import com.brouken.player.dtpv.youtube.YouTubeOverlay;
+import com.brouken.player.skip.ChapterSegments;
 import com.brouken.player.skip.IntentSegmentsSource;
 import com.brouken.player.skip.NetworkSegmentsSource;
 import com.brouken.player.skip.SegmentFinder;
@@ -2239,25 +2240,21 @@ public class PlayerActivity extends Activity {
         overlayClock.setVisibility(View.GONE);
         coordinatorLayout.addView(overlayClock);
 
-        // Live playback stats, opened from the overflow menu. It rides the controls (updated by
-        // endsAtRunnable, hidden by stopEndsAtUpdates), so it is never left sitting over the video, and it
-        // carries no touch handling of its own — the left half of the screen is the brightness swipe zone.
+        // Live playback stats, opened from the overflow menu. 2.1.2 moves this panel to the upper-right:
+        // it no longer competes with the brightness gesture/readout on the left side of the picture.
         statsView = new TextView(this);
         statsView.setTextColor(ContextCompat.getColor(this, R.color.ink_medium));
         statsView.setTypeface(Typeface.MONOSPACE);
         statsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textInfo());
-        // Same corner as the lock button, the time pill and the poster — a floating box in this UI is rounded.
         final GradientDrawable statsBackground = new GradientDrawable();
         statsBackground.setColor(ContextCompat.getColor(this, R.color.ui_controls_background));
-        statsBackground.setCornerRadius(ui.pillCorner());
+        statsBackground.setCornerRadius(Utils.dpToPx(12));
         statsView.setBackground(statsBackground);
-        final int statsPadding = Utils.dpToPx(8);
-        statsView.setPadding(statsPadding, statsPadding, statsPadding, statsPadding);
+        statsView.setPadding(Utils.dpToPx(12), Utils.dpToPx(10),
+                Utils.dpToPx(12), Utils.dpToPx(10));
         final CoordinatorLayout.LayoutParams statsLp = new CoordinatorLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        // Mid-left: the only band the controls leave free, since the header and the bottom bar are on
-        // screen whenever the panel is. The left margin is the shared content grid, set with the insets.
-        statsLp.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
+        statsLp.gravity = Gravity.END | Gravity.TOP;
         statsView.setLayoutParams(statsLp);
         statsView.setVisibility(View.GONE);
         coordinatorLayout.addView(statsView);
@@ -2536,13 +2533,10 @@ public class PlayerActivity extends Activity {
                 if (statsView != null) {
                     final CoordinatorLayout.LayoutParams statsParams =
                             (CoordinatorLayout.LayoutParams) statsView.getLayoutParams();
-                    statsParams.leftMargin = insetH + ui.gridH();
-                    // The panel is centred vertically, which is where the play/pause cluster lives, so its
-                    // width has to stop short of it: half the window, less half that cluster (hero disc plus
-                    // an episode arrow beside it) and the panel's own offset. A decoder name longer than
-                    // that wraps instead of sliding under the buttons.
+                    statsParams.rightMargin = insetH + ui.gridH();
+                    // Keep long decoder names inside the right half rather than under the centred controls.
                     statsView.setMaxWidth(ui.dp(getResources().getConfiguration().screenWidthDp) / 2
-                            - ui.heroBox() / 2 - ui.episodeDisc() - statsParams.leftMargin);
+                            - ui.heroBox() / 2 - ui.episodeDisc() - statsParams.rightMargin);
                     statsView.setLayoutParams(statsParams);
                 }
 
@@ -3313,10 +3307,32 @@ public class PlayerActivity extends Activity {
         reportDuration = duration;
     }
 
+    /** Whether the current item has reached the 2.1.2 watched threshold (95%, or the start of end credits). */
+    private boolean isCurrentItemWatched() {
+        if (playbackFinished) {
+            return true;
+        }
+        if (player == null || player.isPlayingAd()) {
+            return false;
+        }
+        final long duration = player.getDuration();
+        if (duration == C.TIME_UNSET || duration <= 0) {
+            return false;
+        }
+        final long threshold = skipManager != null
+                ? skipManager.completionThresholdMs(duration)
+                : duration - duration / 20;
+        return player.getCurrentPosition() >= threshold;
+    }
+
     @Override
     public void finish() {
+        final boolean watched = isCurrentItemWatched();
+        if (watched) {
+            playbackFinished = true;
+        }
         if (nestedPlaylistSession) {
-            final Bundle result = buildNestedPlaylistResult(playbackFinished ? "completion" : "user");
+            final Bundle result = buildNestedPlaylistResult(watched ? "completion" : "user");
             final Intent intent = new Intent(getPackageName() + ".result");
             intent.putExtras(result);
             final String uriText = result.getString("uri");
@@ -3330,8 +3346,8 @@ public class PlayerActivity extends Activity {
             // Report which item finished so the launcher can attribute the position to the
             // correct playlist entry (and mark preceding ones watched), not just the launched one.
             Uri uri = currentMediaUri();
-            intent.putExtra(API_END_BY, playbackFinished ? "playback_completion" : "user");
-            if (!playbackFinished) {
+            intent.putExtra(API_END_BY, watched ? "playback_completion" : "user");
+            if (!watched) {
                 long duration = 0;
                 long position = 0;
                 if (player != null) {
@@ -14223,8 +14239,7 @@ public class PlayerActivity extends Activity {
                     // near the end, because savePlayer is also how a recovery rebuild carries the
                     // position across a released player: a decoder that wedges in the closing seconds
                     // has to come back where it was, not at the start.
-                    final long position = player.getPlaybackState() == Player.STATE_ENDED
-                            ? 0 : player.getCurrentPosition();
+                    final long position = isCurrentItemWatched() ? 0 : player.getCurrentPosition();
                     mPrefs.updatePosition(position);
                     rememberEpisodePosition(player.getCurrentMediaItemIndex(), position);
                 }
@@ -14441,7 +14456,7 @@ public class PlayerActivity extends Activity {
                     + ", TV box, holding the decoder");
             reportOutcome("load-stalled-held", null);
             setEpisodeNavLoading(false);
-            stallDialog = showSnack(getString(R.string.error_playback_stalled), null);
+            stallDialog = showSnack(getString(R.string.error_playback_stalled), null, this::retryPlayback);
             return;
         }
         Utils.log("watchdog: +" + progressed + " B, loading=" + player.isLoading() + ", stopping");
@@ -14468,7 +14483,8 @@ public class PlayerActivity extends Activity {
         // this message needs is whether the item ever became ready, which is exactly what a set baseline
         // means. Both messages ask for the same thing, and the play button re-prepares either way.
         showSnack(getString(playerStartPositionMs == C.TIME_UNSET
-                ? R.string.error_playback_timeout : R.string.error_playback_stalled), null);
+                ? R.string.error_playback_timeout : R.string.error_playback_stalled),
+                null, this::retryPlayback);
     }
 
     public void releasePlayer() {
@@ -14886,6 +14902,15 @@ public class PlayerActivity extends Activity {
                             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build());
                 }
                 return;
+            }
+            // 2.1.2 also treats named file chapters as skip data. They outrank online/inferred
+            // segments because their timecodes belong to this exact file.
+            if (skipManager != null) {
+                final List<SkipSegment> chapters = ChapterSegments.fromTracks(tracks);
+                if (skipManager.setChapterSegments(chapters)) {
+                    Utils.log("segments: " + chapters.size() + " from the file's chapters");
+                    rebuildSkip();
+                }
             }
             matchDisplayModeForNewItem();
             sayIfTheVideoTrackWasDropped(tracks);
@@ -15437,7 +15462,7 @@ public class PlayerActivity extends Activity {
                 // A playlist keeps everything: the other episodes are still watchable and the user may
                 // want to step back to this one, so stay here and re-enable the arrows (gated while loading).
                 if (player != null && player.getMediaItemCount() > 1) {
-                    showSnack(message, null);
+                    showSnack(message, null, PlayerActivity.this::retryPlayback);
                     setEpisodeNavLoading(false);
                     return;
                 }
@@ -17265,12 +17290,23 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    /** Retry a stream after an inline failure message, preserving the current media/session inputs. */
+    private void retryPlayback() {
+        heldAfterError = null;
+        if (player == null) {
+            initializePlayer();
+        } else {
+            updateLoading(true);
+            player.prepare();
+        }
+    }
+
     // Playback is over for this clip, but the page is not: the snackbar fades, so leave the reason on
     // screen, and hand the controller a null player so its play/seek cannot poke a released instance.
     // What stays usable is everything that never needed the player — the volume/brightness gestures, the
     // gear (and the settings screen behind it) and the playlist, if there is one to step through.
     private void stopWithMessage(final String text, final String details) {
-        showSnack(text, details);
+        showSnack(text, details, this::retryPlayback);
         releasePlayer(false);
         playerView.setPlayer(null);
         // Said twice on purpose, and the only call that does not take the line: the notice above carries
@@ -17740,15 +17776,27 @@ public class PlayerActivity extends Activity {
 
     /** Returns the dialog on TV, which stays until dismissed; null elsewhere, where the snack times out. */
     AlertDialog showSnack(final String textPrimary, final String textSecondary) {
+        return showSnack(textPrimary, textSecondary, null);
+    }
+
+    /** 2.1.2 error/message surface with an optional explicit Retry action. */
+    AlertDialog showSnack(final String textPrimary, final String textSecondary, final Runnable retry) {
         final Context dialogContext = Dialogs.dialogContext(this);
-        // On TV the Snackbar action button is not reachable with the D-pad, so the "Details" affordance
-        // would be lost. Present the error as an AlertDialog instead — its buttons are D-pad focusable.
+        // On TV actions must be real dialog buttons: a Snackbar action cannot be reached by D-pad.
         if (isTvBox) {
             final AlertDialog.Builder builder = new MaterialAlertDialogBuilder(dialogContext);
             builder.setMessage(textPrimary);
-            builder.setPositiveButton(android.R.string.ok, (dialogInterface, i) -> dialogInterface.dismiss());
+            if (retry != null) {
+                builder.setPositiveButton(R.string.error_retry, (dialogInterface, i) -> retry.run());
+                builder.setNegativeButton(android.R.string.ok,
+                        (dialogInterface, i) -> dialogInterface.dismiss());
+            } else {
+                builder.setPositiveButton(android.R.string.ok,
+                        (dialogInterface, i) -> dialogInterface.dismiss());
+            }
             if (textSecondary != null) {
-                builder.setNeutralButton(R.string.error_details, (dialogInterface, i) -> showErrorScreen(textSecondary, textSecondary));
+                builder.setNeutralButton(R.string.error_details,
+                        (dialogInterface, i) -> showErrorScreen(textSecondary, textSecondary));
             }
             return builder.show();
         }
@@ -17759,10 +17807,9 @@ public class PlayerActivity extends Activity {
         }
         if (textSecondary != null) {
             snackbar.setAction(R.string.error_details, v -> showErrorScreen(textSecondary, textSecondary));
-            // Said here rather than left to the theme. Notice paints the plate and its text itself —
-            // but the action's colour travels through Material's own overlay (snackbarButtonStyle →
-            // colorOnContainer ← colorPrimaryInverse) and never arrived: measured #FF00FF on the built
-            // screen, which is no colour this app owns. One line ends the chase.
+            snackbar.setActionTextColor(brandColor());
+        } else if (retry != null) {
+            snackbar.setAction(R.string.error_retry, v -> retry.run());
             snackbar.setActionTextColor(brandColor());
         }
         snackbar.show();
