@@ -62,7 +62,7 @@ android {
         }
     }
     base {
-        archivesName = "JustPlus.Player.v${defaultConfig.versionName}"
+        archivesName = "ARX.TPlayer.v${defaultConfig.versionName}"
     }
     buildTypes {
         release {
