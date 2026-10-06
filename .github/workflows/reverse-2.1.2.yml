@@ -134,10 +134,14 @@ jobs:
           mkdir -p reverse/2.1.2/resources/2.1.1 reverse/2.1.2/resources/2.1.2
           for v in 211 212; do
             out="reverse/2.1.2/resources/2.1.$([ "$v" = 211 ] && echo 1 || echo 2)"
-            for f in strings.xml arrays.xml preferences.xml player.xml activity_player.xml; do
+            for f in strings.xml arrays.xml preferences.xml root_preferences.xml player.xml activity_player.xml; do
               hit=$(find /tmp/jp/d$v/resources -type f -name "$f" | head -n1 || true)
               [ -z "$hit" ] || cp "$hit" "$out/$f"
             done
+            mkdir -p "$out/xml"
+            if [ -d /tmp/jp/d$v/resources/res/xml ]; then
+              cp -a /tmp/jp/d$v/resources/res/xml/. "$out/xml/" || true
+            fi
           done
 
           # Preserve the exact studio/alias dictionary used by 2.1.2. JADX may rename the raw
