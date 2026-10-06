@@ -18,9 +18,13 @@ final class PlaylistSessionJournal {
         long durationMs;
 
         Visit(int index, long positionMs, long durationMs) {
+            this(index, nowSec(), nowSec(), positionMs, durationMs);
+        }
+
+        Visit(int index, long startedAtSec, long endedAtSec, long positionMs, long durationMs) {
             this.index = index;
-            this.startedAtSec = nowSec();
-            this.endedAtSec = this.startedAtSec;
+            this.startedAtSec = startedAtSec;
+            this.endedAtSec = endedAtSec;
             this.positionMs = Math.max(0L, positionMs);
             this.durationMs = durationMs > 0 ? durationMs : -1L;
         }
@@ -73,6 +77,31 @@ final class PlaylistSessionJournal {
             out[i] = visits.get(i).bundle();
         }
         return out;
+    }
+
+    void restore(Bundle[] history) {
+        visits.clear();
+        if (history == null) {
+            return;
+        }
+        final int start = Math.max(0, history.length - MAX_VISITS);
+        for (int i = start; i < history.length; i++) {
+            final Bundle b = history[i];
+            if (b == null) {
+                continue;
+            }
+            final int index = b.getInt("index", -1);
+            if (index < 0) {
+                continue;
+            }
+            final long started = b.getLong("started_at", nowSec());
+            final long ended = b.getLong("ended_at", started);
+            final long position = b.containsKey("position_ms")
+                    ? b.getLong("position_ms") : Math.max(0L, b.getInt("position_sec", 0) * 1000L);
+            final long duration = b.containsKey("duration_ms")
+                    ? b.getLong("duration_ms") : b.getInt("duration_sec", -1) * 1000L;
+            visits.add(new Visit(index, started, ended, position, duration));
+        }
     }
 
     List<Visit> snapshot() {
