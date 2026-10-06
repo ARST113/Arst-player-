@@ -1,6 +1,7 @@
 package com.brouken.player;
 
 import android.app.Application;
+import android.content.SharedPreferences;
 import android.os.SystemClock;
 import android.preference.PreferenceManager;
 
@@ -49,6 +50,16 @@ public class App extends Application {
         // "a setting changed" and rebuilt the player - over a torrent server, a stream re-opened from
         // zero for a screen that was opened and closed. false: existing choices are never overwritten.
         androidx.preference.PreferenceManager.setDefaultValues(this, R.xml.root_preferences, false);
+        // Just+ 2.1.2 migrates the system frame-rate vote off by default on TV.
+        final SharedPreferences playerPrefs =
+                androidx.preference.PreferenceManager.getDefaultSharedPreferences(this);
+        if (!playerPrefs.getBoolean("allowSystemFrameRateTvDefault", false)) {
+            playerPrefs.edit()
+                    .putBoolean("allowSystemFrameRateTvDefault", true)
+                    .putBoolean("allowSystemFrameRate", !Utils.isTvBox(this)
+                            && playerPrefs.getBoolean("allowSystemFrameRate", true))
+                    .apply();
+        }
         initSentry();
         // Lets the skip-segment lookups honour the caching their sources ask for (see the method).
         SegmentFinder.setCacheDir(getCacheDir());
