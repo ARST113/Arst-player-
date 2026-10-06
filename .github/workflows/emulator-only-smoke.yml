@@ -1,0 +1,93 @@
+name: Emulator-only APK smoke
+
+on:
+  push:
+    branches:
+      - emulator-only-check-2026-10-06
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  emulator-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download already-built APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: just-plus-player-ci-smoke
+          path: /tmp/apk-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 37457436173
+
+      - name: Verify APK artifact
+        run: |
+          find /tmp/apk-artifact -type f -name '*.apk' -print
+          test -n "$(find /tmp/apk-artifact -type f -name '*.apk' | head -n 1)"
+
+      - name: Generate local HEVC smoke clip
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          mkdir -p /tmp/player-smoke
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i "testsrc=size=640x360:rate=24" \
+            -t 3 -an -c:v libx265 -preset ultrafast -pix_fmt yuv420p \
+            -tag:v hvc1 -movflags +faststart \
+            /tmp/player-smoke/hevc.mp4
+          test -s /tmp/player-smoke/hevc.mp4
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+
+      - name: Enable KVM acceleration
+        run: |
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
+
+      - name: Emulator smoke test on AOSP API 35
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -eux
+            test -n "$(find /tmp/apk-artifact -type f -name '*.apk' | head -n 1)"
+            adb install -r "$(find /tmp/apk-artifact -type f -name '*.apk' | head -n 1)"
+            adb logcat -c
+            adb shell am force-stop com.justplus.player
+            adb shell monkey -p com.justplus.player -c android.intent.category.LAUNCHER 1
+            sleep 8
+            adb shell pidof com.justplus.player
+            nohup python3 -m http.server 8765 --directory /tmp/player-smoke >/tmp/player-http.log 2>&1 &
+            sleep 2
+            adb logcat -c
+            adb shell am start -W -a android.intent.action.VIEW -d "http://10.0.2.2:8765/hevc.mp4" -t "video/mp4" -p com.justplus.player
+            sleep 12
+            adb shell pidof com.justplus.player
+            adb logcat -d > /tmp/player-logcat.txt
+            grep -q "GET /hevc.mp4" /tmp/player-http.log
+            ! grep -E "FATAL EXCEPTION|Process: com\.justplus\.player.*has died|AndroidRuntime.*com\.justplus\.player" /tmp/player-logcat.txt || { echo "Player crashed during emulator smoke test"; exit 1; }
+            grep -E "MediaCodec|VideoRenderer|PlayerActivity|ExoPlayer" /tmp/player-logcat.txt >/dev/null || echo "Warning: playback request succeeded, but codec markers were not present in logcat."
+
+      - name: Upload smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-smoke-logs
+          if-no-files-found: warn
+          path: |
+            /tmp/player-logcat.txt
+            /tmp/player-http.log
