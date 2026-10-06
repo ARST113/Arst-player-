@@ -199,6 +199,14 @@
             app:title="@string/pref_video_header">
 
             <ListPreference
+                app:key="resumeMode"
+                app:defaultValue="askOpen"
+                app:entries="@array/resume_mode_entries"
+                app:entryValues="@array/resume_mode_values"
+                app:title="@string/pref_resume_mode"
+                app:useSimpleSummaryProvider="true" />
+
+            <ListPreference
                 app:key="screenOrientation"
                 app:defaultValue="0"
                 app:entries="@array/screen_orientation_entries"
@@ -221,6 +229,13 @@
                 app:summaryOff="@string/pref_auto_pip_off"
                 app:title="@string/pref_auto_pip" />
 
+            <SwitchPreferenceCompat
+                app:key="askStillWatching"
+                app:defaultValue="false"
+                app:summaryOn="@string/pref_still_watching_on"
+                app:summaryOff="@string/pref_still_watching_off"
+                app:title="@string/pref_still_watching" />
+
             <!-- All three ask the display for something, so they stand together: the group is what
                  says the resolution row belongs to the rate above it, which its title had been
                  carrying on its own with an "and" that leaned on the row before it. -->
@@ -241,6 +256,29 @@
                     app:summaryOn="@string/pref_resolution_matching_on"
                     app:summaryOff="@string/pref_resolution_matching_off"
                     app:title="@string/pref_resolution_matching" />
+
+                <SwitchPreferenceCompat
+                    app:key="frameRateCorrection"
+                    app:defaultValue="false"
+                    app:dependency="frameRateMatching"
+                    app:summary="@string/pref_framerate_correction_summary"
+                    app:title="@string/pref_framerate_correction" />
+
+                <SwitchPreferenceCompat
+                    app:key="frameRateDoubling"
+                    app:defaultValue="false"
+                    app:dependency="frameRateMatching"
+                    app:summary="@string/pref_framerate_doubling_summary"
+                    app:title="@string/pref_framerate_doubling" />
+
+                <ListPreference
+                    app:key="modeSwitchPauseMs"
+                    app:defaultValue="0"
+                    app:dependency="frameRateMatching"
+                    app:entries="@array/mode_switch_pause_entries"
+                    app:entryValues="@array/mode_switch_pause_values"
+                    app:title="@string/pref_mode_switch_pause"
+                    app:useSimpleSummaryProvider="true" />
 
                 <SwitchPreferenceCompat
                     app:key="allowSystemFrameRate"
