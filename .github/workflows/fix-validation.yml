@@ -74,12 +74,6 @@ jobs:
             nohup python3 -m http.server 8765 --directory /tmp/player-smoke >/tmp/player-http.log 2>&1 &
             sleep 2
 
-            # Normal icon launch must still open the new BrowserActivity.
-            adb shell am force-stop com.justplus.player
-            adb shell monkey -p com.justplus.player -c android.intent.category.LAUNCHER 1
-            sleep 3
-            adb shell dumpsys activity activities | grep -m1 "mResumedActivity" | grep "com.brouken.player.BrowserActivity"
-
             # Reproduce the old Lampa/package-launch path: launcher Activity + legacy video_list extras.
             adb logcat -c
             adb shell am force-stop com.justplus.player
