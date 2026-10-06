@@ -5917,6 +5917,19 @@ public class PlayerActivity extends Activity {
         result.putParcelableArray("history", nestedJournal.bundles());
         result.putString("end_by", endBy);
 
+        if (index >= 0) {
+            putNestedTrackResult(result, "audio",
+                    nestedAudioResults != null && index < nestedAudioResults.length
+                            ? nestedAudioResults[index] : null,
+                    nestedAudioChosenBy != null && index < nestedAudioChosenBy.length
+                            ? nestedAudioChosenBy[index] : null);
+            putNestedTrackResult(result, "subtitle",
+                    nestedSubtitleResults != null && index < nestedSubtitleResults.length
+                            ? nestedSubtitleResults[index] : null,
+                    nestedSubtitleChosenBy != null && index < nestedSubtitleChosenBy.length
+                            ? nestedSubtitleChosenBy[index] : null);
+        }
+
         if (nestedPlaylistModel != null && index >= 0 && index < nestedPlaylistModel.items.size()) {
             final String voice = nestedPlaylistModel.items.get(index).voiceLabel();
             if (voice != null) {
@@ -5936,6 +5949,24 @@ public class PlayerActivity extends Activity {
             }
         }
         return result;
+    }
+
+    private static void putNestedTrackResult(final Bundle result, final String prefix,
+                                             @Nullable final TrackResult track,
+                                             @Nullable final String chosenBy) {
+        if (chosenBy != null) {
+            result.putString(prefix + "_chosen_by", chosenBy);
+        }
+        if (track == null) {
+            return;
+        }
+        result.putString(prefix + "_language", track.language);
+        result.putString(prefix + "_label", track.label);
+        result.putInt(prefix + "_index", track.index);
+        if (track.language != null && track.ordinal >= 0 && track.count >= 0) {
+            result.putInt(prefix + "_language_ordinal", track.ordinal);
+            result.putInt(prefix + "_language_count", track.count);
+        }
     }
 
     private void touchNestedJournal() {
@@ -8782,7 +8813,10 @@ public class PlayerActivity extends Activity {
                 continue;
             }
             items.add(new Dialogs.MenuItem(choice.label, choice.detail, choice.selected,
-                    () -> applyAudio(choice)));
+                    () -> {
+                        rememberNestedViewerAudio(choice);
+                        applyAudio(choice);
+                    }));
             if (choice.selected) {
                 selectedLanguage = choice.language;
             }
@@ -8800,6 +8834,72 @@ public class PlayerActivity extends Activity {
                     null, false, () -> preferAudioLanguage(language)));
         }
         Dialogs.menu(this, ui, () -> showPickerDialog(Dialogs.openMenu()), getString(R.string.audio_title), items);
+    }
+
+    private void rememberNestedViewerAudio(final AudioChoice choice) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null || choice == null) {
+            return;
+        }
+        final List<TrackCandidate> candidates =
+                nestedTrackCandidates(player.getCurrentTracks(), C.TRACK_TYPE_AUDIO);
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.group == choice.group && candidate.trackIndex == choice.trackIndex) {
+                final TrackResult result = nestedTrackResult(candidates, candidate);
+                nestedViewerAudioLabel = result.label;
+                nestedViewerAudioLanguage = candidate.language;
+                nestedViewerAudioOrdinal = result.ordinal;
+                nestedViewerAudioCount = result.count;
+                final int item = player.getCurrentMediaItemIndex();
+                if (nestedAudioResults != null && item >= 0 && item < nestedAudioResults.length) {
+                    nestedAudioChoiceDone[item] = true;
+                    nestedAudioChosenBy[item] = "viewer";
+                    nestedAudioResults[item] = result;
+                }
+                return;
+            }
+        }
+    }
+
+    private void rememberNestedViewerSubtitle(final TrackGroup group, final int trackIndex) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null || group == null) {
+            return;
+        }
+        final List<TrackCandidate> candidates =
+                nestedTrackCandidates(player.getCurrentTracks(), C.TRACK_TYPE_TEXT);
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.group == group && candidate.trackIndex == trackIndex) {
+                final TrackResult result = nestedTrackResult(candidates, candidate);
+                nestedViewerSubtitleOff = false;
+                nestedViewerSubtitleLabel = result.label;
+                nestedViewerSubtitleLanguage = candidate.language;
+                nestedViewerSubtitleOrdinal = result.ordinal;
+                nestedViewerSubtitleCount = result.count;
+                final int item = player.getCurrentMediaItemIndex();
+                if (nestedSubtitleResults != null && item >= 0 && item < nestedSubtitleResults.length) {
+                    nestedSubtitleChoiceDone[item] = true;
+                    nestedSubtitleChosenBy[item] = "viewer";
+                    nestedSubtitleResults[item] = result;
+                }
+                return;
+            }
+        }
+    }
+
+    private void rememberNestedViewerSubtitleOff() {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null) {
+            return;
+        }
+        nestedViewerSubtitleOff = true;
+        nestedViewerSubtitleLabel = null;
+        nestedViewerSubtitleLanguage = null;
+        nestedViewerSubtitleOrdinal = -1;
+        nestedViewerSubtitleCount = -1;
+        final int item = player.getCurrentMediaItemIndex();
+        if (nestedSubtitleResults != null && item >= 0 && item < nestedSubtitleResults.length) {
+            nestedSubtitleChoiceDone[item] = true;
+            nestedSubtitleChosenBy[item] = "viewer";
+            nestedSubtitleResults[item] = TrackResult.off();
+        }
     }
 
     /**
@@ -8855,6 +8955,53 @@ public class PlayerActivity extends Activity {
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .setPreferredTextLanguages(languages.toArray(new String[0]))
         );
+    }
+
+    private PlaylistApi.TrackRequest nestedEffectiveTrackRequest(final boolean subtitle) {
+        if (nestedPlaylistModel == null || nestedPlaylistModel.items.isEmpty()) {
+            return null;
+        }
+        int index = apiPlaylistStartIndex;
+        if (player != null) {
+            index = player.getCurrentMediaItemIndex();
+        }
+        if (index < 0 || index >= nestedPlaylistModel.items.size()) {
+            index = nestedPlaylistModel.startIndex;
+        }
+        final PlaylistApi.TrackRequest item = subtitle
+                ? nestedPlaylistModel.items.get(index).subtitle
+                : nestedPlaylistModel.items.get(index).audio;
+        final PlaylistApi.TrackRequest root = subtitle
+                ? nestedPlaylistModel.subtitle : nestedPlaylistModel.audio;
+        return item != null && item.languages != null ? item : root;
+    }
+
+    private void applyNestedInitialAudioLanguages() {
+        if (trackSelector == null || !nestedPlaylistSession) {
+            return;
+        }
+        final PlaylistApi.TrackRequest request = nestedEffectiveTrackRequest(false);
+        if (request == null || request.languages == null || request.languages.length == 0) {
+            return;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setPreferredAudioLanguages(request.languages));
+    }
+
+    private void applyNestedInitialTextLanguages() {
+        if (trackSelector == null || !nestedPlaylistSession) {
+            return;
+        }
+        final PlaylistApi.TrackRequest request = nestedEffectiveTrackRequest(true);
+        if (request == null || request.languages == null) {
+            return;
+        }
+        if (request.languages.length == 0 || request.off()) {
+            mainLineOff = true;
+            return;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setPreferredTextLanguages(request.languages));
     }
 
     /**
@@ -9612,7 +9759,10 @@ public class PlayerActivity extends Activity {
             items.add(Dialogs.MenuItem.caption(getString(R.string.subtitle_main_title)));
         }
         items.add(new Dialogs.MenuItem(getString(R.string.subtitle_off), null, !textEnabled && !painting,
-                this::disableSubtitles));
+                () -> {
+                    rememberNestedViewerSubtitleOff();
+                    disableSubtitles();
+                }));
         if (fileOnly != null) {
             // addSubtitleTrack rather than paintSubtitle: it carries the already-on-screen guard, so
             // tapping the ticked row costs nothing and tapping it after "off" puts the subtitle back.
@@ -9646,7 +9796,10 @@ public class PlayerActivity extends Activity {
                 // (SubtitleOffset drops the renderer's cues), and two ticked rows is a lie.
                 items.add(new Dialogs.MenuItem(text[0], text[1],
                         textEnabled && !painting && group.isTrackSelected(i),
-                        () -> applySubtitle(trackGroup, index)));
+                        () -> {
+                            rememberNestedViewerSubtitle(trackGroup, index);
+                            applySubtitle(trackGroup, index);
+                        }));
             }
         }
         // Last, and with no tick: it is an action rather than a track, so it sits under a rule of its
@@ -12948,6 +13101,7 @@ public class PlayerActivity extends Activity {
         // Ordered fallback chain: the selector walks the list and takes the first language the media
         // actually carries. An empty list leaves the media's own order alone.
         applyPreferredAudioLanguages();
+        applyNestedInitialAudioLanguages();
         // A subtitle nobody asked for is in the way, so the file marking one as default is not enough
         // on its own: subtitles come on when the preferred-language list below matches, or by hand.
         // This used to depend on the system captioning toggle, which is no longer read anywhere.
@@ -12955,6 +13109,7 @@ public class PlayerActivity extends Activity {
                 .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
         );
         applyPreferredTextLanguages();
+        applyNestedInitialTextLanguages();
         // Set rather than left to the default so Dv7Converter can hand the very same instance to the
         // Matroska extractor it re-creates — subtitle parsing is a constructor argument there, and
         // matching it by construction beats matching Media3's defaults from memory.
