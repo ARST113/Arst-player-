@@ -70,41 +70,22 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: |
             set -eux
-
-            APK="$(find app/build/outputs/apk/latestUniversal/debug -name '*.apk' | head -n 1)"
-            test -n "$APK"
-            adb install -r "$APK"
-
+            test -n "$(find app/build/outputs/apk/latestUniversal/debug -name '*.apk' | head -n 1)"
+            adb install -r "$(find app/build/outputs/apk/latestUniversal/debug -name '*.apk' | head -n 1)"
             adb logcat -c
             adb shell am force-stop com.justplus.player
             adb shell monkey -p com.justplus.player -c android.intent.category.LAUNCHER 1
             sleep 8
             adb shell pidof com.justplus.player
-
-            python3 -m http.server 8765 --directory /tmp/player-smoke >/tmp/player-http.log 2>&1 &
-            SERVER_PID=$!
-            trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+            nohup python3 -m http.server 8765 --directory /tmp/player-smoke >/tmp/player-http.log 2>&1 &
             sleep 2
-
             adb logcat -c
-            adb shell am start -W \
-              -a android.intent.action.VIEW \
-              -d "http://10.0.2.2:8765/hevc.mp4" \
-              -t "video/mp4" \
-              com.justplus.player
+            adb shell am start -W -a android.intent.action.VIEW -d "http://10.0.2.2:8765/hevc.mp4" -t "video/mp4" -p com.justplus.player
             sleep 12
-
             adb shell pidof com.justplus.player
             adb logcat -d > /tmp/player-logcat.txt
-
-            if grep -E "FATAL EXCEPTION|Process: com\.justplus\.player.*has died|AndroidRuntime.*com\.justplus\.player" /tmp/player-logcat.txt; then
-              echo "Player crashed during emulator smoke test"
-              exit 1
-            fi
-
-            if ! grep -E "MediaCodec|VideoRenderer|PlayerActivity|ExoPlayer" /tmp/player-logcat.txt >/dev/null; then
-              echo "Warning: no codec/player markers found in logcat; startup survived but playback evidence is limited."
-            fi
+            ! grep -E "FATAL EXCEPTION|Process: com\.justplus\.player.*has died|AndroidRuntime.*com\.justplus\.player" /tmp/player-logcat.txt || { echo "Player crashed during emulator smoke test"; exit 1; }
+            grep -E "MediaCodec|VideoRenderer|PlayerActivity|ExoPlayer" /tmp/player-logcat.txt >/dev/null || echo "Warning: no codec/player markers found in logcat; startup survived but playback evidence is limited."
 
       - name: Upload APK and smoke logs
         if: always()
