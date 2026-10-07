@@ -11,6 +11,9 @@ mkdir -p "$OUT"
 # install can capture the system cling instead of the player chrome and make the visual
 # comparison nondeterministic.
 adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+# The published reference screenshot uses the resolved light player chrome. Both clean
+# installs default to themeMode=system, so pin the emulator itself to light for a fair comparison.
+adb shell cmd uimode night no >/dev/null 2>&1 || true
 
 open_and_capture() {
   local name="$1"
@@ -34,13 +37,48 @@ open_and_capture() {
     sleep 2
   done
 
-  # Let the frame settle, then explicitly show controller chrome from the centre of the
-  # fixed Pixel 6 landscape emulator (2400x1080). The previous lower-left tap could land
-  # in the gesture/navigation area and occasionally leave the official APK controller hidden.
-  sleep 2
-  adb shell input tap 1200 540 || true
+  # Controller visibility is a toggle. On a fresh install it is not deterministic whether it
+  # is still visible by the time playback becomes ready, so a blind tap can either show OR hide it.
+  # Capture both toggle states (and the initial state), then choose the frame containing the largest
+  # light neutral plate in the bottom third. System light mode is pinned above, so this is deterministic.
   sleep 1
-  adb exec-out screencap -p > "$OUT/$name.png"
+  adb exec-out screencap -p > "$OUT/$name-before.png"
+  adb shell input tap 1200 540 || true
+  sleep 0.7
+  adb exec-out screencap -p > "$OUT/$name-after1.png"
+  adb shell input tap 1200 540 || true
+  sleep 0.7
+  adb exec-out screencap -p > "$OUT/$name-after2.png"
+
+  NAME="$name" python3 - <<'PY'
+import os
+from pathlib import Path
+from PIL import Image
+
+out = Path("ui-reference")
+name = os.environ["NAME"]
+candidates = [out/f"{name}-before.png", out/f"{name}-after1.png", out/f"{name}-after2.png"]
+
+def plate_score(path):
+    im = Image.open(path).convert("RGB")
+    w, h = im.size
+    # Released light chrome is a large near-neutral bright plate near the bottom.
+    # Count only that region so bright video frames do not win accidentally.
+    crop = im.crop((0, int(h * 0.62), w, h))
+    px = crop.load()
+    score = 0
+    for y in range(crop.height):
+        for x in range(crop.width):
+            r, g, b = px[x, y]
+            if (r + g + b) >= 570 and max(r, g, b) - min(r, g, b) <= 36:
+                score += 1
+    return score
+
+best = max(candidates, key=plate_score)
+Image.open(best).save(out/f"{name}.png")
+print(name, "controller candidate", best.name, "score", plate_score(best))
+PY
+
   adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
   adb pull /sdcard/window.xml "$OUT/$name-window.xml" >/dev/null 2>&1 || true
   adb shell dumpsys activity activities > "$OUT/$name-activity.txt" || true
