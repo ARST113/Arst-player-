@@ -24,7 +24,7 @@ def say(line=""):
     lines.append(line)
 
 
-PAIRS = ("static", "playlist", "quality")
+PAIRS = ("static", "playlist", "quality", "dark")
 
 # The status bar, the clock, the position readout and the scrubber carry the moment the capture was
 # taken, not the chrome; the rail band is masked because how much of it is coral follows the playback
@@ -80,7 +80,9 @@ def describe(name, im):
     ys, xs = np.nonzero(red[790:880, 300:450])
     say(f"  scrubber: {'%dx%d' % (xs.max()-xs.min()+1, ys.max()-ys.min()+1) if len(xs) else 'none'}")
     ys, xs = np.nonzero(red[400:700, 1000:1400])
-    say(f"  hero glyph: {'%dx%d' % (xs.max()-xs.min()+1, ys.max()-ys.min()+1) if len(xs) else 'none'}")
+    # The box says nothing about whether the transport is showing play or pause; the count does, and a
+    # capture pair that disagrees on it is a state split, not a layout one.
+    say(f"  hero glyph: {'%dx%d n=%d' % (xs.max()-xs.min()+1, ys.max()-ys.min()+1, len(xs)) if len(xs) else 'none'}")
 
     plate = (r > 200) & (np.maximum(np.maximum(r, g), b) - np.minimum(np.minimum(r, g), b) <= 12)
     plate[: int(im.shape[0] * 0.6)] = False

@@ -63,9 +63,15 @@ import os
 from pathlib import Path
 from PIL import Image
 
+try:
+    import numpy as np
+except ImportError:  # the workflow installs it; the loop below is the fallback
+    np = None
+
 out = Path("ui-reference")
 name = os.environ["NAME"]
 candidates = [out/f"{name}-before.png", out/f"{name}-after1.png", out/f"{name}-after2.png"]
+
 
 def plate_score(path):
     im = Image.open(path).convert("RGB")
@@ -73,6 +79,10 @@ def plate_score(path):
     # Released light chrome is a large near-neutral bright plate near the bottom.
     # Count only that region so bright video frames do not win accidentally.
     crop = im.crop((0, int(h * 0.62), w, h))
+    if np is not None:
+        a = np.asarray(crop).astype(int)
+        neutral = (a.max(axis=2) - a.min(axis=2)) <= 36
+        return int((neutral & (a.sum(axis=2) >= 570)).sum())
     px = crop.load()
     score = 0
     for y in range(crop.height):
@@ -81,6 +91,7 @@ def plate_score(path):
             if (r + g + b) >= 570 and max(r, g, b) - min(r, g, b) <= 36:
                 score += 1
     return score
+
 
 best = max(candidates, key=plate_score)
 Image.open(best).save(out/f"{name}.png")
@@ -177,6 +188,17 @@ if prepare_static_fixture; then
   run_bounded 300 open_and_capture arx-quality "$ARX_APK" "$STATIC_URL" video/mp4 \
     --esa quality_levels "1080p,720p" --esa quality_urls "$STATIC_URL,$STATIC_URL" \
     || echo "quality: the ARX capture did not finish in time"
+  # The released chrome resolves with the appearance, and its palette has a branch per mode: the light
+  # passes above are pinned, and the rail's tone is exactly what a wrong branch gets wrong. Ask the
+  # emulator for a dark system and take the plain launch once more.
+  echo "capturing the dark appearance"
+  adb shell cmd uimode night yes >/dev/null 2>&1 || true
+  sleep 2
+  run_bounded 300 open_and_capture official-dark /tmp/JustPlus.Player.v2.1.3.apk "$STATIC_URL" video/mp4 \
+    || echo "dark: the published capture did not finish in time"
+  run_bounded 300 open_and_capture arx-dark "$ARX_APK" "$STATIC_URL" video/mp4 \
+    || echo "dark: the ARX capture did not finish in time"
+  adb shell cmd uimode night no >/dev/null 2>&1 || true
 else
   echo "no static fixture on this runner, chrome report will be skipped"
 fi
@@ -216,4 +238,5 @@ side_by_side("official.png", "arx.png", "official-vs-arx.png")
 side_by_side("official-static.png", "arx-static.png", "official-vs-arx-static.png")
 side_by_side("official-playlist.png", "arx-playlist.png", "official-vs-arx-playlist.png")
 side_by_side("official-quality.png", "arx-quality.png", "official-vs-arx-quality.png")
+side_by_side("official-dark.png", "arx-dark.png", "official-vs-arx-dark.png")
 PY
