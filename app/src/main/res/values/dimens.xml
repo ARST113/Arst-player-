@@ -7,9 +7,17 @@
     <dimen name="exo_icon_size" tools:keep="@dimen/exo_icon_size">90dp</dimen>
     <dimen name="controls_padding">170sp</dimen>
 
-    <dimen name="exo_styled_progress_enabled_thumb_size" tools:keep="@dimen/exo_styled_progress_enabled_thumb_size">12dp</dimen>
-    <dimen name="exo_styled_progress_dragged_thumb_size" tools:keep="@dimen/exo_styled_progress_dragged_thumb_size">18dp</dimen>
+    <!-- The timeline's own measurements, read out of the published APK's resource table
+         (aapt2 dump resources on JustPlus.Player.v2.1.3.apk) rather than taken from Media3's
+         defaults: the released bar is 6dp of rail under a 16dp scrubber, which is what the plate's
+         seek row is drawn around. Same numbers, same plate. -->
+    <dimen name="exo_styled_progress_bar_height" tools:keep="@dimen/exo_styled_progress_bar_height">6dp</dimen>
+    <dimen name="exo_styled_progress_enabled_thumb_size" tools:keep="@dimen/exo_styled_progress_enabled_thumb_size">16dp</dimen>
+    <dimen name="exo_styled_progress_dragged_thumb_size" tools:keep="@dimen/exo_styled_progress_dragged_thumb_size">22dp</dimen>
+    <dimen name="exo_styled_progress_touch_target_height" tools:keep="@dimen/exo_styled_progress_touch_target_height">48dp</dimen>
     <dimen name="exo_styled_progress_margin_bottom" tools:keep="@dimen/exo_styled_progress_margin_bottom">51dp</dimen>
+    <!-- The header's own bottom padding, which the released build also reads from this resource. -->
+    <dimen name="exo_styled_bottom_bar_time_padding" tools:keep="@dimen/exo_styled_bottom_bar_time_padding">10dp</dimen>
 
     <dimen name="marker_width">3dp</dimen>
 
