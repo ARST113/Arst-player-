@@ -1,4 +1,5 @@
 name: Extract official 2.1.3 player UI
+# Triggered by changes to this extractor only.
 
 on:
   push:
