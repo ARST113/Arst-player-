@@ -166,7 +166,23 @@
         <item>every</item>
         <item>off</item>
     </array>
-<array name="resume_mode_entries">
+    <array name="mode_switch_pause_entries">
+        <item>0</item>
+        <item>0.5</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>5</item>
+    </array>
+    <array name="mode_switch_pause_values">
+        <item>0</item>
+        <item>500</item>
+        <item>1000</item>
+        <item>2000</item>
+        <item>3000</item>
+        <item>5000</item>
+    </array>
+    <array name="resume_mode_entries">
         <item>@string/pref_resume_ask_open</item>
         <item>@string/pref_resume_ask_every</item>
         <item>@string/pref_resume_always</item>
