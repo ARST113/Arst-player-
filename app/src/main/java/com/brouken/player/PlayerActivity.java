@@ -53,6 +53,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
+import android.os.Parcel;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.provider.DocumentsContract;
@@ -1060,6 +1061,7 @@ public class PlayerActivity extends Activity {
     static final String API_THUMBNAIL = "thumbnail";
     static final String API_SEGMENTS = "segments";
     static final String API_HEADERS = "headers";
+    static final String API_NESTED_PLAYLIST = "playlist";
     static final String API_VIDEO_LIST = "video_list";
     static final String API_VIDEO_LIST_NAME = "video_list.name";
     static final String API_VIDEO_LIST_FILENAME = "video_list.filename";
@@ -1091,6 +1093,33 @@ public class PlayerActivity extends Activity {
     Uri apiThumbnailUri;
     String apiSegments;
     String[] apiHeaders;
+    // Native Just+ 2.1.2 playlist session. The official APK reads one nested "playlist" Bundle
+    // directly instead of rewriting it into the legacy video_list contract.
+    boolean nestedPlaylistSession;
+    PendingIntent nestedResultCallback;
+    long nestedReportIntervalMs;
+    String nestedResumeMode;
+    PlaylistApi.Playlist nestedPlaylistModel;
+    String nestedPlaylistError;
+    String nestedViewerVoiceLabel;
+    PlaylistTrackMatcher nestedTrackMatcher;
+    boolean[] nestedAudioChoiceDone;
+    boolean[] nestedSubtitleChoiceDone;
+    String[] nestedAudioChosenBy;
+    String[] nestedSubtitleChosenBy;
+    TrackResult[] nestedAudioResults;
+    TrackResult[] nestedSubtitleResults;
+    String nestedViewerAudioLabel;
+    String nestedViewerAudioLanguage;
+    int nestedViewerAudioOrdinal = -1;
+    int nestedViewerAudioCount = -1;
+    String nestedViewerSubtitleLabel;
+    String nestedViewerSubtitleLanguage;
+    int nestedViewerSubtitleOrdinal = -1;
+    int nestedViewerSubtitleCount = -1;
+    boolean nestedViewerSubtitleOff;
+    final PlaylistSessionJournal nestedJournal = new PlaylistSessionJournal();
+    byte[] nestedLastCallbackPayload;
     final List<MediaItem> apiMediaItems = new ArrayList<>();
     final List<String> apiPlaylistSegments = new ArrayList<>();
     int apiPlaylistStartIndex;
@@ -1607,7 +1636,7 @@ public class PlayerActivity extends Activity {
                     focusPlay = true;
                 }
             }
-        } else if (launchIntent.getData() != null) {
+        } else if (launchIntent.getData() != null || launchIntent.hasExtra(API_NESTED_PLAYLIST)) {
             handleViewIntent(launchIntent);
         } else if (inheritedIntent != null && inheritedIntent.getData() != null) {
             // The icon was tapped while a session was playing. The screen that owned it cannot be brought
@@ -2963,6 +2992,12 @@ public class PlayerActivity extends Activity {
         super.onStop();
         alive = false;
         Utils.log("onStop" + (isFinishing() ? ", finishing" : ""));
+        if (nestedPlaylistSession && !isChangingConfigurations()) {
+            touchNestedJournal();
+            sendNestedPlaylistCallback(buildNestedPlaylistResult(
+                    nestedPlaylistError != null ? "error" : (playbackFinished ? "completion" : "user")));
+        }
+        cancelNestedReportTimer();
         if (Build.VERSION.SDK_INT >= 31) {
             playerView.removeCallbacks(barsHider);
         }
@@ -3052,6 +3087,7 @@ public class PlayerActivity extends Activity {
      */
     @Override
     protected void onDestroy() {
+        cancelNestedReportTimer();
         if (!handedOver) {
             releasePlayer(false);
         }
@@ -3272,7 +3308,17 @@ public class PlayerActivity extends Activity {
 
     @Override
     public void finish() {
-        if (intentReturnResult) {
+        if (nestedPlaylistSession) {
+            final Bundle result = buildNestedPlaylistResult(playbackFinished ? "completion" : "user");
+            final Intent intent = new Intent(getPackageName() + ".result");
+            intent.putExtras(result);
+            final String uriText = result.getString("uri");
+            if (uriText != null && !uriText.isEmpty()) {
+                intent.setData(Uri.parse(uriText));
+            }
+            setResult(Activity.RESULT_OK, intent);
+            sendNestedPlaylistCallback(result);
+        } else if (intentReturnResult) {
             Intent intent = new Intent("com.mxtech.intent.result.VIEW");
             // Report which item finished so the launcher can attribute the position to the
             // correct playlist entry (and mark preceding ones watched), not just the launched one.
@@ -3320,13 +3366,34 @@ public class PlayerActivity extends Activity {
     // activity, and its extras have to replace the previous ones instead of being ignored.
     void handleViewIntent(Intent intent) {
         resetApiAccess();
-        final Uri uri = intent.getData();
-        final String type = intent.getType();
+
+        Uri uri = intent.getData();
+        String type = intent.getType();
+        final Bundle bundle = intent.getExtras();
+        final Bundle nestedPlaylist = bundle == null ? null : bundle.getBundle(API_NESTED_PLAYLIST);
+
+        if (nestedPlaylist != null) {
+            final Uri nestedStart = parseNestedPlaylist(nestedPlaylist);
+            if (nestedStart != null) {
+                uri = nestedStart;
+                type = "video/*";
+                // Keep getIntent()/diagnostics aligned with what the nested contract actually starts.
+                intent.setDataAndType(uri, type);
+            } else {
+                Utils.log("playlist refused: invalid nested playlist");
+                if (nestedPlaylistSession && nestedPlaylistError != null) {
+                    // A malformed 2.1.2 request is a completed API session, not a legacy launch.
+                    // finish() builds the documented error snapshot and sends the callback.
+                    finish();
+                    return;
+                }
+            }
+        }
+
         if (SubtitleUtils.isSubtitle(uri, type)) {
             handleSubtitles(uri);
         } else {
-            Bundle bundle = intent.getExtras();
-            if (bundle != null) {
+            if (!nestedPlaylistSession && bundle != null) {
                 apiAccess = bundle.containsKey(API_POSITION) || bundle.containsKey(API_RETURN_RESULT)
                         || bundle.containsKey(API_SUBS) || bundle.containsKey(API_SUBS_ENABLE)
                         || bundle.containsKey(API_VIDEO_LIST) || bundle.containsKey(API_QUALITY_LEVELS);
@@ -3358,9 +3425,11 @@ public class PlayerActivity extends Activity {
                 }
             }
 
-            mPrefs.updateMedia(this, uri, type);
+            if (uri != null) {
+                mPrefs.updateMedia(this, uri, type);
+            }
 
-            if (bundle != null) {
+            if (!nestedPlaylistSession && bundle != null) {
                 Uri defaultSub = null;
                 Parcelable[] subsEnable = bundle.getParcelableArray(API_SUBS_ENABLE);
                 if (subsEnable != null && subsEnable.length > 0) {
@@ -3385,9 +3454,18 @@ public class PlayerActivity extends Activity {
                 searchSubtitles();
             }
 
-            if (bundle != null) {
+            if (nestedPlaylistSession) {
+                long startPosition = savedPlaylistPosition(apiPlaylistStartIndex);
+                if ("never".equals(nestedResumeMode)
+                        && (apiPlaylistPositions == null
+                        || apiPlaylistStartIndex < 0
+                        || apiPlaylistStartIndex >= apiPlaylistPositions.length
+                        || apiPlaylistPositions[apiPlaylistStartIndex] == C.TIME_UNSET)) {
+                    startPosition = 0L;
+                }
+                mPrefs.updatePosition(startPosition == C.TIME_UNSET ? 0L : startPosition);
+            } else if (bundle != null) {
                 intentReturnResult = bundle.getBoolean(API_RETURN_RESULT);
-
                 if (bundle.containsKey(API_POSITION)) {
                     mPrefs.updatePosition((long) bundle.getInt(API_POSITION));
                 }
@@ -3411,7 +3489,8 @@ public class PlayerActivity extends Activity {
 
             if (handleRoomIntent(intent)) {
                 // An invite link carries only a room code; what to play arrives over its channel.
-            } else if (Intent.ACTION_VIEW.equals(action) && uri != null) {
+            } else if (Intent.ACTION_VIEW.equals(action)
+                    && (uri != null || intent.hasExtra(API_NESTED_PLAYLIST))) {
                 // Keep getIntent() pointing at what is actually playing (used by the intent report).
                 setIntent(intent);
                 handleViewIntent(intent);
@@ -4114,6 +4193,31 @@ public class PlayerActivity extends Activity {
         apiThumbnailUri = null;
         apiSegments = null;
         apiHeaders = null;
+        nestedPlaylistSession = false;
+        nestedResultCallback = null;
+        nestedReportIntervalMs = 0L;
+        nestedResumeMode = null;
+        nestedPlaylistModel = null;
+        nestedPlaylistError = null;
+        nestedViewerVoiceLabel = null;
+        nestedAudioChoiceDone = null;
+        nestedSubtitleChoiceDone = null;
+        nestedAudioChosenBy = null;
+        nestedSubtitleChosenBy = null;
+        nestedAudioResults = null;
+        nestedSubtitleResults = null;
+        nestedViewerAudioLabel = null;
+        nestedViewerAudioLanguage = null;
+        nestedViewerAudioOrdinal = -1;
+        nestedViewerAudioCount = -1;
+        nestedViewerSubtitleLabel = null;
+        nestedViewerSubtitleLanguage = null;
+        nestedViewerSubtitleOrdinal = -1;
+        nestedViewerSubtitleCount = -1;
+        nestedViewerSubtitleOff = false;
+        nestedJournal.clear();
+        nestedLastCallbackPayload = null;
+        cancelNestedReportTimer();
         apiMediaItems.clear();
         apiPlaylistSegments.clear();
         apiPlaylistStartIndex = 0;
@@ -5376,6 +5480,561 @@ public class PlayerActivity extends Activity {
     private void stopSkipPolling() {
         if (playerView != null) {
             playerView.removeCallbacks(skipRunnable);
+        }
+    }
+
+    /**
+     * Native parser for the Just+ Player 2.1.1 nested playlist contract.
+     *
+     * <p>This mirrors the official APK's structure: the root playlist Bundle is parsed directly into
+     * the player's in-memory API playlist. It is deliberately not translated into video_list extras.
+     * The legacy flat parser below remains available for older launchers.
+     */
+    @Nullable
+    private Uri parseNestedPlaylist(final Bundle playlist) {
+        final PlaylistApi.Parsed parsed = PlaylistApi.parse(playlist);
+        if (!parsed.ok()) {
+            // Official 2.1.2 treats a structurally bad playlist as a real API session that failed,
+            // rather than falling through to the legacy flat intent parser.
+            nestedPlaylistSession = true;
+            apiAccess = true;
+            mPrefs.setPersistent(false);
+            nestedPlaylistError = parsed.error;
+            final Object callback = playlist == null ? null : playlist.get("result_callback");
+            nestedResultCallback = callback instanceof PendingIntent ? (PendingIntent) callback : null;
+            Utils.log("playlist refused: " + nestedPlaylistError);
+            return null;
+        }
+
+        final PlaylistApi.Playlist model = parsed.playlist;
+        nestedPlaylistSession = true;
+        apiAccess = true;
+        mPrefs.setPersistent(false);
+        nestedPlaylistModel = model;
+        nestedPlaylistError = null;
+
+        apiTitle = Utils.unescapeHtml(model.title);
+        apiHeaders = mergedHeaders(model.headers, model.items.get(model.startIndex).headers);
+        nestedResultCallback = model.resultCallback instanceof PendingIntent
+                ? (PendingIntent) model.resultCallback : null;
+        nestedReportIntervalMs = model.reportIntervalMs;
+        nestedResumeMode = model.resumeMode;
+
+        apiMediaItems.clear();
+        apiPlaylistSegments.clear();
+        apiPlaylistSeasons.clear();
+        apiPlaylistEpisodes.clear();
+        apiPlaylistNames.clear();
+        apiPlaylistImdbIds.clear();
+        apiPlaylistTmdbIds.clear();
+        apiPlaylistQuality.clear();
+
+        apiPlaylistStartIndex = model.startIndex;
+        apiExtrasIndex = model.startIndex;
+        apiPlaylistPositions = new long[model.items.size()];
+        Arrays.fill(apiPlaylistPositions, C.TIME_UNSET);
+        nestedAudioChoiceDone = new boolean[model.items.size()];
+        nestedSubtitleChoiceDone = new boolean[model.items.size()];
+        nestedAudioChosenBy = new String[model.items.size()];
+        nestedSubtitleChosenBy = new String[model.items.size()];
+        nestedAudioResults = new TrackResult[model.items.size()];
+        nestedSubtitleResults = new TrackResult[model.items.size()];
+
+        Uri startUri = null;
+        Uri startPoster = null;
+
+        for (int i = 0; i < model.items.size(); i++) {
+            final PlaylistApi.Item item = model.items.get(i);
+            final Uri uri = item.uri;
+
+            String title = item.episodeTitle;
+            if (title == null) {
+                title = item.title;
+            }
+            if (title == null) {
+                title = apiTitle;
+            }
+            title = Utils.unescapeHtml(title);
+            if (title == null || title.isEmpty()) {
+                title = uri.getLastPathSegment();
+            }
+
+            final MediaMetadata.Builder metadataBuilder = new MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setDisplayTitle(title);
+            if (item.thumbnail != null) {
+                metadataBuilder.setArtworkUri(item.thumbnail);
+            }
+
+            final MediaItem.Builder itemBuilder = new MediaItem.Builder()
+                    .setUri(uri)
+                    .setMediaMetadata(metadataBuilder.build());
+
+            final List<MediaItem.SubtitleConfiguration> itemSubs =
+                    buildNestedSubtitleConfigurations(item.activeSubtitles());
+            if (!itemSubs.isEmpty()) {
+                itemBuilder.setSubtitleConfigurations(itemSubs);
+            }
+
+            if (item.clipStartMs > 0 || item.clipEndMs != Long.MIN_VALUE) {
+                final MediaItem.ClippingConfiguration.Builder clipping =
+                        new MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(Math.max(0L, item.clipStartMs));
+                if (item.clipEndMs != Long.MIN_VALUE) {
+                    clipping.setEndPositionMs(item.clipEndMs);
+                }
+                itemBuilder.setClippingConfiguration(clipping.build());
+            }
+
+            apiMediaItems.add(itemBuilder.build());
+            apiPlaylistSegments.add(item.segments);
+            apiPlaylistSeasons.add(item.season >= 0 ? item.season : null);
+            apiPlaylistEpisodes.add(item.episode >= 0 ? item.episode : null);
+            apiPlaylistNames.add(item.episodeTitle);
+            apiPlaylistImdbIds.add(item.imdbId);
+            apiPlaylistTmdbIds.add(item.tmdbId);
+            apiPlaylistQuality.add(qualityMap(item.activeQualities()));
+
+            if (item.positionMs != PlaylistApi.TIME_UNSET) {
+                apiPlaylistPositions[i] = item.positionMs;
+            }
+
+            if (i == model.startIndex) {
+                startUri = uri;
+                startPoster = item.thumbnail;
+                apiSegments = item.segments;
+                apiSeason = item.season;
+                apiEpisode = item.episode;
+                apiImdbId = item.imdbId;
+                apiTmdbId = item.tmdbId;
+            }
+        }
+
+        apiThumbnailUri = startPoster;
+        for (String warning : model.warnings) {
+            Utils.log("playlist key dropped: " + warning);
+        }
+        Utils.log("nested playlist parsed natively: " + apiMediaItems.size()
+                + " items, start=" + apiPlaylistStartIndex
+                + ", callback=" + (nestedResultCallback != null)
+                + ", report=" + nestedReportIntervalMs + "ms"
+                + ", resume=" + nestedResumeMode);
+        return startUri;
+    }
+
+    private List<MediaItem.SubtitleConfiguration> buildNestedSubtitleConfigurations(
+            final List<PlaylistApi.ExternalSubtitle> subtitles) {
+        final List<MediaItem.SubtitleConfiguration> result = new ArrayList<>();
+        if (subtitles == null) {
+            return result;
+        }
+        for (PlaylistApi.ExternalSubtitle subtitle : subtitles) {
+            result.add(SubtitleUtils.buildSubtitle(this, subtitle.uri, subtitle.mime,
+                    subtitle.language, subtitle.label, subtitle.selected));
+        }
+        return result;
+    }
+
+    private static LinkedHashMap<String, String> qualityMap(final List<PlaylistApi.Quality> qualities) {
+        final LinkedHashMap<String, String> result = new LinkedHashMap<>();
+        if (qualities == null) {
+            return result;
+        }
+        final ArrayList<PlaylistApi.Quality> sorted = new ArrayList<>(qualities);
+        Collections.sort(sorted, (a, b) ->
+                Integer.compare(qualityNumber(b.label), qualityNumber(a.label)));
+        for (PlaylistApi.Quality quality : sorted) {
+            result.put(quality.label, quality.uri.toString());
+        }
+        return result;
+    }
+
+    /**
+     * Playlist headers are inherited name-by-name, case-insensitively; item headers replace the
+     * playlist value while preserving the flat name/value array expected by the existing HTTP layer.
+     */
+    private static String[] mergedHeaders(@Nullable final String[] parent,
+                                          @Nullable final String[] child) {
+        final LinkedHashMap<String, String[]> values = new LinkedHashMap<>();
+        mergeHeaderPairs(values, parent);
+        mergeHeaderPairs(values, child);
+        final ArrayList<String> out = new ArrayList<>(values.size() * 2);
+        for (String[] pair : values.values()) {
+            out.add(pair[0]);
+            out.add(pair[1]);
+        }
+        return out.isEmpty() ? null : out.toArray(new String[0]);
+    }
+
+    private static void mergeHeaderPairs(final LinkedHashMap<String, String[]> values,
+                                         @Nullable final String[] headers) {
+        if (headers == null) {
+            return;
+        }
+        for (int i = 0; i + 1 < headers.length; i += 2) {
+            final String name = headers[i];
+            final String value = headers[i + 1];
+            if (name == null || value == null) {
+                continue;
+            }
+            values.put(name.toLowerCase(Locale.ROOT), new String[]{name, value});
+        }
+    }
+
+    @Nullable
+    private static Uri resolveNestedItemUri(final Bundle item) {
+        final String direct = getNestedString(item, "uri");
+        if (direct != null) {
+            return Uri.parse(direct);
+        }
+
+        final Parcelable[] qualities = getSmartParcelableArray(item, "qualities");
+        if (qualities == null) {
+            return null;
+        }
+        Bundle first = null;
+        Bundle selected = null;
+        for (Parcelable value : qualities) {
+            if (!(value instanceof Bundle)) {
+                continue;
+            }
+            final Bundle quality = (Bundle) value;
+            final String label = getNestedString(quality, "label");
+            final String uri = getNestedString(quality, "uri");
+            if (label == null || uri == null) {
+                continue;
+            }
+            if (first == null) {
+                first = quality;
+            }
+            if (quality.getBoolean("selected", false)) {
+                selected = quality;
+                break;
+            }
+        }
+        final Bundle chosen = selected != null ? selected : first;
+        final String uri = chosen == null ? null : getNestedString(chosen, "uri");
+        return uri == null ? null : Uri.parse(uri);
+    }
+
+    private List<MediaItem.SubtitleConfiguration> readNestedSubtitles(final Bundle item) {
+        final List<MediaItem.SubtitleConfiguration> result = new ArrayList<>();
+        final Parcelable[] subtitles = getSmartParcelableArray(item, "subtitles");
+        if (subtitles == null) {
+            return result;
+        }
+        for (Parcelable value : subtitles) {
+            if (!(value instanceof Bundle)) {
+                continue;
+            }
+            final Bundle subtitle = (Bundle) value;
+            final String uriText = getNestedString(subtitle, "uri");
+            if (uriText == null) {
+                continue;
+            }
+            final String label = getNestedString(subtitle, "label");
+            final boolean selected = subtitle.getBoolean("selected", false);
+            result.add(SubtitleUtils.buildSubtitle(this, Uri.parse(uriText), label, selected));
+        }
+        return result;
+    }
+
+    private static LinkedHashMap<String, String> readNestedQualityMap(final Bundle item) {
+        final LinkedHashMap<String, String> result = new LinkedHashMap<>();
+        final Parcelable[] qualities = getSmartParcelableArray(item, "qualities");
+        if (qualities == null) {
+            return result;
+        }
+        for (Parcelable value : qualities) {
+            if (!(value instanceof Bundle)) {
+                continue;
+            }
+            final Bundle quality = (Bundle) value;
+            final String label = getNestedString(quality, "label");
+            final String uri = getNestedString(quality, "uri");
+            if (label != null && uri != null) {
+                result.put(label, uri);
+            }
+        }
+        return result;
+    }
+
+    @Nullable
+    private static String getNestedString(final Bundle bundle, final String key) {
+        if (bundle == null || !bundle.containsKey(key)) {
+            return null;
+        }
+        final Object value = bundle.get(key);
+        if (value == null) {
+            return null;
+        }
+        final String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
+    }
+
+    @Nullable
+    private static Long getNestedTimeMs(final Bundle bundle, final String baseKey) {
+        if (bundle == null) {
+            return null;
+        }
+        final Double ms = getNestedNumber(bundle, baseKey + "_ms");
+        if (ms != null) {
+            return (long) Math.floor(ms);
+        }
+        final Double sec = getNestedNumber(bundle, baseKey + "_sec");
+        return sec == null ? null : (long) Math.floor(sec * 1000.0d);
+    }
+
+    @Nullable
+    private static Double getNestedNumber(final Bundle bundle, final String key) {
+        if (bundle == null || !bundle.containsKey(key)) {
+            return null;
+        }
+        final Object value = bundle.get(key);
+        if (value instanceof Number) {
+            final double number = ((Number) value).doubleValue();
+            return Double.isNaN(number) || Double.isInfinite(number) ? null : number;
+        }
+        if (value instanceof String) {
+            try {
+                final double number = Double.parseDouble(((String) value).trim());
+                return Double.isNaN(number) || Double.isInfinite(number) ? null : number;
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static Integer getNestedInt(final Bundle bundle, final String key) {
+        if (bundle == null || !bundle.containsKey(key)) {
+            return null;
+        }
+        final Object value = bundle.get(key);
+        if (value instanceof Number) {
+            final double number = ((Number) value).doubleValue();
+            if (Double.isNaN(number) || Double.isInfinite(number)
+                    || number < Integer.MIN_VALUE || number > Integer.MAX_VALUE) {
+                return null;
+            }
+            return (int) Math.floor(number);
+        }
+        if (value instanceof String) {
+            try {
+                final double number = Double.parseDouble(((String) value).trim());
+                if (Double.isNaN(number) || Double.isInfinite(number)
+                        || number < Integer.MIN_VALUE || number > Integer.MAX_VALUE) {
+                    return null;
+                }
+                return (int) Math.floor(number);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private Bundle buildNestedPlaylistResult(final String endBy) {
+        final Bundle result = new Bundle();
+
+        if (nestedPlaylistError != null) {
+            result.putString("uri", null);
+            result.putInt("index", -1);
+            result.putLong("position_ms", 0L);
+            result.putInt("position_sec", 0);
+            result.putLong("duration_ms", 0L);
+            result.putInt("duration_sec", 0);
+            result.putLongArray("positions_ms", new long[0]);
+            result.putIntArray("positions_sec", new int[0]);
+            result.putParcelableArray("history", new Bundle[0]);
+            result.putString("end_by", "error");
+            result.putString("error_message", nestedPlaylistError);
+            return result;
+        }
+
+        int index = player != null ? player.getCurrentMediaItemIndex() : apiPlaylistStartIndex;
+        if (index < 0 || index >= apiMediaItems.size()) {
+            index = apiPlaylistStartIndex >= 0 && apiPlaylistStartIndex < apiMediaItems.size()
+                    ? apiPlaylistStartIndex : -1;
+        }
+
+        long positionMs = C.TIME_UNSET;
+        long durationMs = C.TIME_UNSET;
+        if (player != null && index >= 0) {
+            if (player.isCurrentMediaItemSeekable()) {
+                positionMs = Math.max(0L, player.getCurrentPosition());
+                rememberEpisodePosition(index, positionMs);
+            }
+            final long duration = player.getDuration();
+            if (duration != C.TIME_UNSET && duration > 0) {
+                durationMs = duration;
+            }
+            nestedJournal.touch(index,
+                    positionMs == C.TIME_UNSET ? 0L : positionMs,
+                    durationMs == C.TIME_UNSET ? -1L : durationMs);
+        } else if (index >= 0 && apiPlaylistPositions != null
+                && index < apiPlaylistPositions.length) {
+            positionMs = apiPlaylistPositions[index];
+        }
+
+        final Uri uri = index >= 0 ? playlistUri(index) : null;
+        result.putString("uri", uri == null ? null : uri.toString());
+        result.putInt("index", index);
+        final long safePositionMs = positionMs == C.TIME_UNSET ? 0L : Math.max(0L, positionMs);
+        final long safeDurationMs = durationMs == C.TIME_UNSET ? 0L : Math.max(0L, durationMs);
+        result.putLong("position_ms", safePositionMs);
+        result.putInt("position_sec", (int) Math.min(Integer.MAX_VALUE, safePositionMs / 1000L));
+        result.putLong("duration_ms", safeDurationMs);
+        result.putInt("duration_sec", (int) Math.min(Integer.MAX_VALUE, safeDurationMs / 1000L));
+
+        final long[] positionsMs = new long[apiMediaItems.size()];
+        final int[] positions = new int[apiMediaItems.size()];
+        for (int i = 0; i < positions.length; i++) {
+            final long saved = apiPlaylistPositions != null && i < apiPlaylistPositions.length
+                    ? apiPlaylistPositions[i] : C.TIME_UNSET;
+            positionsMs[i] = saved == C.TIME_UNSET ? -1L : Math.max(0L, saved);
+            positions[i] = positionsMs[i] < 0 ? -1
+                    : (int) Math.min(Integer.MAX_VALUE, positionsMs[i] / 1000L);
+        }
+        if (index >= 0 && index < positions.length && positionMs != C.TIME_UNSET) {
+            positionsMs[index] = Math.max(0L, positionMs);
+            positions[index] = (int) Math.min(Integer.MAX_VALUE, positionsMs[index] / 1000L);
+        }
+        if ("completion".equals(endBy) && index >= 0 && index < positions.length
+                && durationMs != C.TIME_UNSET) {
+            final long completedMs = Math.max(0L, durationMs);
+            final int durationSec = (int) Math.min(Integer.MAX_VALUE, completedMs / 1000L);
+            positionsMs[index] = completedMs;
+            positions[index] = durationSec;
+            result.putLong("position_ms", completedMs);
+            result.putInt("position_sec", durationSec);
+        }
+        result.putLongArray("positions_ms", positionsMs);
+        result.putIntArray("positions_sec", positions);
+        result.putParcelableArray("history", nestedJournal.bundles());
+        result.putString("end_by", endBy);
+
+        if (index >= 0) {
+            putNestedTrackResult(result, "audio",
+                    nestedAudioResults != null && index < nestedAudioResults.length
+                            ? nestedAudioResults[index] : null,
+                    nestedAudioChosenBy != null && index < nestedAudioChosenBy.length
+                            ? nestedAudioChosenBy[index] : null);
+            putNestedTrackResult(result, "subtitle",
+                    nestedSubtitleResults != null && index < nestedSubtitleResults.length
+                            ? nestedSubtitleResults[index] : null,
+                    nestedSubtitleChosenBy != null && index < nestedSubtitleChosenBy.length
+                            ? nestedSubtitleChosenBy[index] : null);
+        }
+
+        if (nestedPlaylistModel != null && index >= 0 && index < nestedPlaylistModel.items.size()) {
+            final String voice = nestedPlaylistModel.items.get(index).voiceLabel();
+            if (voice != null) {
+                result.putString("voice_label", voice);
+            }
+            final List<String> warnings = nestedPlaylistModel.warnings;
+            if (warnings != null && !warnings.isEmpty()) {
+                final int count = Math.min(20, warnings.size());
+                final String[] out = new String[count];
+                for (int i = 0; i < count; i++) {
+                    out[i] = warnings.get(i);
+                }
+                if (warnings.size() > 20) {
+                    out[19] = "… " + (warnings.size() - 19) + " more";
+                }
+                result.putStringArray("warnings", out);
+            }
+        }
+        return result;
+    }
+
+    private static void putNestedTrackResult(final Bundle result, final String prefix,
+                                             @Nullable final TrackResult track,
+                                             @Nullable final String chosenBy) {
+        if (chosenBy != null) {
+            result.putString(prefix + "_chosen_by", chosenBy);
+        }
+        if (track == null) {
+            return;
+        }
+        result.putString(prefix + "_language", track.language);
+        result.putString(prefix + "_label", track.label);
+        result.putInt(prefix + "_index", track.index);
+        if (track.language != null && track.ordinal >= 0 && track.count >= 0) {
+            result.putInt(prefix + "_language_ordinal", track.ordinal);
+            result.putInt(prefix + "_language_count", track.count);
+        }
+    }
+
+    private void touchNestedJournal() {
+        if (!nestedPlaylistSession || nestedPlaylistError != null || player == null) {
+            return;
+        }
+        final int index = player.getCurrentMediaItemIndex();
+        if (index < 0 || index >= apiMediaItems.size()) {
+            return;
+        }
+        final long position = player.isCurrentMediaItemSeekable()
+                ? Math.max(0L, player.getCurrentPosition()) : 0L;
+        final long duration = player.getDuration();
+        nestedJournal.touch(index, position,
+                duration == C.TIME_UNSET || duration <= 0 ? -1L : duration);
+    }
+
+    private void armNestedReportTimer() {
+        if (playerView == null || nestedResultCallback == null || nestedReportIntervalMs <= 0) {
+            return;
+        }
+        playerView.removeCallbacks(nestedReportRunnable);
+        playerView.postDelayed(nestedReportRunnable, nestedReportIntervalMs);
+    }
+
+    private void cancelNestedReportTimer() {
+        if (playerView != null) {
+            playerView.removeCallbacks(nestedReportRunnable);
+        }
+    }
+
+    private final Runnable nestedReportRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!nestedPlaylistSession || nestedPlaylistError != null || player == null
+                    || !player.isPlaying()) {
+                return;
+            }
+            touchNestedJournal();
+            sendNestedPlaylistCallback(buildNestedPlaylistResult("user"));
+            armNestedReportTimer();
+        }
+    };
+
+    private void sendNestedPlaylistCallback(final Bundle result) {
+        if (nestedResultCallback == null || result == null) {
+            return;
+        }
+
+        // 2.1.2 suppresses identical snapshots. Parcel bytes are deterministic for this Bundle shape
+        // (primitive values, arrays and nested Bundles), and preserve distinctions such as -1 vs 0.
+        final Parcel parcel = Parcel.obtain();
+        final byte[] payload;
+        try {
+            parcel.writeBundle(result);
+            payload = parcel.marshall();
+        } finally {
+            parcel.recycle();
+        }
+        if (Arrays.equals(nestedLastCallbackPayload, payload)) {
+            return;
+        }
+        nestedLastCallbackPayload = payload;
+
+        final Intent fillIn = new Intent();
+        fillIn.putExtras(new Bundle(result));
+        try {
+            nestedResultCallback.send(this, 0, fillIn);
+        } catch (PendingIntent.CanceledException e) {
+            Utils.log("result callback cancelled");
         }
     }
 
@@ -7272,6 +7931,482 @@ public class PlayerActivity extends Activity {
 
 
 
+    private static final class TrackCandidate {
+        final TrackGroup group;
+        final int trackIndex;
+        final int menuIndex;
+        final Format format;
+        final String label;
+        final String language;
+        final boolean supported;
+        final boolean selected;
+
+        TrackCandidate(TrackGroup group, int trackIndex, int menuIndex, Format format,
+                       String label, String language, boolean supported, boolean selected) {
+            this.group = group;
+            this.trackIndex = trackIndex;
+            this.menuIndex = menuIndex;
+            this.format = format;
+            this.label = label;
+            this.language = language;
+            this.supported = supported;
+            this.selected = selected;
+        }
+    }
+
+    private static final class TrackResult {
+        final String language;
+        final String label;
+        final int ordinal;
+        final int count;
+        final int index;
+
+        TrackResult(String language, String label, int ordinal, int count, int index) {
+            this.language = language;
+            this.label = label;
+            this.ordinal = ordinal;
+            this.count = count;
+            this.index = index;
+        }
+
+        static TrackResult off() {
+            return new TrackResult(null, null, -1, -1, -1);
+        }
+    }
+
+    private List<TrackCandidate> nestedTrackCandidates(final Tracks tracks, final int type) {
+        final ArrayList<TrackCandidate> out = new ArrayList<>();
+        if (tracks == null) {
+            return out;
+        }
+        int menuIndex = 0;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != type) {
+                continue;
+            }
+            final TrackGroup mediaGroup = group.getMediaTrackGroup();
+            for (int i = 0; i < group.length; i++) {
+                final Format format = mediaGroup.getFormat(i);
+                if (type == C.TRACK_TYPE_TEXT && isPhantomClosedCaption(format)) {
+                    continue;
+                }
+                final String rawLabel = trackName(format);
+                String language = Utils.toIso3Language(format.language);
+                if (language == null && rawLabel != null) {
+                    language = Utils.languageInName(rawLabel,
+                            Arrays.asList("eng", "rus", "ukr", "deu", "fra", "spa", "ita", "por",
+                                    "jpn", "kor", "zho", "pol", "ces", "tur", "ara", "hin"));
+                }
+                final boolean supported = type == C.TRACK_TYPE_AUDIO
+                        ? group.isTrackSupported(i, true) : group.isTrackSupported(i);
+                out.add(new TrackCandidate(mediaGroup, i, menuIndex++, format, rawLabel,
+                        language, supported, group.isTrackSelected(i)));
+            }
+        }
+        return out;
+    }
+
+    private void applyNestedTrackRequests(final Tracks tracks) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null
+                || nestedPlaylistError != null) {
+            return;
+        }
+        final int itemIndex = player.getCurrentMediaItemIndex();
+        if (itemIndex < 0 || itemIndex >= nestedPlaylistModel.items.size()) {
+            return;
+        }
+
+        if (nestedAudioChoiceDone != null && !nestedAudioChoiceDone[itemIndex]) {
+            final List<TrackCandidate> audio = nestedTrackCandidates(tracks, C.TRACK_TYPE_AUDIO);
+            if (!audio.isEmpty()) {
+                applyNestedTrackRequest(itemIndex, false, audio);
+            }
+        }
+
+        if (nestedSubtitleChoiceDone != null && !nestedSubtitleChoiceDone[itemIndex]) {
+            final List<TrackCandidate> text = nestedTrackCandidates(tracks, C.TRACK_TYPE_TEXT);
+            if (!text.isEmpty()) {
+                applyNestedTrackRequest(itemIndex, true, text);
+            } else {
+                // A file with no playable subtitle tracks has made its one 2.1.2 choice: nothing.
+                nestedSubtitleChoiceDone[itemIndex] = true;
+            }
+        }
+    }
+
+    private void applyNestedTrackRequest(final int itemIndex, final boolean subtitle,
+                                         final List<TrackCandidate> candidates) {
+        final PlaylistApi.Item item = nestedPlaylistModel.items.get(itemIndex);
+        final PlaylistApi.TrackRequest itemRequest = subtitle ? item.subtitle : item.audio;
+        final PlaylistApi.TrackRequest playlistRequest =
+                subtitle ? nestedPlaylistModel.subtitle : nestedPlaylistModel.audio;
+
+        TrackCandidate chosen = null;
+        String chosenBy = null;
+        boolean off = false;
+
+        // Step 1: a viewer choice from an earlier item in this launch.
+        if (subtitle && nestedViewerSubtitleOff) {
+            off = true;
+            chosenBy = "viewer";
+        } else {
+            final String viewerLabel = subtitle ? nestedViewerSubtitleLabel : nestedViewerAudioLabel;
+            final String viewerLanguage = subtitle ? nestedViewerSubtitleLanguage : nestedViewerAudioLanguage;
+            final int viewerOrdinal = subtitle ? nestedViewerSubtitleOrdinal : nestedViewerAudioOrdinal;
+            final int viewerCount = subtitle ? nestedViewerSubtitleCount : nestedViewerAudioCount;
+            chosen = chooseByViewerMemory(candidates, viewerLabel, viewerLanguage,
+                    viewerOrdinal, viewerCount);
+            if (chosen != null) {
+                chosenBy = "viewer";
+            }
+        }
+
+        // Steps 2/4/5 on the item, then step 6 on the playlist.
+        if (chosen == null && !off) {
+            final TrackDecision itemDecision = chooseByRequest(candidates, itemRequest, subtitle);
+            if (itemDecision.off) {
+                off = true;
+                chosenBy = itemDecision.chosenBy;
+            } else if (itemDecision.candidate != null) {
+                chosen = itemDecision.candidate;
+                chosenBy = itemDecision.chosenBy;
+            }
+        }
+
+        // Step 3 for subtitles: selected external subtitle. It comes after item index and before label.
+        // chooseByRequest deliberately does index first and leaves label/ordinal for the second pass below.
+        if (subtitle && chosen == null && !off) {
+            final TrackCandidate selectedExternal = selectedExternalSubtitleCandidate(item, candidates);
+            if (selectedExternal != null) {
+                chosen = selectedExternal;
+                chosenBy = "selected";
+            }
+        }
+
+        // Item label/ordinal after selected subtitle.
+        if (chosen == null && !off) {
+            final TrackDecision itemNamed = chooseNamedByRequest(candidates, itemRequest);
+            if (itemNamed.candidate != null) {
+                chosen = itemNamed.candidate;
+                chosenBy = itemNamed.chosenBy;
+            }
+        }
+
+        // Playlist index, label, ordinal.
+        if (chosen == null && !off) {
+            final TrackDecision playlistIndex = chooseIndexByRequest(candidates, playlistRequest, subtitle);
+            if (playlistIndex.off) {
+                off = true;
+                chosenBy = playlistIndex.chosenBy;
+            } else if (playlistIndex.candidate != null) {
+                chosen = playlistIndex.candidate;
+                chosenBy = playlistIndex.chosenBy;
+            }
+        }
+        if (chosen == null && !off) {
+            final TrackDecision playlistNamed = chooseNamedByRequest(candidates, playlistRequest);
+            if (playlistNamed.candidate != null) {
+                chosen = playlistNamed.candidate;
+                chosenBy = playlistNamed.chosenBy;
+            }
+        }
+
+        // Step 8: effective item languages, else playlist languages.
+        if (chosen == null && !off) {
+            final String[] languages = itemRequest != null && itemRequest.languages != null
+                    ? itemRequest.languages
+                    : (playlistRequest == null ? null : playlistRequest.languages);
+            if (subtitle && languages != null && languages.length == 0) {
+                off = true;
+                chosenBy = "languages";
+            } else if (languages != null && languages.length > 0) {
+                chosen = chooseByLanguages(candidates, languages, subtitle);
+                if (chosen != null) {
+                    chosenBy = "languages";
+                }
+            }
+        }
+
+        // Step 9: keep what Media3/player settings already selected. Do not invent track zero.
+        if (chosen == null && !off) {
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && candidate.selected) {
+                    chosen = candidate;
+                    chosenBy = "player";
+                    break;
+                }
+            }
+        }
+
+        if (subtitle) {
+            nestedSubtitleChoiceDone[itemIndex] = true;
+        } else {
+            nestedAudioChoiceDone[itemIndex] = true;
+        }
+
+        if (off && subtitle) {
+            disableSubtitles();
+            nestedSubtitleChosenBy[itemIndex] = chosenBy;
+            nestedSubtitleResults[itemIndex] = TrackResult.off();
+            return;
+        }
+
+        if (chosen == null) {
+            return;
+        }
+
+        if (!chosen.selected) {
+            if (subtitle) {
+                applySubtitle(chosen.group, chosen.trackIndex);
+            } else {
+                applyAudioCandidate(chosen);
+            }
+        }
+
+        final TrackResult result = nestedTrackResult(candidates, chosen);
+        if (subtitle) {
+            nestedSubtitleChosenBy[itemIndex] = chosenBy;
+            nestedSubtitleResults[itemIndex] = result;
+        } else {
+            nestedAudioChosenBy[itemIndex] = chosenBy;
+            nestedAudioResults[itemIndex] = result;
+        }
+    }
+
+    private static final class TrackDecision {
+        final TrackCandidate candidate;
+        final boolean off;
+        final String chosenBy;
+
+        TrackDecision(TrackCandidate candidate, boolean off, String chosenBy) {
+            this.candidate = candidate;
+            this.off = off;
+            this.chosenBy = chosenBy;
+        }
+
+        static TrackDecision none() {
+            return new TrackDecision(null, false, null);
+        }
+    }
+
+    private TrackDecision chooseByRequest(final List<TrackCandidate> candidates,
+                                          final PlaylistApi.TrackRequest request,
+                                          final boolean subtitle) {
+        // Only index/off here. Label and ordinal have to come after selected external subtitles.
+        return chooseIndexByRequest(candidates, request, subtitle);
+    }
+
+    private TrackDecision chooseIndexByRequest(final List<TrackCandidate> candidates,
+                                               final PlaylistApi.TrackRequest request,
+                                               final boolean subtitle) {
+        if (request == null) {
+            return TrackDecision.none();
+        }
+        if (subtitle && request.off()) {
+            return new TrackDecision(null, true,
+                    request.index != null && request.index == -1 ? "index" : "languages");
+        }
+        if (request.index == null || request.index < 0) {
+            return TrackDecision.none();
+        }
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.menuIndex != request.index || !candidate.supported) {
+                continue;
+            }
+            if (request.label != null && !nestedTrackLabelsMatch(request.label, candidate.label)) {
+                return TrackDecision.none();
+            }
+            return new TrackDecision(candidate, false, "index");
+        }
+        return TrackDecision.none();
+    }
+
+    private TrackDecision chooseNamedByRequest(final List<TrackCandidate> candidates,
+                                               final PlaylistApi.TrackRequest request) {
+        if (request == null) {
+            return TrackDecision.none();
+        }
+        if (request.label != null) {
+            final TrackCandidate byLabel =
+                    chooseByLabel(candidates, request.label, request.languages);
+            if (byLabel != null) {
+                return new TrackDecision(byLabel, false, "label");
+            }
+        }
+        if (request.ordinal != null && request.languages != null
+                && request.languages.length > 0) {
+            final String language = request.languages[0];
+            final ArrayList<TrackCandidate> inLanguage = new ArrayList<>();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && language.equals(candidate.language)) {
+                    inLanguage.add(candidate);
+                }
+            }
+            if ((request.count == null || request.count == inLanguage.size())
+                    && request.ordinal >= 0 && request.ordinal < inLanguage.size()) {
+                return new TrackDecision(inLanguage.get(request.ordinal), false, "language_ordinal");
+            }
+        }
+        return TrackDecision.none();
+    }
+
+    private TrackCandidate chooseByViewerMemory(final List<TrackCandidate> candidates,
+                                                final String label, final String language,
+                                                final int ordinal, final int count) {
+        if (label != null) {
+            final TrackCandidate byLabel = chooseByLabel(candidates, label,
+                    language == null ? null : new String[]{language});
+            if (byLabel != null) {
+                return byLabel;
+            }
+        }
+        if (language != null && ordinal >= 0) {
+            final ArrayList<TrackCandidate> same = new ArrayList<>();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && language.equals(candidate.language)) {
+                    same.add(candidate);
+                }
+            }
+            if ((count < 0 || count == same.size()) && ordinal < same.size()) {
+                return same.get(ordinal);
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate chooseByLabel(final List<TrackCandidate> candidates, final String label,
+                                         @Nullable final String[] languages) {
+        if (languages != null && languages.length > 0) {
+            for (String language : languages) {
+                for (TrackCandidate candidate : candidates) {
+                    if (candidate.supported && language.equals(candidate.language)
+                            && nestedTrackLabelsMatch(label, candidate.label)) {
+                        return candidate;
+                    }
+                }
+            }
+            return null;
+        }
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.supported && nestedTrackLabelsMatch(label, candidate.label)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate chooseByLanguages(final List<TrackCandidate> candidates,
+                                             final String[] languages,
+                                             final boolean subtitle) {
+        for (String language : languages) {
+            TrackCandidate fallback = null;
+            for (TrackCandidate candidate : candidates) {
+                if (!candidate.supported || !language.equals(candidate.language)) {
+                    continue;
+                }
+                if (fallback == null) {
+                    fallback = candidate;
+                }
+                if (subtitle) {
+                    final int flags = candidate.format.selectionFlags;
+                    final boolean forced = (flags & C.SELECTION_FLAG_FORCED) != 0;
+                    final boolean sdh = (candidate.format.roleFlags & C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND) != 0;
+                    if (!forced && !sdh) {
+                        return candidate;
+                    }
+                } else {
+                    final boolean commentary =
+                            (candidate.format.roleFlags & C.ROLE_FLAG_COMMENTARY) != 0;
+                    if (!commentary) {
+                        return candidate;
+                    }
+                }
+            }
+            if (fallback != null) {
+                return fallback;
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate selectedExternalSubtitleCandidate(final PlaylistApi.Item item,
+                                                             final List<TrackCandidate> candidates) {
+        if (item == null) {
+            return null;
+        }
+        for (PlaylistApi.ExternalSubtitle subtitle : item.activeSubtitles()) {
+            if (!subtitle.selected) {
+                continue;
+            }
+            final String id = subtitle.uri.toString();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && id.equals(candidate.format.id)) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void applyAudioCandidate(final TrackCandidate candidate) {
+        if (player == null || candidate == null) {
+            return;
+        }
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setOverrideForType(new TrackSelectionOverride(
+                        candidate.group, Collections.singletonList(candidate.trackIndex)))
+                .build());
+    }
+
+    private TrackResult nestedTrackResult(final List<TrackCandidate> candidates,
+                                          final TrackCandidate selected) {
+        final String rawLanguage = selected.format.language;
+        final String isoLanguage = selected.language;
+        int ordinal = -1;
+        int count = -1;
+        if (isoLanguage != null && rawLanguage != null && !rawLanguage.trim().isEmpty()
+                && !"und".equalsIgnoreCase(rawLanguage)) {
+            count = 0;
+            for (TrackCandidate candidate : candidates) {
+                if (!candidate.supported || !isoLanguage.equals(candidate.language)) {
+                    continue;
+                }
+                if (candidate == selected) {
+                    ordinal = count;
+                }
+                count++;
+            }
+        }
+        return new TrackResult(rawLanguage,
+                cleanResultTrackLabel(selected.label),
+                ordinal, count, selected.menuIndex);
+    }
+
+    private static String cleanResultTrackLabel(@Nullable final String label) {
+        if (label == null) {
+            return null;
+        }
+        final String value = label.trim();
+        if (value.isEmpty() || value.matches("(?i)^(rus|eng|ukr|deu|fra|spa|ita|por|jpn|kor|zho)\\d+$")) {
+            return null;
+        }
+        return value;
+    }
+
+    /**
+     * Safe subset of the official 2.1.2 label matcher: whole-word, case-insensitive matching after
+     * codec/channel/language noise is removed. Studio aliases are layered on separately below.
+     */
+    private boolean nestedTrackLabelsMatch(@Nullable final String wanted,
+                                           @Nullable final String actual) {
+        if (nestedTrackMatcher == null) {
+            nestedTrackMatcher = PlaylistTrackMatcher.load(this);
+        }
+        return nestedTrackMatcher.labelsMatch(wanted, actual);
+    }
+
     private static class AudioChoice {
         final String label;
         final String detail; // the codec, channels and bitrate; null when the track declares none
@@ -7324,13 +8459,105 @@ public class PlayerActivity extends Activity {
         return choices;
     }
 
-    // Shows the audio button only when there is more than one audio track to pick from.
+    private PlaylistApi.Item currentNestedItem() {
+        if (nestedPlaylistModel == null || player == null) {
+            return null;
+        }
+        final int index = player.getCurrentMediaItemIndex();
+        return index >= 0 && index < nestedPlaylistModel.items.size()
+                ? nestedPlaylistModel.items.get(index) : null;
+    }
+
+    private boolean hasNestedVoiceChoices() {
+        final PlaylistApi.Item item = currentNestedItem();
+        return item != null && item.voices.size() >= 2;
+    }
+
+    // Shows the audio button when either the stream exposes multiple tracks or the launcher supplied
+    // multiple 2.1.2 voices (one dub per source).
     private void updateAudioButton() {
         if (buttonAudio == null) {
             return;
         }
-        final boolean show = player != null && buildAudioChoices().size() >= 2;
+        final boolean show = player != null
+                && (buildAudioChoices().size() >= 2 || hasNestedVoiceChoices());
         buttonAudio.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
+    private void applyNestedVoice(final int voiceIndex, final boolean viewerChoice) {
+        if (player == null || nestedPlaylistModel == null) {
+            return;
+        }
+        final int itemIndex = player.getCurrentMediaItemIndex();
+        if (itemIndex < 0 || itemIndex >= nestedPlaylistModel.items.size()) {
+            return;
+        }
+        final PlaylistApi.Item item = nestedPlaylistModel.items.get(itemIndex);
+        if (voiceIndex < 0 || voiceIndex >= item.voices.size() || voiceIndex == item.selectedVoice) {
+            return;
+        }
+
+        final PlaylistApi.Voice voice = item.voices.get(voiceIndex);
+        final long position = Math.max(0L, player.getCurrentPosition());
+        final boolean resume = player.getPlayWhenReady();
+
+        savePlayer();
+        final PlaylistApi.Voice oldVoice = item.currentVoice();
+        final boolean subtitleSourceChanges =
+                (oldVoice != null && oldVoice.subtitles != null)
+                        || voice.subtitles != null;
+        item.selectedVoice = voiceIndex;
+        item.uri = voice.uri;
+        if (nestedAudioChoiceDone != null && itemIndex < nestedAudioChoiceDone.length) {
+            nestedAudioChoiceDone[itemIndex] = false;
+            nestedAudioChosenBy[itemIndex] = null;
+            nestedAudioResults[itemIndex] = null;
+        }
+        if (subtitleSourceChanges && nestedSubtitleChoiceDone != null
+                && itemIndex < nestedSubtitleChoiceDone.length) {
+            nestedSubtitleChoiceDone[itemIndex] = false;
+            nestedSubtitleChosenBy[itemIndex] = null;
+            nestedSubtitleResults[itemIndex] = null;
+        }
+        if (viewerChoice) {
+            nestedViewerVoiceLabel = voice.label;
+        }
+
+        final MediaItem old = apiMediaItems.get(itemIndex);
+        final MediaItem.Builder updated = old.buildUpon().setUri(voice.uri);
+        final List<MediaItem.SubtitleConfiguration> subs =
+                buildNestedSubtitleConfigurations(item.activeSubtitles());
+        updated.setSubtitleConfigurations(subs);
+        apiMediaItems.set(itemIndex, updated.build());
+        apiPlaylistQuality.set(itemIndex, qualityMap(item.activeQualities()));
+        apiHeaders = mergedHeaders(nestedPlaylistModel.headers, item.headers);
+        apiPlaylistStartIndex = itemIndex;
+        apiExtrasIndex = itemIndex;
+
+        mPrefs.updatePosition(position);
+        sourceSwitchKeepPaused = !resume;
+        restorePlayState = resume;
+        initializePlayer();
+    }
+
+    /** Carry a voice explicitly picked by the viewer to the next episode when that label exists there. */
+    private void applyNestedViewerVoiceToCurrentItem() {
+        if (nestedViewerVoiceLabel == null || player == null || nestedPlaylistModel == null) {
+            return;
+        }
+        final PlaylistApi.Item item = currentNestedItem();
+        if (item == null || item.voices.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < item.voices.size(); i++) {
+            final PlaylistApi.Voice voice = item.voices.get(i);
+            if (nestedViewerVoiceLabel.equals(voice.label)) {
+                if (i != item.selectedVoice) {
+                    applyNestedVoice(i, false);
+                }
+                return;
+            }
+        }
     }
 
     // Media3 keeps the subtitle button visible-but-disabled while loading; we instead hide it entirely
@@ -7521,10 +8748,26 @@ public class PlayerActivity extends Activity {
 
     private void showAudioDialog() {
         final ArrayList<AudioChoice> choices = buildAudioChoices();
-        if (choices.size() < 2) {
+        final PlaylistApi.Item nestedItem = currentNestedItem();
+        final boolean voices = nestedItem != null && nestedItem.voices.size() >= 2;
+        if (choices.size() < 2 && !voices) {
             return;
         }
         final List<Dialogs.MenuItem> items = new ArrayList<>();
+
+        if (voices) {
+            for (int i = 0; i < nestedItem.voices.size(); i++) {
+                final int voiceIndex = i;
+                final PlaylistApi.Voice voice = nestedItem.voices.get(i);
+                items.add(new Dialogs.MenuItem(voice.label, null,
+                        i == nestedItem.selectedVoice,
+                        () -> applyNestedVoice(voiceIndex, true)));
+            }
+            if (!choices.isEmpty()) {
+                items.add(Dialogs.MenuItem.rule());
+            }
+        }
+
         String selectedLanguage = null;
         for (final AudioChoice choice : choices) {
             if (!choice.supported) {
@@ -7539,7 +8782,10 @@ public class PlayerActivity extends Activity {
                 continue;
             }
             items.add(new Dialogs.MenuItem(choice.label, choice.detail, choice.selected,
-                    () -> applyAudio(choice)));
+                    () -> {
+                        rememberNestedViewerAudio(choice);
+                        applyAudio(choice);
+                    }));
             if (choice.selected) {
                 selectedLanguage = choice.language;
             }
@@ -7557,6 +8803,72 @@ public class PlayerActivity extends Activity {
                     null, false, () -> preferAudioLanguage(language)));
         }
         Dialogs.menu(this, ui, () -> showPickerDialog(Dialogs.openMenu()), getString(R.string.audio_title), items);
+    }
+
+    private void rememberNestedViewerAudio(final AudioChoice choice) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null || choice == null) {
+            return;
+        }
+        final List<TrackCandidate> candidates =
+                nestedTrackCandidates(player.getCurrentTracks(), C.TRACK_TYPE_AUDIO);
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.group == choice.group && candidate.trackIndex == choice.trackIndex) {
+                final TrackResult result = nestedTrackResult(candidates, candidate);
+                nestedViewerAudioLabel = result.label;
+                nestedViewerAudioLanguage = candidate.language;
+                nestedViewerAudioOrdinal = result.ordinal;
+                nestedViewerAudioCount = result.count;
+                final int item = player.getCurrentMediaItemIndex();
+                if (nestedAudioResults != null && item >= 0 && item < nestedAudioResults.length) {
+                    nestedAudioChoiceDone[item] = true;
+                    nestedAudioChosenBy[item] = "viewer";
+                    nestedAudioResults[item] = result;
+                }
+                return;
+            }
+        }
+    }
+
+    private void rememberNestedViewerSubtitle(final TrackGroup group, final int trackIndex) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null || group == null) {
+            return;
+        }
+        final List<TrackCandidate> candidates =
+                nestedTrackCandidates(player.getCurrentTracks(), C.TRACK_TYPE_TEXT);
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.group == group && candidate.trackIndex == trackIndex) {
+                final TrackResult result = nestedTrackResult(candidates, candidate);
+                nestedViewerSubtitleOff = false;
+                nestedViewerSubtitleLabel = result.label;
+                nestedViewerSubtitleLanguage = candidate.language;
+                nestedViewerSubtitleOrdinal = result.ordinal;
+                nestedViewerSubtitleCount = result.count;
+                final int item = player.getCurrentMediaItemIndex();
+                if (nestedSubtitleResults != null && item >= 0 && item < nestedSubtitleResults.length) {
+                    nestedSubtitleChoiceDone[item] = true;
+                    nestedSubtitleChosenBy[item] = "viewer";
+                    nestedSubtitleResults[item] = result;
+                }
+                return;
+            }
+        }
+    }
+
+    private void rememberNestedViewerSubtitleOff() {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null) {
+            return;
+        }
+        nestedViewerSubtitleOff = true;
+        nestedViewerSubtitleLabel = null;
+        nestedViewerSubtitleLanguage = null;
+        nestedViewerSubtitleOrdinal = -1;
+        nestedViewerSubtitleCount = -1;
+        final int item = player.getCurrentMediaItemIndex();
+        if (nestedSubtitleResults != null && item >= 0 && item < nestedSubtitleResults.length) {
+            nestedSubtitleChoiceDone[item] = true;
+            nestedSubtitleChosenBy[item] = "viewer";
+            nestedSubtitleResults[item] = TrackResult.off();
+        }
     }
 
     /**
@@ -7612,6 +8924,53 @@ public class PlayerActivity extends Activity {
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .setPreferredTextLanguages(languages.toArray(new String[0]))
         );
+    }
+
+    private PlaylistApi.TrackRequest nestedEffectiveTrackRequest(final boolean subtitle) {
+        if (nestedPlaylistModel == null || nestedPlaylistModel.items.isEmpty()) {
+            return null;
+        }
+        int index = apiPlaylistStartIndex;
+        if (player != null) {
+            index = player.getCurrentMediaItemIndex();
+        }
+        if (index < 0 || index >= nestedPlaylistModel.items.size()) {
+            index = nestedPlaylistModel.startIndex;
+        }
+        final PlaylistApi.TrackRequest item = subtitle
+                ? nestedPlaylistModel.items.get(index).subtitle
+                : nestedPlaylistModel.items.get(index).audio;
+        final PlaylistApi.TrackRequest root = subtitle
+                ? nestedPlaylistModel.subtitle : nestedPlaylistModel.audio;
+        return item != null && item.languages != null ? item : root;
+    }
+
+    private void applyNestedInitialAudioLanguages() {
+        if (trackSelector == null || !nestedPlaylistSession) {
+            return;
+        }
+        final PlaylistApi.TrackRequest request = nestedEffectiveTrackRequest(false);
+        if (request == null || request.languages == null || request.languages.length == 0) {
+            return;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setPreferredAudioLanguages(request.languages));
+    }
+
+    private void applyNestedInitialTextLanguages() {
+        if (trackSelector == null || !nestedPlaylistSession) {
+            return;
+        }
+        final PlaylistApi.TrackRequest request = nestedEffectiveTrackRequest(true);
+        if (request == null || request.languages == null) {
+            return;
+        }
+        if (request.languages.length == 0 || request.off()) {
+            mainLineOff = true;
+            return;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setPreferredTextLanguages(request.languages));
     }
 
     /**
@@ -8369,7 +9728,10 @@ public class PlayerActivity extends Activity {
             items.add(Dialogs.MenuItem.caption(getString(R.string.subtitle_main_title)));
         }
         items.add(new Dialogs.MenuItem(getString(R.string.subtitle_off), null, !textEnabled && !painting,
-                this::disableSubtitles));
+                () -> {
+                    rememberNestedViewerSubtitleOff();
+                    disableSubtitles();
+                }));
         if (fileOnly != null) {
             // addSubtitleTrack rather than paintSubtitle: it carries the already-on-screen guard, so
             // tapping the ticked row costs nothing and tapping it after "off" puts the subtitle back.
@@ -8403,7 +9765,10 @@ public class PlayerActivity extends Activity {
                 // (SubtitleOffset drops the renderer's cues), and two ticked rows is a lie.
                 items.add(new Dialogs.MenuItem(text[0], text[1],
                         textEnabled && !painting && group.isTrackSelected(i),
-                        () -> applySubtitle(trackGroup, index)));
+                        () -> {
+                            rememberNestedViewerSubtitle(trackGroup, index);
+                            applySubtitle(trackGroup, index);
+                        }));
             }
         }
         // Last, and with no tick: it is an action rather than a track, so it sits under a rule of its
@@ -11705,6 +13070,7 @@ public class PlayerActivity extends Activity {
         // Ordered fallback chain: the selector walks the list and takes the first language the media
         // actually carries. An empty list leaves the media's own order alone.
         applyPreferredAudioLanguages();
+        applyNestedInitialAudioLanguages();
         // A subtitle nobody asked for is in the way, so the file marking one as default is not enough
         // on its own: subtitles come on when the preferred-language list below matches, or by hand.
         // This used to depend on the system captioning toggle, which is no longer read anywhere.
@@ -11712,6 +13078,7 @@ public class PlayerActivity extends Activity {
                 .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
         );
         applyPreferredTextLanguages();
+        applyNestedInitialTextLanguages();
         // Set rather than left to the default so Dv7Converter can hand the very same instance to the
         // Matroska extractor it re-creates — subtitle parsing is a constructor argument there, and
         // matching it by construction beats matching Media3's defaults from memory.
@@ -13335,6 +14702,9 @@ public class PlayerActivity extends Activity {
             if (oldIndex != newIndex) {
                 final boolean playedToEnd = reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION;
                 final long leftAt = playedToEnd ? 0 : oldPosition.positionMs;
+                if (nestedPlaylistSession) {
+                    nestedJournal.close(oldIndex, Math.max(0L, oldPosition.positionMs), -1L);
+                }
                 rememberEpisodePosition(oldIndex, leftAt);
                 // And on disk, keyed by the episode's own uri: the array above lives for this session
                 // and goes back to the launcher, but "have I watched this" is a question the next
@@ -13349,7 +14719,8 @@ public class PlayerActivity extends Activity {
             // (gapless) keeps starting the next episode from the beginning, as it should. The follow-up
             // seek lands with oldIndex == newIndex, so it neither loops nor overwrites the saved slot.
             if (reason == Player.DISCONTINUITY_REASON_SEEK && oldIndex != newIndex
-                    && newPosition.positionMs < 1000) {
+                    && newPosition.positionMs < 1000
+                    && !"never".equals(nestedResumeMode)) {
                 final long saved = savedPlaylistPosition(newIndex);
                 if (saved > 0) {
                     // Exactly where it was left, and exact is also what keeps this off the trap in
@@ -13484,8 +14855,10 @@ public class PlayerActivity extends Activity {
             Utils.log("tracks: video=" + selectedMime(tracks, C.TRACK_TYPE_VIDEO)
                     + " audio=" + selectedMime(tracks, C.TRACK_TYPE_AUDIO)
                     + " passthrough=" + (audioSink != null && audioSink.isPassthrough()));
-            // Tracks are now known — (re)map any container names onto them, then refresh the header.
+            // Tracks are now known — (re)map any container names onto them first, because launcher
+            // labels are matched against the same human-readable names the menu shows.
             resolveTrackNames();
+            applyNestedTrackRequests(tracks);
             updateMediaInfo();
             // In-stream renditions are known only now, so the quality button's visibility can change.
             updateQualityButton();
@@ -13518,10 +14891,14 @@ public class PlayerActivity extends Activity {
             // The track list is what decides whether anything is missing, so this is the first moment
             // the question can be asked at all.
             maybeSearchSubtitlesOnline(tracks);
-            // Apply a sticky quality choice to a freshly auto-advanced episode once its variants are known.
-            // Posted so the reinitialisation never runs while listeners are being dispatched.
+            // Apply sticky launcher-source choices only after the new item and its tracks are settled.
+            // Voice goes first because it may replace the source entirely; quality then applies inside
+            // the chosen voice.
             if (playerView != null) {
-                playerView.post(PlayerActivity.this::applyStickyQuality);
+                playerView.post(() -> {
+                    applyNestedViewerVoiceToCurrentItem();
+                    applyStickyQuality();
+                });
             }
         }
 
@@ -13562,6 +14939,14 @@ public class PlayerActivity extends Activity {
         public void onIsPlayingChanged(boolean isPlaying) {
             Utils.log("playing=" + isPlaying + (player != null ? " playWhenReady=" + player.getPlayWhenReady()
                     + " state=" + stateName(player.getPlaybackState()) : ""));
+            if (nestedPlaylistSession) {
+                touchNestedJournal();
+                if (isPlaying) {
+                    armNestedReportTimer();
+                } else {
+                    cancelNestedReportTimer();
+                }
+            }
             // Subtitles are painted off the media position, which only moves while this is true.
             if (subtitleOffset != null) {
                 subtitleOffset.wake();
