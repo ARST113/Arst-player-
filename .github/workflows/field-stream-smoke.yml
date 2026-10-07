@@ -39,8 +39,13 @@ jobs:
           # A small ranged read proves DNS/TLS/server/range access without downloading the episode.
           for name in mobland undead-hevc10; do
             if [[ "$name" == "mobland" ]]; then URL="$MOBLAND_URL"; else URL="$HEVC_URL"; fi
-            code="$(curl -L --fail --silent --show-error --range 0-262143               --connect-timeout 20 --max-time 90               -o /dev/null -w '%{http_code}' "$URL")"
-            echo "$name HTTP $code"
+            set +e
+            code="$(curl -L --silent --show-error --range 0-262143               --connect-timeout 20 --max-time 90               -o /dev/null -w '%{http_code}' "$URL")"
+            rc=$?
+            set -e
+            echo "$name preflight: curl_rc=$rc HTTP=$code"
+            # Informational only. Some field servers authorize differently for the player request;
+            # the emulator is the actual test and must run even when this preflight gets 401/403.
           done
 
       - name: Enable KVM
