@@ -8,7 +8,7 @@ out, so an iteration is judged by measurement instead of by eye against a differ
 
 Each pair of captures is reported on its own: `*-static` is the plain launch, `*-playlist` is the
 same clip with the legacy video_list contract carrying two items, which is what puts the transport's
-previous/next buttons on screen.
+previous/next buttons on screen, and `*-quality` carries two quality variants so the value chip is up.
 """
 import sys
 from pathlib import Path
@@ -24,7 +24,7 @@ def say(line=""):
     lines.append(line)
 
 
-PAIRS = ("static", "playlist")
+PAIRS = ("static", "playlist", "quality")
 
 # The status bar, the clock, the position readout and the scrubber carry the moment the capture was
 # taken, not the chrome; the rail band is masked because how much of it is coral follows the playback
