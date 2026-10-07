@@ -34,36 +34,36 @@ jobs:
             -o /tmp/official.apk
           echo "3e8bff06ebc1037142107c5c8321249c9a3fc4569de8d8be40e53716c5b042dc  /tmp/official.apk" | sha256sum -c -
 
-      - name: Extract human-readable UI XML
+      - name: Resolve and decode UI resources
         shell: bash
         run: |
           set -euo pipefail
           APKA="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | sort | tail -n1)"
+          AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n1)"
           test -x "$APKA"
+          test -x "$AAPT2"
+
           rm -rf official-apk-ui
-          mkdir -p official-apk-ui
-          "$APKA" files list /tmp/official.apk > /tmp/files.txt
+          mkdir -p official-apk-ui/decoded
 
-          grep -E '^/?res/layout[^/]*/.*\.xml$' /tmp/files.txt \
-            | grep -Ei '(player|control|exo_|skip|playlist|audio|subtitle|settings)' \
-            > /tmp/ui-xml.txt || true
+          "$APKA" files list /tmp/official.apk > official-apk-ui/APK_FILES.txt
+          "$AAPT2" dump resources /tmp/official.apk > /tmp/resources.txt
 
-          grep -E '^/?res/drawable[^/]*/.*\.xml$' /tmp/files.txt \
-            | grep -Ei '(control|exo_|pill|button|skip|audio|subtitle|lock|rotate|resize|gradient|scrim|background)' \
-            >> /tmp/ui-xml.txt || true
+          # Keep only the resource-table entries relevant to the released player chrome.
+          grep -E -B1 -A12 \
+            ':(layout|drawable)/(activity_player|activity_player_textureview|controls|exo_player_control_view|exo_player_view|exo_styled_player_view|rounded_controls_background|controls_gradient|scrim_bottom|bg_accent_pill|ic_lock_24dp|ic_screen_rotation_24dp|ic_aspect_ratio_24dp|ic_fit_screen_24dp|ic_audiotrack_24dp|ic_audiotrack_plate_24dp|ic_subtitles_24dp|ic_playlist_24dp|ic_more_vert_24dp|exo_styled_controls_play|exo_styled_controls_pause|exo_styled_controls_next)' \
+            /tmp/resources.txt > official-apk-ui/SELECTED_RESOURCE_MAP.txt || true
 
-          sort -u /tmp/ui-xml.txt -o /tmp/ui-xml.txt
-          cat /tmp/ui-xml.txt
+          # Decode every XML file path exposed by those selected resource entries.
+          grep -oE 'res/[A-Za-z0-9_.+@-]+\.xml' official-apk-ui/SELECTED_RESOURCE_MAP.txt \
+            | sort -u > /tmp/xml-paths.txt || true
 
-          while IFS= read -r path; do
-            [ -n "$path" ] || continue
-            rel="${path#/}"
-            apkpath="/$rel"
-            mkdir -p "official-apk-ui/$(dirname "$rel")"
-            "$APKA" resources xml --file "$apkpath" /tmp/official.apk > "official-apk-ui/$rel"
-          done < /tmp/ui-xml.txt
+          while IFS= read -r rel; do
+            [ -n "$rel" ] || continue
+            out="official-apk-ui/decoded/$(basename "$rel")"
+            "$APKA" resources xml --file "/$rel" /tmp/official.apk > "$out"
+          done < /tmp/xml-paths.txt
 
-          cp /tmp/files.txt official-apk-ui/APK_FILES.txt
           "$APKA" manifest version-name /tmp/official.apk > official-apk-ui/VERSION.txt
           sha256sum /tmp/official.apk > official-apk-ui/SHA256.txt
 
@@ -75,6 +75,6 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add official-apk-ui
           git diff --cached --quiet && exit 0
-          git commit -m "Audit: extract official 2.1.3 player UI resources"
+          git commit -m "Audit: map official 2.1.3 player UI resources"
           git pull --rebase origin audit-official-2.1.3
           git push origin HEAD:audit-official-2.1.3
