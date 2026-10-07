@@ -26,16 +26,15 @@ def say(line=""):
 
 PAIRS = ("static", "playlist", "quality", "dark")
 
-# The status bar, the clock, the position readout and the scrubber carry the moment the capture was
-# taken, not the chrome; the rail band is masked because how much of it is coral follows the playback
-# position -- its thickness and its tone are reported as numbers instead.
+# The status bar, the header clock, the whole seek row and the transport glyph carry the moment the
+# capture was taken, not the chrome: the played run and the thumb follow the playhead, and play and
+# pause are two pictures of one disc. Their geometry and tone are reported as numbers instead -- rail
+# thickness and colour, scrubber box, hero box and fill. What is left is what a layout port owns.
 DYNAMIC = (
     (0, 72, 0, 2400),
     (90, 215, 1880, 2270),
-    (805, 875, 190, 430),
-    (805, 875, 2040, 2270),
-    (795, 885, 280, 520),
-    (822, 852, 350, 2100),
+    (780, 890, 0, 2400),
+    (495, 585, 1160, 1240),
 )
 
 
