@@ -1,0 +1,61 @@
+name: Extract official 2.1.3 player UI
+
+on:
+  push:
+    branches:
+      - audit-official-2.1.3
+    paths:
+      - '.github/workflows/extract-official-ui-2.1.3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-official-2.1.3
+          fetch-depth: 0
+      - name: Download official release APK
+        run: |
+          curl -fL --retry 4 --retry-delay 2             https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.3/JustPlus.Player.v2.1.3.apk             -o /tmp/official.apk
+          echo "3e8bff06ebc1037142107c5c8321249c9a3fc4569de8d8be40e53716c5b042dc  /tmp/official.apk" | sha256sum -c -
+      - name: Extract human-readable UI XML
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKA="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | sort | tail -n1)"
+          test -x "$APKA"
+          rm -rf official-apk-ui
+          mkdir -p official-apk-ui
+          "$APKA" files list /tmp/official.apk > /tmp/files.txt
+
+          # All player/controller layouts. Preserve resource qualifiers and filenames.
+          grep -E '^/res/layout[^/]*/.*\.xml$' /tmp/files.txt |             grep -Ei '(player|control|exo_|skip|playlist|audio|subtitle|settings)' > /tmp/ui-xml.txt || true
+
+          # UI drawables that are likely to define controller surfaces/icons/backgrounds.
+          grep -E '^/res/drawable[^/]*/.*\.xml$' /tmp/files.txt |             grep -Ei '(control|exo_|pill|button|skip|audio|subtitle|lock|rotate|resize|gradient|scrim|background)' >> /tmp/ui-xml.txt || true
+
+          sort -u /tmp/ui-xml.txt -o /tmp/ui-xml.txt
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            rel="${path#/}"
+            mkdir -p "official-apk-ui/$(dirname "$rel")"
+            "$APKA" resources xml --file "$path" /tmp/official.apk > "official-apk-ui/$rel"
+          done < /tmp/ui-xml.txt
+
+          cp /tmp/files.txt official-apk-ui/APK_FILES.txt
+          "$APKA" manifest version-name /tmp/official.apk > official-apk-ui/VERSION.txt
+          sha256sum /tmp/official.apk > official-apk-ui/SHA256.txt
+      - name: Commit extracted resources
+        run: |
+          git config user.name "arx-ui-audit"
+          git config user.email "actions@users.noreply.github.com"
+          git add official-apk-ui
+          git diff --cached --quiet && exit 0
+          git commit -m "Audit: extract official 2.1.3 player UI resources"
+          git push origin HEAD:audit-official-2.1.3
