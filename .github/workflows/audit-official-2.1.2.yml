@@ -228,6 +228,7 @@ jobs:
             echo 'Audit report unchanged'
           else
             git commit -m 'Audit: persist official 2.1.2 APK diff report'
+            git pull --rebase origin arx-2.1.2-port-wip
             git push origin HEAD:arx-2.1.2-port-wip
           fi
 
