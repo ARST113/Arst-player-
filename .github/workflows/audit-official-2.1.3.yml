@@ -1,0 +1,120 @@
+name: Audit official Just+ 2.1.3 APK
+
+on:
+  push:
+    branches:
+      - audit-official-2.1.3
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-official-2.1.3
+          fetch-depth: 0
+
+      - name: Download APKs and JADX
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/apk-audit
+          curl -fL --retry 3 -o /tmp/apk-audit/2.1.2.apk https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.2/JustPlus.Player.v2.1.2.apk
+          curl -fL --retry 3 -o /tmp/apk-audit/2.1.3.apk https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.3/JustPlus.Player.v2.1.3.apk
+          API=https://api.github.com/repos/skylot/jadx/releases/latest
+          JADX_URL="$(curl -fsSL "$API" | jq -r '.assets[] | select(.name | test("^jadx-[0-9].*\\.zip$")) | .browser_download_url' | head -n1)"
+          curl -fL --retry 3 -o /tmp/apk-audit/jadx.zip "$JADX_URL"
+          unzip -q /tmp/apk-audit/jadx.zip -d /tmp/apk-audit/jadx
+
+      - name: Decompile APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/apk-audit/jadx/bin/jadx --show-bad-code -d /tmp/apk-audit/jadx212 /tmp/apk-audit/2.1.2.apk >/tmp/apk-audit/jadx212.log 2>&1 || true
+          /tmp/apk-audit/jadx/bin/jadx --show-bad-code -d /tmp/apk-audit/jadx213 /tmp/apk-audit/2.1.3.apk >/tmp/apk-audit/jadx213.log 2>&1 || true
+
+      - name: Build compact report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > apk-2.1.3-audit-report.txt
+          from pathlib import Path
+          import hashlib, re, zipfile
+
+          apks={"2.1.2":Path("/tmp/apk-audit/2.1.2.apk"),"2.1.3":Path("/tmp/apk-audit/2.1.3.apk")}
+          for v,p in apks.items():
+              print(v, "sha256", hashlib.sha256(p.read_bytes()).hexdigest(), "size", p.stat().st_size)
+
+          roots={"2.1.2":Path("/tmp/apk-audit/jadx212/sources"),"2.1.3":Path("/tmp/apk-audit/jadx213/sources")}
+          def java(root):
+              return {p.relative_to(root).as_posix():p for p in root.rglob("*.java")}
+          a,b=java(roots["2.1.2"]),java(roots["2.1.3"])
+          def norm(p):
+              s=p.read_text(errors="replace")
+              s=re.sub(r'0x7f[0-9a-fA-F]{6}','0x7fXXXXXX',s)
+              s=re.sub(r'/\\* JADX WARN:.*?\\*/','',s)
+              return s
+          print("\n=== APP CLASSES CHANGED 2.1.2 -> 2.1.3 ===")
+          changed=[]
+          for k in sorted(set(a)|set(b)):
+              if "com/brouken/player/" not in k: continue
+              if k not in a: changed.append(("ADDED",k,0,len(b[k].read_text(errors="replace").splitlines())))
+              elif k not in b: changed.append(("REMOVED",k,len(a[k].read_text(errors="replace").splitlines()),0))
+              elif norm(a[k]) != norm(b[k]):
+                  changed.append(("CHANGED",k,len(a[k].read_text(errors="replace").splitlines()),len(b[k].read_text(errors="replace").splitlines())))
+          for row in changed: print("%s\t%s\t%s->%s" % row)
+          print("APP_CHANGED_TOTAL",len(changed))
+
+          print("\n=== 2.1.3 FEATURE SIGNATURES ===")
+          pats=["JustPlayer v2.1.3","AndroidXMedia3/1.11.1","WindowInsets","getInsetsIgnoringVisibility","error_stream_http_status","subtitleLanguages","SELECTION_FLAG_FORCED","last playback error","playback error","responseCode","systemBars"]
+          root=roots["2.1.3"]
+          files=list(root.rglob("*.java"))
+          for pat in pats:
+              print("---",pat,"---")
+              n=0
+              for p in files:
+                  for i,line in enumerate(p.read_text(errors="replace").splitlines(),1):
+                      if pat.lower() in line.lower():
+                          print(f"{p.relative_to(root).as_posix()}:{i}:{line.strip()}")
+                          n+=1
+                          if n>=30: break
+                  if n>=30: break
+              if n==0: print("(none)")
+
+          print("\n=== RESOURCE FILE DIFF ===")
+          ra=Path("/tmp/apk-audit/jadx212/resources")
+          rb=Path("/tmp/apk-audit/jadx213/resources")
+          def resfiles(root):
+              return {p.relative_to(root).as_posix():p for p in root.rglob("*") if p.is_file()}
+          fa,fb=resfiles(ra),resfiles(rb)
+          rc=[]
+          for k in sorted(set(fa)|set(fb)):
+              if k not in fa: rc.append(("ADDED",k))
+              elif k not in fb: rc.append(("REMOVED",k))
+              elif hashlib.sha256(fa[k].read_bytes()).digest()!=hashlib.sha256(fb[k].read_bytes()).digest():
+                  rc.append(("CHANGED",k))
+          for row in rc[:400]: print(*row,sep="\t")
+          print("RESOURCE_CHANGED_TOTAL",len(rc))
+          PY
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apk-2.1.3-audit-report.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Audit: persist official 2.1.3 APK diff [skip ci]"
+            git push origin HEAD:audit-official-2.1.3
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-2.1.2-vs-2.1.3-jadx
+          path: |
+            apk-2.1.3-audit-report.txt
+            /tmp/apk-audit/jadx213/resources
+          if-no-files-found: error
+          retention-days: 3
