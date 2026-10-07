@@ -818,6 +818,7 @@ public class PlayerActivity extends Activity {
     private TextView episodeInfoView;
     private TextView videoInfoView;
     private TextView audioInfoView;
+    private LinearLayout mediaInfoRow;
     private TextView endsAtView;
     /**
      * When the broadcast now playing was joined, for the "watching for" reading in the bottom bar.
@@ -1992,11 +1993,54 @@ public class PlayerActivity extends Activity {
         episodeInfoView = createInfoLine(ui.dpS(2));
         infoColumn.addView(episodeInfoView);
 
-        // Two meta lines: video (resolution · codec · HDR) and the audio track (label / codec / language).
-        videoInfoView = createInfoLine(ui.dpS(5));
-        infoColumn.addView(videoInfoView);
-        audioInfoView = createInfoLine(ui.dpS(3));
-        infoColumn.addView(audioInfoView);
+        // Released 2.1.3 uses one compact media row:
+        // [video icon] resolution · codec · fps  |  [audio icon] language / codec.
+        mediaInfoRow = new LinearLayout(this);
+        mediaInfoRow.setOrientation(LinearLayout.HORIZONTAL);
+        mediaInfoRow.setGravity(Gravity.CENTER_VERTICAL);
+        final LinearLayout.LayoutParams mediaRowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mediaRowLp.topMargin = ui.dpS(6);
+        mediaInfoRow.setLayoutParams(mediaRowLp);
+
+        videoInfoView = createInfoLine(0);
+        videoInfoView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        final Drawable videoIcon = ContextCompat.getDrawable(this, R.drawable.ic_theaters_24dp);
+        if (videoIcon != null) {
+            final int icon = ui.dpS(18);
+            videoIcon.setBounds(0, 0, icon, icon);
+            videoInfoView.setCompoundDrawablesRelative(videoIcon, null, null, null);
+            videoInfoView.setCompoundDrawableTintList(
+                    ContextCompat.getColorStateList(this, R.color.control_icon_tint));
+            videoInfoView.setCompoundDrawablePadding(ui.dpS(7));
+        }
+        mediaInfoRow.addView(videoInfoView);
+
+        final View metaDivider = new View(this);
+        final LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(
+                Math.max(1, ui.dpS(1)), ui.dpS(18));
+        dividerLp.setMarginStart(ui.dpS(12));
+        dividerLp.setMarginEnd(ui.dpS(12));
+        dividerLp.gravity = Gravity.CENTER_VERTICAL;
+        metaDivider.setLayoutParams(dividerLp);
+        metaDivider.setBackgroundColor(0x59FFFFFF);
+        mediaInfoRow.addView(metaDivider);
+
+        audioInfoView = createInfoLine(0);
+        audioInfoView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        final Drawable audioIcon = ContextCompat.getDrawable(this, R.drawable.ic_audiotrack_24dp);
+        if (audioIcon != null) {
+            final int icon = ui.dpS(18);
+            audioIcon.setBounds(0, 0, icon, icon);
+            audioInfoView.setCompoundDrawablesRelative(audioIcon, null, null, null);
+            audioInfoView.setCompoundDrawableTintList(
+                    ContextCompat.getColorStateList(this, R.color.control_icon_tint));
+            audioInfoView.setCompoundDrawablePadding(ui.dpS(7));
+        }
+        mediaInfoRow.addView(audioInfoView);
+        infoColumn.addView(mediaInfoRow);
 
         topInfoPanel.addView(infoColumn);
 
@@ -2013,85 +2057,40 @@ public class PlayerActivity extends Activity {
         headerClockColumnParams.gravity = Gravity.TOP;
         headerClockColumn.setLayoutParams(headerClockColumnParams);
 
-        // Time row (row 1): "until …" then the clock on one line. The clock is the bold, right-pinned anchor,
-        // so it never jumps sideways when the dynamically-computed end time appears/updates while loading.
-        // No vertical gravity: that lets LinearLayout's baseline alignment sit the smaller end time on the
-        // clock's baseline, instead of centring two different text sizes against each other.
-        final LinearLayout timeRow = new LinearLayout(this);
-        timeRow.setOrientation(LinearLayout.HORIZONTAL);
-        final LinearLayout.LayoutParams timeRowLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        timeRowLp.gravity = Gravity.END;
-        timeRow.setLayoutParams(timeRowLp);
-
-        endsAtView = new TextView(this);
-        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_medium));
-        // A step below the clock: the clock is the anchor, the end time is the qualifier next to it.
-        endsAtView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textEndsAt());
-        endsAtView.setVisibility(View.GONE);
-        timeRow.addView(endsAtView);
-
+        // Released 2.1.3: clock at the top-right, "Ends at …" on its own line below.
         headerClock = new OutlineTextClock(this);
         headerClock.setFormat12Hour("h:mm a");
         headerClock.setFormat24Hour("HH:mm");
-        // A step above the "until …" text but short of pure white, which read as too harsh; the black outline
-        // and bold weight carry the rest of the legibility. The overlay clock must use the same value.
         headerClock.setTextColor(ContextCompat.getColor(this, R.color.ink_clock));
-        headerClock.setTypeface(Typeface.DEFAULT_BOLD);
+        headerClock.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         headerClock.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textClock());
+        headerClock.setIncludeFontPadding(false);
         final LinearLayout.LayoutParams headerClockLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        headerClockLp.setMarginStart(Utils.dpToPx(6));
+        headerClockLp.gravity = Gravity.END;
         headerClock.setLayoutParams(headerClockLp);
-        timeRow.addView(headerClock);
+        headerClockColumn.addView(headerClock);
 
-        headerClockColumn.addView(timeRow);
+        endsAtView = new TextView(this);
+        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_medium));
+        endsAtView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textEndsAt());
+        endsAtView.setVisibility(View.GONE);
+        final LinearLayout.LayoutParams endsLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        endsLp.gravity = Gravity.END;
+        endsLp.topMargin = ui.dpS(2);
+        endsAtView.setLayoutParams(endsLp);
+        headerClockColumn.addView(endsAtView);
 
-        // All the slack goes between the two rows, so the icons ride the header's bottom line whatever the
-        // left column's height turns out to be, instead of trailing the clock with a fixed gap.
-        final View headerSpacer = new View(this);
-        headerSpacer.setLayoutParams(new LinearLayout.LayoutParams(0, 0, 1f));
-        headerClockColumn.addView(headerSpacer);
-
-        // Display icons (row 2): aspect / PiP / rotation, right-aligned under the clock, bare — no pill behind
-        // them. The nudge that lands their glyphs on the header's right and bottom grid lines is applied in the
-        // controls assembly, where the button padding is known.
-        // Populated in the controls assembly; empty on TV (those controls live in the bottom bar there).
+        // Kept as an empty holder because a few adaptive paths still reference the field; the
+        // released phone UI no longer places display controls in the header.
         headerButtons = new LinearLayout(this);
         headerButtons.setOrientation(LinearLayout.HORIZONTAL);
-        final LinearLayout.LayoutParams headerButtonsParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        headerButtonsParams.gravity = Gravity.END;
-        headerButtonsParams.topMargin = Utils.dpToPx(4);
-        headerButtons.setLayoutParams(headerButtonsParams);
-        headerClockColumn.addView(headerButtons);
 
-        // Both header columns are top-aligned, and the title's ascent is taller than the time row's, so equal
-        // tops leave the clock's baseline above the title's — the design has the two on one line. Push the
-        // column down by the difference between the two first-baseline offsets, read from the paints so it
-        // holds at any font scale.
         headerClockColumnParams.topMargin = Math.max(0,
                 headerClock.getPaint().getFontMetricsInt().top
                         - titleView.getPaint().getFontMetricsInt().top);
         headerClockColumn.setLayoutParams(headerClockColumnParams);
-
-        // This column asks for MATCH_PARENT height so the spacer can push the icon row onto the header's
-        // bottom line. A LinearLayout ignores such a child when it works out how tall it has to be — a
-        // MATCH_PARENT child contributes only its margins — so the header's height is decided by the text
-        // column alone, and the column is then re-measured to exactly that. With no poster and one meta line
-        // missing (a file with no audio track drops the audio line) that came out shorter than the clock plus
-        // the icons, and the icon row was clipped to a 35px sliver of its 120px.
-        //
-        // So the floor goes on the text column, which is what the header measures: it may not end above the
-        // line the icons need. It only ever grows the header where the text alone would not reach; with a
-        // poster, or a full set of meta lines, the column is already taller and nothing changes.
-        if (!isTvBox) {
-            infoColumn.setMinimumHeight(headerClockColumnParams.topMargin
-                    + headerClock.getLineHeight()          // the clock row this column sits beside
-                    + headerButtonsParams.topMargin
-                    + ui.clusterBox()                      // the icon row itself
-                    + ui.clusterPad());                    // and the nudge that lands it on the grid line
-        }
 
         topInfoPanel.addView(headerClockColumn);
 
@@ -6390,6 +6389,12 @@ public class PlayerActivity extends Activity {
         final boolean detailed = mPrefs == null || "detailed".equals(mPrefs.headerInfo);
         setInfoLine(videoInfoView, buildVideoInfo(video, videoFrameRate(), detailed));
         setInfoLine(audioInfoView, buildAudioInfo(getSelectedAudioFormat(), detailed));
+        if (mediaInfoRow != null) {
+            mediaInfoRow.setVisibility(
+                    (videoInfoView.getVisibility() == View.VISIBLE
+                            || audioInfoView.getVisibility() == View.VISIBLE)
+                            ? View.VISIBLE : View.GONE);
+        }
     }
 
     private static void setInfoLine(TextView view, String text) {
