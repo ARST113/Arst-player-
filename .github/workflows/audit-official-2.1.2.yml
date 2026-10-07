@@ -1,6 +1,7 @@
 name: Audit official Just+ 2.1.2 APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - arx-2.1.2-port-wip
