@@ -94,16 +94,35 @@ PY
 # ground is slate on purpose: neither is a near-neutral bright wash, so the plate detector cannot
 # mistake the picture for chrome.
 prepare_static_fixture() {
-  command -v ffmpeg >/dev/null 2>&1 || return 1
-  ffmpeg -hide_banner -loglevel error -y \
+  command -v ffmpeg >/dev/null 2>&1 || { echo "static fixture: ffmpeg missing"; return 1; }
+  if ! ffmpeg -hide_banner -loglevel error -y \
     -f lavfi -i "color=c=0x303840:s=1280x720:r=24:d=45" \
     -vf "drawgrid=w=160:h=160:t=2:c=0x00E5FF@0.9" \
     -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -level 4.0 -g 48 \
-    -movflags +faststart /tmp/chrome-fixture.mp4 || return 1
+    -movflags +faststart /tmp/chrome-fixture.mp4; then
+    echo "static fixture: ffmpeg could not build the clip"
+    return 1
+  fi
+  ls -la /tmp/chrome-fixture.mp4
   ( cd /tmp && nohup python3 -m http.server "$STATIC_PORT" --bind 127.0.0.1 >/tmp/static-http.log 2>&1 & )
-  sleep 1
-  curl -fsS -o /dev/null "http://127.0.0.1:${STATIC_PORT}/chrome-fixture.mp4" || return 1
-  adb reverse "tcp:${STATIC_PORT}" "tcp:${STATIC_PORT}"
+  local served=1
+  for _ in 1 2 3 4 5 6; do
+    sleep 1
+    if curl -fsS -o /dev/null "http://127.0.0.1:${STATIC_PORT}/chrome-fixture.mp4"; then
+      served=0
+      break
+    fi
+  done
+  if (( served != 0 )); then
+    echo "static fixture: the local server did not answer"
+    cat /tmp/static-http.log || true
+    return 1
+  fi
+  if ! adb reverse "tcp:${STATIC_PORT}" "tcp:${STATIC_PORT}"; then
+    echo "static fixture: adb reverse refused"
+    return 1
+  fi
+  return 0
 }
 
 open_and_capture official /tmp/JustPlus.Player.v2.1.3.apk

@@ -42,7 +42,7 @@ jobs:
           echo "3e8bff06ebc1037142107c5c8321249c9a3fc4569de8d8be40e53716c5b042dc  /tmp/JustPlus.Player.v2.1.3.apk" | sha256sum -c -
 
       - name: Install Pillow
-        run: python3 -m pip install --quiet pillow
+        run: python3 -m pip install --quiet pillow numpy
 
       - name: Enable KVM
         shell: bash
