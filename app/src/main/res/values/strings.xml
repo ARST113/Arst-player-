@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">Just+ Player</string>
+    <string name="app_name" translatable="false">ARX TPlayer</string>
     <string name="video_resize_fit">Fit</string>
     <string name="video_resize_crop">Crop</string>
     <string name="video_resize_fill">Fill</string>
@@ -79,7 +79,7 @@
     <string name="error_copy">Copy</string>
     <string name="error_copied">Copied</string>
     <string name="error_share">Share</string>
-    <string name="error_share_subject">Just+ Player error report</string>
+    <string name="error_share_subject">ARX TPlayer error report</string>
     <string name="error_upload">Upload log</string>
     <string name="error_uploading">Uploading…</string>
     <string name="error_upload_failed">Upload failed — tap to retry</string>
