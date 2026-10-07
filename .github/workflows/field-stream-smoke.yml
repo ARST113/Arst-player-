@@ -31,8 +31,8 @@ jobs:
       - name: Verify field URLs answer from GitHub runner
         shell: bash
         env:
-          MOBLAND_URL: 'https://newgenres.duckdns.org/TS-DE/stream/MobLand.S01E04.1080p.WEB-DL.RGzsRutracker.mkv?link=3198e8861318732299b77913076857c75a6bc754&index=4&play'
-          HEVC_URL: 'https://newgenres.duckdns.org/TS-DE/stream/Undead%20Unluck%20-%2006%20%5BBDRip%201080p%20HEVC%2010bits%20FLAC%5D.mkv?link=cc52091494a2298cc6f724c871ab7ba6e28bba82&index=6&play'
+          MOBLAND_URL: 'http://213.171.26.189:2367/stream/MobLand.S01E04.1080p.WEB-DL.RGzsRutracker.mkv?link=3198e8861318732299b77913076857c75a6bc754&index=4&play'
+          HEVC_URL: 'http://213.171.26.189:2367/stream/Undead%20Unluck%20-%2006%20%5BBDRip%201080p%20HEVC%2010bits%20FLAC%5D.mkv?link=cc52091494a2298cc6f724c871ab7ba6e28bba82&index=6&play'
         run: |
           set -euo pipefail
           mkdir -p field-stream-smoke
@@ -58,8 +58,8 @@ jobs:
       - name: Play both real server streams
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          MOBLAND_URL: 'https://newgenres.duckdns.org/TS-DE/stream/MobLand.S01E04.1080p.WEB-DL.RGzsRutracker.mkv?link=3198e8861318732299b77913076857c75a6bc754&index=4&play'
-          HEVC_URL: 'https://newgenres.duckdns.org/TS-DE/stream/Undead%20Unluck%20-%2006%20%5BBDRip%201080p%20HEVC%2010bits%20FLAC%5D.mkv?link=cc52091494a2298cc6f724c871ab7ba6e28bba82&index=6&play'
+          MOBLAND_URL: 'http://213.171.26.189:2367/stream/MobLand.S01E04.1080p.WEB-DL.RGzsRutracker.mkv?link=3198e8861318732299b77913076857c75a6bc754&index=4&play'
+          HEVC_URL: 'http://213.171.26.189:2367/stream/Undead%20Unluck%20-%2006%20%5BBDRip%201080p%20HEVC%2010bits%20FLAC%5D.mkv?link=cc52091494a2298cc6f724c871ab7ba6e28bba82&index=6&play'
         with:
           api-level: 35
           target: google_apis
