@@ -6389,8 +6389,9 @@ public class PlayerActivity extends Activity {
             return;
         }
         final Format video = player.getVideoFormat();
-        setInfoLine(videoInfoView, buildVideoInfo(video, videoFrameRate()));
-        setInfoLine(audioInfoView, buildAudioInfo(getSelectedAudioFormat()));
+        final boolean detailed = mPrefs == null || "detailed".equals(mPrefs.headerInfo);
+        setInfoLine(videoInfoView, buildVideoInfo(video, videoFrameRate(), detailed));
+        setInfoLine(audioInfoView, buildAudioInfo(getSelectedAudioFormat(), detailed));
     }
 
     private static void setInfoLine(TextView view, String text) {
@@ -6405,18 +6406,17 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    private static String buildVideoInfo(Format video, float frameRate) {
+    private static String buildVideoInfo(Format video, float frameRate, boolean detailed) {
         if (video == null) {
             return null;
         }
         final StringBuilder b = new StringBuilder();
         appendField(b, resolutionClass(video.width, video.height));
-        appendField(b, codecName(video));
+        if (detailed) {
+            appendField(b, codecName(video));
+        }
         appendField(b, hdrName(video.colorInfo));
-        // Alongside its neighbours rather than in the stats panel: like them it is a property of the file
-        // and does not move during playback, and it is the one the frame-rate matching setting is about —
-        // which made it the only reason to open a panel over the picture.
-        if (frameRate > 0) {
+        if (detailed && frameRate > 0) {
             appendField(b, String.format(Locale.US, "%.2f fps", frameRate));
         }
         return b.toString();
@@ -6469,7 +6469,7 @@ public class PlayerActivity extends Activity {
         return new String[]{headline, detail.length() == 0 ? null : detail.toString()};
     }
 
-    private String buildAudioInfo(Format audio) {
+    private String buildAudioInfo(Format audio, boolean detailed) {
         if (audio == null) {
             return null;
         }
@@ -6482,8 +6482,10 @@ public class PlayerActivity extends Activity {
         if (title != null && !title.isEmpty()) {
             b.append(title);
         }
-        final String tech = CustomDefaultTrackNameProvider.techInfo(audio);
-        if (!tech.isEmpty()) {
+        final String tech = detailed
+                ? CustomDefaultTrackNameProvider.techInfo(audio)
+                : (audio.channelCount > 2 ? Utils.formatChannels(audio.channelCount) : "");
+        if (tech != null && !tech.isEmpty()) {
             if (b.length() > 0) b.append(' ');
             b.append('[').append(tech).append(']');
         }
