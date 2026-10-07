@@ -1,0 +1,126 @@
+=== SOURCE HITS: logo/poster/header ===
+/tmp/apk/out/sources/com/brouken/player/PlayerActivity.java:3834:        Uri uri3 = (!"logo".equals(this.H.z0) || iV >= this.R3.size()) ? null : (Uri) this.R3.get(iV);
+/tmp/apk/out/sources/com/brouken/player/PlayerActivity.java:3848:        if ("poster".equals(this.H.z0)) {
+/tmp/apk/out/sources/com/brouken/player/PlayerActivity.java:5924:        String strY2 = ha1.Y("logo", bundle5);
+/tmp/apk/out/sources/com/brouken/player/PlayerActivity.java:15790:                return jSONObjectPut.put("title", strW).put("poster", yt2.E(this.C3) ? this.C3.toString() : "").put("tmdb", i).put("source", "tmdb").put("type", this.K3 > 0 ? "tv" : "movie");
+/tmp/apk/out/sources/defpackage/qt2.java:108:        Display.Mode mode = display.getMode();
+/tmp/apk/out/sources/defpackage/ko2.java:32:        String strD2 = d(jSONObjectC, "poster_path");
+/tmp/apk/out/sources/defpackage/ko2.java:105:                String strD2 = d(jSONObject, "poster_path");
+/tmp/apk/out/sources/defpackage/i52.java:8:    SMB2_LOGOFF(2),
+/tmp/apk/out/sources/defpackage/d70.java:270:                    Dialog dialogO = O();
+/tmp/apk/out/sources/defpackage/d70.java:271:                    this.o0 = dialogO;
+/tmp/apk/out/sources/defpackage/d70.java:275:                            dialogO.requestWindowFeature(1);
+/tmp/apk/out/sources/defpackage/d70.java:277:                            Window window = dialogO.getWindow();
+/tmp/apk/out/sources/defpackage/d70.java:281:                            dialogO.requestWindowFeature(1);
+/tmp/apk/out/sources/defpackage/yo1.java:145:            String strOptString3 = jSONObject.optString("poster", "");
+/tmp/apk/out/sources/defpackage/dp2.java:217:        this.a.setLogo(drawable);
+/tmp/apk/out/sources/defpackage/hu1.java:119:    public String z0 = "logo";
+/tmp/apk/out/sources/defpackage/cw1.java:38:    public static final int[] F = {R.attr.logoAdjustViewBounds, R.attr.logoScaleType, R.attr.navigationIconTint, R.attr.shapeAppearance, R.attr.shapeAppearanceOverlay, R.attr.subtitleCentered, R.attr.titleCentered};
+/tmp/apk/out/sources/defpackage/ua2.java:242:                        h52 h52Var = (h52) q(new h52(4, (w42) xvVar.n.b.e, i52.SMB2_LOGOFF, this.l, 0L)).l.get(this.n.n, TimeUnit.MILLISECONDS);
+/tmp/apk/out/sources/defpackage/ua2.java:247:                        throw new u62((u52) h52Var.a, "Could not logoff session <<" + this.l + ">>");
+/tmp/apk/out/sources/defpackage/ws1.java:161:        String strY3 = ha1.Y("logo", bundle);
+/tmp/apk/out/sources/defpackage/ro2.java:260:                    jSONObjectPut.put("poster", str3);
+/tmp/apk/out/sources/defpackage/ro2.java:314:            String strOptString3 = jSONObjectZ2.optString("poster", "");
+/tmp/apk/out/sources/defpackage/ro2.java:380:                    String strOptString3 = jSONObject.optString("poster", null);
+/tmp/apk/out/sources/defpackage/i4.java:730:                        jSONObjectPut = jSONObjectPut3.put("name", str).put("title", jSONObjectZ2.optString("title", "")).put("poster", jSONObjectZ2.optString("poster", "")).put("owner", ro2Var.E).put("members", ro2Var.N).put("pwd", !ro2Var.B.b.isEmpty() ? 1 : 0).put("tmdb", jSONObjectZ2.optInt("tmdb")).put("type", jSONObjectZ2.optString("type", "movie"));
+/tmp/apk/out/sources/defpackage/yq1.java:19:        if (this.a.U5 == 0 || (display != null && display.getDisplayId() == i && display.getMode().getModeId() == this.a.U5)) {
+/tmp/apk/out/sources/defpackage/yt2.java:231:    public static String L(Display.Mode mode) {
+/tmp/apk/out/sources/defpackage/yt2.java:235:    public static Display.Mode M(ArrayList arrayList, float f2, int i2) {
+/tmp/apk/out/sources/defpackage/yt2.java:237:        Display.Mode mode = null;
+/tmp/apk/out/sources/defpackage/yt2.java:240:            Display.Mode mode2 = (Display.Mode) it.next();
+/tmp/apk/out/sources/defpackage/yt2.java:962:      0x00ef: PHI (r21v4 android.view.Display$Mode) = (r21v2 android.view.Display$Mode), (r21v5 android.view.Display$Mode) binds: [B:70:0x00ed, B:65:0x00d4] A[DONT_GENERATE, DONT_INLINE]
+/tmp/apk/out/sources/defpackage/yt2.java:963:      0x00ef: PHI (r22v2 android.view.Display$Mode[]) = (r22v0 android.view.Display$Mode[]), (r22v3 android.view.Display$Mode[]) binds: [B:70:0x00ed, B:65:0x00d4] A[DONT_GENERATE, DONT_INLINE]] */
+/tmp/apk/out/sources/defpackage/yt2.java:972:        Display.Mode mode;
+/tmp/apk/out/sources/defpackage/yt2.java:973:        Display.Mode[] modeArr;
+/tmp/apk/out/sources/defpackage/yt2.java:982:        Display.Mode[] supportedModes = display.getSupportedModes();
+/tmp/apk/out/sources/defpackage/yt2.java:983:        Display.Mode mode2 = display.getMode();
+/tmp/apk/out/sources/defpackage/yt2.java:985:            K("display mode: video " + i2 + "w @" + f4 + ", active " + L(mode2) + ", the display offers no other mode");
+/tmp/apk/out/sources/defpackage/yt2.java:1036:                Display.Mode mode3 = supportedModes[i6];
+/tmp/apk/out/sources/defpackage/yt2.java:1048:        Display.Mode mode4 = z ? null : mode2;
+/tmp/apk/out/sources/defpackage/yt2.java:1050:        Display.Mode mode5 = mode4;
+/tmp/apk/out/sources/defpackage/yt2.java:1055:            Display.Mode mode6 = supportedModes[i8];
+/tmp/apk/out/sources/defpackage/yt2.java:1088:        Display.Mode mode7 = mode2;
+/tmp/apk/out/sources/defpackage/yt2.java:1090:            K("display mode: video " + i2 + "w @" + f4 + ", active " + L(mode7) + ", target width " + strValueOf + ", " + i7 + " candidates, nothing to switch to");
+/tmp/apk/out/sources/defpackage/yt2.java:1094:        Display.Mode modeM = M(arrayList, f4, i9);
+/tmp/apk/out/sources/defpackage/yt2.java:1104:        StringBuilder sb = new StringBuilder("display mode: video ");
+/tmp/apk/out/sources/defpackage/yt2.java:1124:            attributes.preferredDisplayModeId = mode5.getModeId();
+/tmp/apk/out/sources/defpackage/jw1.java:10:    public static final int[] d = {R.attr.ad_marker_color, R.attr.ad_marker_width, R.attr.animation_enabled, R.attr.artwork_display_mode, R.attr.auto_show, R.attr.bar_gravity, R.attr.bar_height, R.attr.buffered_color, R.attr.controller_layout_id, R.attr.default_artwork, R.attr.fastforward_icon, R.attr.fullscreen_enter_icon, R.attr.fullscreen_exit_icon, R.attr.hide_during_ads, R.attr.hide_on_touch, R.attr.image_display_mode, R.attr.keep_content_on_player_reset, R.attr.next_icon, R.attr.pause_icon, R.attr.play_icon, R.attr.played_ad_marker_color, R.attr.played_color, R.attr.player_layout_id, R.attr.previous_icon, R.attr.repeat_all_icon, R.attr.repeat_off_icon, R.attr.repeat_one_icon, R.attr.repeat_toggle_modes, R.attr.resize_mode, R.attr.rewind_icon, R.attr.scrubber_color, R.attr.scrubber_disabled_size, R.attr.scrubber_dragged_size, R.attr.scrubber_drawable, R.attr.scrubber_enabled_size, R.attr.show_buffering, R.attr.show_shuffle_button, R.attr.show_subtitle_button, R.attr.show_timeout, R.attr.show_vr_button, R.attr.shuffle_off_icon, R.attr.shuffle_on_icon, R.attr.shutter_background_color, R.attr.subtitle_off_icon, R.attr.subtitle_on_icon, R.attr.surface_type, R.attr.time_bar_min_update_interval, R.attr.time_bar_scrubbing_enabled, R.attr.touch_target_height, R.attr.unplayed_color, R.attr.use_artwork, R.attr.use_controller, R.attr.vr_icon};
+/tmp/apk/out/sources/defpackage/mw1.java:7:    public static final int[] a = {R.attr.background, R.attr.backgroundSplit, R.attr.backgroundStacked, R.attr.contentInsetEnd, R.attr.contentInsetEndWithActions, R.attr.contentInsetLeft, R.attr.contentInsetRight, R.attr.contentInsetStart, R.attr.contentInsetStartWithNavigation, R.attr.customNavigationLayout, R.attr.displayOptions, R.attr.divider, R.attr.elevation, R.attr.height, R.attr.hideOnContentScroll, R.attr.homeAsUpIndicator, R.attr.homeLayout, R.attr.icon, R.attr.indeterminateProgressStyle, R.attr.itemPadding, R.attr.logo, R.attr.navigationMode, R.attr.popupTheme, R.attr.progressBarPadding, R.attr.progressBarStyle, R.attr.subtitle, R.attr.subtitleTextStyle, R.attr.title, R.attr.titleTextStyle};
+/tmp/apk/out/sources/defpackage/mw1.java:16:    public static final int[] j = {android.R.attr.windowIsFloating, android.R.attr.windowAnimationStyle, R.attr.actionBarDivider, R.attr.actionBarItemBackground, R.attr.actionBarPopupTheme, R.attr.actionBarSize, R.attr.actionBarSplitStyle, R.attr.actionBarStyle, R.attr.actionBarTabBarStyle, R.attr.actionBarTabStyle, R.attr.actionBarTabTextStyle, R.attr.actionBarTheme, R.attr.actionBarWidgetTheme, R.attr.actionButtonStyle, R.attr.actionDropDownStyle, R.attr.actionMenuTextAppearance, R.attr.actionMenuTextColor, R.attr.actionModeBackground, R.attr.actionModeCloseButtonStyle, R.attr.actionModeCloseContentDescription, R.attr.actionModeCloseDrawable, R.attr.actionModeCopyDrawable, R.attr.actionModeCutDrawable, R.attr.actionModeFindDrawable, R.attr.actionModePasteDrawable, R.attr.actionModePopupWindowStyle, R.attr.actionModeSelectAllDrawable, R.attr.actionModeShareDrawable, R.attr.actionModeSplitBackground, R.attr.actionModeStyle, R.attr.actionModeTheme, R.attr.actionModeWebSearchDrawable, R.attr.actionOverflowButtonStyle, R.attr.actionOverflowMenuStyle, R.attr.activityChooserViewStyle, R.attr.alertDialogButtonGroupStyle, R.attr.alertDialogCenterButtons, R.attr.alertDialogStyle, R.attr.alertDialogTheme, R.attr.autoCompleteTextViewStyle, R.attr.borderlessButtonStyle, R.attr.buttonBarButtonStyle, R.attr.buttonBarNegativeButtonStyle, R.attr.buttonBarNeutralButtonStyle, R.attr.buttonBarPositiveButtonStyle, R.attr.buttonBarStyle, R.attr.buttonStyle, R.attr.buttonStyleSmall, R.attr.checkboxStyle, R.attr.checkedTextViewStyle, R.attr.colorAccent, R.attr.colorBackgroundFloating, R.attr.colorButtonNormal, R.attr.colorControlActivated, R.attr.colorControlHighlight, R.attr.colorControlNormal, R.attr.colorError, R.attr.colorPrimary, R.attr.colorPrimaryDark, R.attr.colorSwitchThumbNormal, R.attr.controlBackground, R.attr.dialogCornerRadius, R.attr.dialogPreferredPadding, R.attr.dialogTheme, R.attr.dividerHorizontal, R.attr.dividerVertical, R.attr.dropDownListViewStyle, R.attr.dropdownListPreferredItemHeight, R.attr.editTextBackground, R.attr.editTextColor, R.attr.editTextStyle, R.attr.homeAsUpIndicator, R.attr.imageButtonStyle, R.attr.listChoiceBackgroundIndicator, R.attr.listChoiceIndicatorMultipleAnimated, R.attr.listChoiceIndicatorSingleAnimated, R.attr.listDividerAlertDialog, R.attr.listMenuViewStyle, R.attr.listPopupWindowStyle, R.attr.listPreferredItemHeight, R.attr.listPreferredItemHeightLarge, R.attr.listPreferredItemHeightSmall, R.attr.listPreferredItemPaddingEnd, R.attr.listPreferredItemPaddingLeft, R.attr.listPreferredItemPaddingRight, R.attr.listPreferredItemPaddingStart, R.attr.panelBackground, R.attr.panelMenuListTheme, R.attr.panelMenuListWidth, R.attr.popupMenuStyle, R.attr.popupWindowStyle, R.attr.radioButtonStyle, R.attr.ratingBarStyle, R.attr.ratingBarStyleIndicator, R.attr.ratingBarStyleSmall, R.attr.searchViewStyle, R.attr.seekBarStyle, R.attr.selectableItemBackground, R.attr.selectableItemBackgroundBorderless, R.attr.spinnerDropDownItemStyle, R.attr.spinnerStyle, R.attr.switchStyle, R.attr.textAppearanceLargePopupMenu, R.attr.textAppearanceListItem, R.attr.textAppearanceListItemSecondary, R.attr.textAppearanceListItemSmall, R.attr.textAppearancePopupMenuHeader, R.attr.textAppearanceSearchResultSubtitle, R.attr.textAppearanceSearchResultTitle, R.attr.textAppearanceSmallPopupMenu, R.attr.textColorAlertDialogListItem, R.attr.textColorSearchUrl, R.attr.toolbarNavigationButtonStyle, R.attr.toolbarStyle, R.attr.tooltipForegroundColor, R.attr.tooltipFrameBackground, R.attr.viewInflaterClass, R.attr.windowActionBar, R.attr.windowActionBarOverlay, R.attr.windowActionModeOverlay, R.attr.windowFixedHeightMajor, R.attr.windowFixedHeightMinor, R.attr.windowFixedWidthMajor, R.attr.windowFixedWidthMinor, R.attr.windowMinWidthMajor, R.attr.windowMinWidthMinor, R.attr.windowNoTitle};
+/tmp/apk/out/sources/defpackage/mw1.java:31:    public static final int[] y = {android.R.attr.gravity, android.R.attr.minHeight, R.attr.buttonGravity, R.attr.collapseContentDescription, R.attr.collapseIcon, R.attr.contentInsetEnd, R.attr.contentInsetEndWithActions, R.attr.contentInsetLeft, R.attr.contentInsetRight, R.attr.contentInsetStart, R.attr.contentInsetStartWithNavigation, R.attr.logo, R.attr.logoDescription, R.attr.maxButtonHeight, R.attr.menu, R.attr.navigationContentDescription, R.attr.navigationIcon, R.attr.popupTheme, R.attr.subtitle, R.attr.subtitleTextAppearance, R.attr.subtitleTextColor, R.attr.title, R.attr.titleMargin, R.attr.titleMarginBottom, R.attr.titleMarginEnd, R.attr.titleMarginStart, R.attr.titleMarginTop, R.attr.titleMargins, R.attr.titleTextAppearance, R.attr.titleTextColor};
+/tmp/apk/out/sources/defpackage/e10.java:191:            String strTrim = jSONObject.optString("poster").trim();
+/tmp/apk/out/sources/defpackage/e10.java:442:                    String strTrim2 = jSONObjectOptJSONObject.optString("poster").trim();
+/tmp/apk/out/sources/defpackage/dk.java:75:            String strOptString3 = jSONObject.optString("poster", "");
+/tmp/apk/out/sources/defpackage/s2.java:1064:                window.getAttributes().layoutInDisplayCutoutMode = 1;
+/tmp/apk/out/sources/defpackage/s2.java:1261:            window.getAttributes().layoutInDisplayCutoutMode = 1;
+/tmp/apk/out/sources/defpackage/gm2.java:565:    ERROR_LOGON_SERVER_CONFLICT(568),
+/tmp/apk/out/sources/defpackage/gm2.java:645:    ERROR_INSUFFICIENT_LOGON_INFO(608),
+/tmp/apk/out/sources/defpackage/gm2.java:677:    ERROR_DLL_INIT_FAILED_LOGOFF(624),
+/tmp/apk/out/sources/defpackage/gm2.java:1117:    ERROR_SERVICE_LOGON_FAILED(1069),
+/tmp/apk/out/sources/defpackage/gm2.java:1497:    ERROR_NO_LOGON_SERVERS(1311),
+/tmp/apk/out/sources/defpackage/gm2.java:1499:    ERROR_NO_SUCH_LOGON_SESSION(1312),
+/tmp/apk/out/sources/defpackage/gm2.java:1527:    ERROR_LOGON_FAILURE(1326),
+/tmp/apk/out/sources/defpackage/gm2.java:1531:    ERROR_INVALID_LOGON_HOURS(1328),
+/tmp/apk/out/sources/defpackage/gm2.java:1597:    ERROR_NOT_LOGON_PROCESS(1362),
+/tmp/apk/out/sources/defpackage/gm2.java:1599:    ERROR_LOGON_SESSION_EXISTS(1363),
+/tmp/apk/out/sources/defpackage/gm2.java:1603:    ERROR_BAD_LOGON_SESSION_STATE(1365),
+/tmp/apk/out/sources/defpackage/gm2.java:1605:    ERROR_LOGON_SESSION_COLLISION(1366),
+/tmp/apk/out/sources/defpackage/gm2.java:1607:    ERROR_INVALID_LOGON_TYPE(1367),
+/tmp/apk/out/sources/defpackage/gm2.java:1633:    ERROR_LOGON_NOT_GRANTED(1380),
+/tmp/apk/out/sources/defpackage/gm2.java:1643:    ERROR_LOGON_TYPE_NOT_GRANTED(1385),
+
+=== RESOURCE HITS ===
+/tmp/apk/out/resources/res/values-ru/strings.xml:442:    <string name="pref_header_art_logo">Логотип</string>
+/tmp/apk/out/resources/res/values-ru/strings.xml:443:    <string name="pref_header_art_poster">Картинка и название</string>
+/tmp/apk/out/resources/res/values-cs/strings.xml:131:    <string name="icon_content_description">Ikona dialogového okna</string>
+/tmp/apk/out/resources/res/values-pt-rBR/strings.xml:63:    <string name="icon_content_description">Ícone de caixa de diálogo</string>
+/tmp/apk/out/resources/res/drawable/exo_styled_controls_play.xml:3:    android:drawable="@drawable/ic_logo_mark"
+/tmp/apk/out/resources/res/values-gl/strings.xml:123:    <string name="icon_content_description">Icona de cadro de diálogo</string>
+/tmp/apk/out/resources/res/raw/voice_studios.json:719:"Logos71",
+/tmp/apk/out/resources/res/xml/root_preferences.xml:35:                    app:defaultValue="logo"
+/tmp/apk/out/resources/res/values-it/strings.xml:131:    <string name="icon_content_description">Icona della finestra di dialogo</string>
+/tmp/apk/out/resources/res/values-pt-rPT/strings.xml:123:    <string name="icon_content_description">Ícone de caixa de diálogo</string>
+/tmp/apk/out/resources/res/values/arrays.xml:118:        <item>@string/pref_header_art_logo</item>
+/tmp/apk/out/resources/res/values/arrays.xml:119:        <item>@string/pref_header_art_poster</item>
+/tmp/apk/out/resources/res/values/arrays.xml:123:        <item>logo</item>
+/tmp/apk/out/resources/res/values/arrays.xml:124:        <item>poster</item>
+/tmp/apk/out/resources/res/values/attrs.xml:182:    <attr name="artwork_display_mode">
+/tmp/apk/out/resources/res/values/attrs.xml:1036:        <flag name="useLogo" value="0x1" />
+/tmp/apk/out/resources/res/values/attrs.xml:1665:    <attr name="image_display_mode">
+/tmp/apk/out/resources/res/values/attrs.xml:2151:    <attr name="logo" format="reference">
+/tmp/apk/out/resources/res/values/attrs.xml:2153:    <attr name="logoAdjustViewBounds" format="boolean">
+/tmp/apk/out/resources/res/values/attrs.xml:2155:    <attr name="logoDescription" format="string">
+/tmp/apk/out/resources/res/values/attrs.xml:2157:    <attr name="logoScaleType">
+/tmp/apk/out/resources/res/values/public.xml:213:    <public type="attr" name="artwork_display_mode" id="0x7f040051" />
+/tmp/apk/out/resources/res/values/public.xml:837:    <public type="attr" name="image_display_mode" id="0x7f0402c1" />
+/tmp/apk/out/resources/res/values/public.xml:1015:    <public type="attr" name="logo" id="0x7f040373" />
+/tmp/apk/out/resources/res/values/public.xml:1016:    <public type="attr" name="logoAdjustViewBounds" id="0x7f040374" />
+/tmp/apk/out/resources/res/values/public.xml:1017:    <public type="attr" name="logoDescription" id="0x7f040375" />
+/tmp/apk/out/resources/res/values/public.xml:1018:    <public type="attr" name="logoScaleType" id="0x7f040376" />
+/tmp/apk/out/resources/res/values/public.xml:3933:    <public type="drawable" name="_ic_logo_mark__0_res_0x7f080007" id="0x7f080007" />
+/tmp/apk/out/resources/res/values/public.xml:4081:    <public type="drawable" name="exo_edit_mode_logo" id="0x7f08009b" />
+/tmp/apk/out/resources/res/values/public.xml:4215:    <public type="drawable" name="ic_logo_mark" id="0x7f080121" />
+/tmp/apk/out/resources/res/values/public.xml:4479:    <public type="drawable" name="sentry_logo_dark" id="0x7f080229" />
+/tmp/apk/out/resources/res/values/public.xml:4481:    <public type="drawable" name="sentry_user_feedback_button_logo_24" id="0x7f08022b" />
+/tmp/apk/out/resources/res/values/public.xml:5081:    <public type="id" name="sentry_dialog_user_feedback_logo" id="0x7f0a0250" />
+/tmp/apk/out/resources/res/values/public.xml:5202:    <public type="id" name="useLogo" id="0x7f0a02c9" />
+/tmp/apk/out/resources/res/values/public.xml:6040:    <public type="string" name="pref_header_art_logo" id="0x7f130207" />
+/tmp/apk/out/resources/res/values/public.xml:6041:    <public type="string" name="pref_header_art_poster" id="0x7f130208" />
+/tmp/apk/out/resources/res/values/strings.xml:518:    <string name="pref_header_art_logo">Logo</string>
+/tmp/apk/out/resources/res/values/strings.xml:519:    <string name="pref_header_art_poster">Picture and title</string>
+/tmp/apk/out/resources/res/values/strings.xml:559:    <string name="pref_mode_switch_pause">Pause after a display mode change, s</string>
+/tmp/apk/out/resources/res/values/strings.xml:593:    <string name="pref_section_display">Display mode</string>
+/tmp/apk/out/resources/res/values-es-rUS/strings.xml:123:    <string name="icon_content_description">Ícono de diálogo</string>
+/tmp/apk/out/resources/res/drawable-anydpi-v24/ic_logo_mark.xml:13:            android:fillColor="@drawable/_ic_logo_mark__0_res_0x7f080007"
+/tmp/apk/out/resources/res/values-uk/strings.xml:442:    <string name="pref_header_art_logo">Логотип</string>
+/tmp/apk/out/resources/res/values-uk/strings.xml:443:    <string name="pref_header_art_poster">Зображення й назва</string>
+/tmp/apk/out/resources/res/values-lt/strings.xml:123:    <string name="icon_content_description">Dialogo lango piktograma</string>
+/tmp/apk/out/resources/res/values-es/strings.xml:131:    <string name="icon_content_description">Icono del cuadro de diálogo</string>
+/tmp/apk/out/resources/res/values-b+es+419/strings.xml:19:    <string name="icon_content_description">Ícono de diálogo</string>
+/tmp/apk/out/resources/res/layout/preference_about_identity.xml:15:            android:src="@drawable/ic_logo_mark"
+/tmp/apk/out/resources/res/layout/sentry_dialog_user_feedback.xml:15:        android:layout_alignRight="@+id/sentry_dialog_user_feedback_logo"
+/tmp/apk/out/resources/res/layout/sentry_dialog_user_feedback.xml:19:        android:id="@+id/sentry_dialog_user_feedback_logo"
+/tmp/apk/out/resources/res/layout/sentry_dialog_user_feedback.xml:22:        android:src="@drawable/sentry_logo_dark"
+/tmp/apk/out/resources/res/layout/sentry_dialog_user_feedback.xml:27:        android:contentDescription="Logo of the brand"/>
+/tmp/apk/out/resources/res/layout/browse_home.xml:26:            android:src="@drawable/ic_logo_mark"
+/tmp/apk/out/resources/res/values-v28/styles.xml:30:        <item name="android:windowLayoutInDisplayCutoutMode">1</item>
