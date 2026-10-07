@@ -68,7 +68,7 @@ jobs:
           out = pathlib.Path('official-apk-drawables')
           for name, res in sorted(found.items()):
               try:
-                  tree = subprocess.check_output([aapt2, 'dump', 'xmltree', '--file', '/' + res,
+                  tree = subprocess.check_output([aapt2, 'dump', 'xmltree', '--file', res,
                                                   '/tmp/official.apk'], stderr=subprocess.STDOUT)
               except subprocess.CalledProcessError as e:
                   tree = b'<!-- decode failed -->\n' + (e.output or b'')
