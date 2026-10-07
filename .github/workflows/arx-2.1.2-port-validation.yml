@@ -19,3 +19,9 @@ jobs:
           java-version: '17'
       - name: Build and test
         run: ./gradlew :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARX-TPlayer-2.1.2-port-debug
+          path: app/build/outputs/apk/latestUniversal/debug/*.apk
+          if-no-files-found: error
