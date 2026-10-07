@@ -12,6 +12,7 @@ on:
       - 'app/src/main/res/values/**'
       - 'app/src/main/res/drawable/**'
       - '.github/scripts/ui-reference-compare.sh'
+      - '.github/scripts/chrome-report.py'
       - '.github/workflows/ui-reference-compare.yml'
 
 jobs:
