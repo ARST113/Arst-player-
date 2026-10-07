@@ -2629,7 +2629,7 @@ public class PlayerActivity extends Activity {
         timeBar.setPlayedColor(timeBarPlayed);
         timeBar.setScrubberColor(timeBarPlayed);
         timeBar.setUnplayedColor(officialControlUnplayedColor());
-        timeBar.setBufferedColor(officialControlBufferedColor());
+        timeBar.setBufferedColor(officialControlBufferedColor(true));
 
         try {
             trackNameProvider = new CustomDefaultTrackNameProvider(getResources());
@@ -11703,8 +11703,21 @@ public class PlayerActivity extends Activity {
         return officialControlLight() ? 0xFFC9C9CC : 0xFF38393C;
     }
 
-    private int officialControlBufferedColor() {
-        return officialControlLight() ? 0xFFBDBDC1 : 0x33FFFFFF;
+    /**
+     * The buffered run of the timeline, from the released palette ({@code xr.l} for a stream and
+     * {@code xr.m} for a local file).
+     *
+     * <p>The stream/local split is the one the published build makes, and it is about the decoder's own
+     * report rather than taste: a local file is buffered to the end the moment it opens, so a light rail
+     * would flood the whole bar. Both tones follow the resolved appearance — this used to be the two
+     * inherited {@code buffered_white}/{@code track_white} constants, which happen to be the *dark*
+     * palette's pair, so a light player drew a white bar over its own light plate.
+     */
+    private int officialControlBufferedColor(final boolean network) {
+        if (officialControlLight()) {
+            return network ? 0xFF8E8E93 : 0xFFBDC1C1;
+        }
+        return network ? 0xC0FFFFFF : 0x33FFFFFF;
     }
 
     private int officialControlActiveColor() {
@@ -14152,11 +14165,11 @@ public class PlayerActivity extends Activity {
             mBrightnessControl.setActive(true, !Utils.isReducedMotion(this));
             if (isNetworkUri) {
                 // Reads as a light rail ahead of the playhead, the way the design shows a buffering stream.
-                timeBar.setBufferedColor(ContextCompat.getColor(this, R.color.buffered_white));
+                timeBar.setBufferedColor(officialControlBufferedColor(true));
             } else {
                 // Local files report the whole file as buffered, so anything brighter floods the bar:
                 // https://github.com/google/ExoPlayer/issues/5765
-                timeBar.setBufferedColor(ContextCompat.getColor(this, R.color.track_white));
+                timeBar.setBufferedColor(officialControlBufferedColor(false));
             }
 
             applyStoredFrameMode();
