@@ -2536,7 +2536,10 @@ public class PlayerActivity extends Activity {
                 final int headerPadH = isTvBox ? ui.overscanH() : insetH + ui.dpS(32);
                 Utils.setViewParams(topInfoPanel,
                         headerPadH,
-                        insetTop + overscanV + (isTvBox ? 0 : Utils.dpToPx(12)),
+                        // ui.dp() rounds, the way the released ss2.a() does. Utils.dpToPx truncates, and at
+                        // this density 12dp is 31.5px: the whole header sat one pixel above the published
+                        // one because of the half pixel it threw away.
+                        insetTop + overscanV + (isTvBox ? 0 : ui.dp(12)),
                         headerPadH,
                         titleViewPaddingVertical,
                         0, 0, 0, 0);

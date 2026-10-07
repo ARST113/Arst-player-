@@ -68,6 +68,10 @@ for n in NAMES:
     col = lum[810:870, 900]
     rail = [i + 810 for i, v in enumerate(col) if v < 215]
     say(f"  rail at x=900: {rail[0] if rail else '-'}..{rail[-1] if rail else '-'} ({len(rail)} px)")
+    # The rail's tone is what a palette regression moves; the diff below masks its band, so this is
+    # where the buffered/unplayed colours are read.
+    for x in (900, 1500, 2000):
+        say(f"  rail colour at x={x}: {tuple(im[836, x])}")
 
     red = (r > 120) & (r - g > 40) & (r - b > 40)
     ys, xs = np.nonzero(red[790:880, 300:450])
@@ -100,11 +104,13 @@ if a.shape == b.shape:
     }.items():
         say(f"  {label}: {int(diff[y0:y1, x0:x1].sum())} px")
 
-    # The clock, the position readout and the scrubber carry the moment the capture was taken, not the
-    # chrome; masking them leaves what a layout port actually owns.
+    # The status bar, the clock, the position readout and the scrubber carry the moment the capture was
+    # taken, not the chrome; the rail band is masked because how much of it is coral depends on the
+    # playback position — its thickness and tone are reported as numbers above instead. What is left is
+    # what a layout port actually owns.
     mask = np.ones(diff.shape, bool)
-    for y0, y1, x0, x1 in ((90, 215, 1880, 2270), (805, 875, 190, 430),
-                           (805, 875, 2040, 2270), (795, 885, 280, 520)):
+    for y0, y1, x0, x1 in ((0, 72, 0, 2400), (90, 215, 1880, 2270), (805, 875, 190, 430),
+                           (805, 875, 2040, 2270), (795, 885, 280, 520), (822, 852, 350, 2100)):
         mask[y0:y1, x0:x1] = False
     static_only = diff & mask
     say(f"  outside clock/position/scrubber: {int(static_only.sum())} px")
