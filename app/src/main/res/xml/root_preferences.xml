@@ -66,6 +66,26 @@
 
             </PreferenceCategory>
 
+            <PreferenceCategory app:title="@string/pref_section_player">
+
+                <ListPreference
+                    app:defaultValue="logo"
+                    app:entries="@array/header_art_entries"
+                    app:entryValues="@array/header_art_values"
+                    app:key="headerArt"
+                    app:title="@string/pref_header_art"
+                    app:useSimpleSummaryProvider="true" />
+
+                <ListPreference
+                    app:defaultValue="detailed"
+                    app:entries="@array/header_info_entries"
+                    app:entryValues="@array/header_info_values"
+                    app:key="headerInfo"
+                    app:title="@string/pref_header_info"
+                    app:useSimpleSummaryProvider="true" />
+
+            </PreferenceCategory>
+
         </PreferenceScreen>
 
         <PreferenceScreen
