@@ -1053,6 +1053,9 @@ public class PlayerActivity extends Activity {
     // Utils.handleFrameRate, read once by the caller that arms the give-up timer: the two waits differ by
     // an HDMI renegotiation. Written from that probe's background thread as well as the UI one.
     volatile boolean resolutionSwitchRequested;
+    // True only when the mode selector actually requested a different display mode.
+    // Used to apply the optional official 2.1.3 post-switch pause without delaying no-op matches.
+    volatile boolean displayModeSwitchRequested;
 
     public static boolean restoreControllerTimeout = false;
     public static boolean shortControllerTimeout = false;
@@ -14100,6 +14103,7 @@ public class PlayerActivity extends Activity {
      */
     void frameRateSettled() {
         earlyModeSwitchRequested = false;
+        displayModeSwitchRequested = false;
         playerView.removeCallbacks(frameRateGiveUpRunnable);
         if (displayManager != null && displayListener != null) {
             displayManager.unregisterDisplayListener(displayListener);
@@ -14157,7 +14161,14 @@ public class PlayerActivity extends Activity {
 
                         @Override
                         public void onDisplayChanged(int displayId) {
-                            frameRateSettled();
+                            playerView.removeCallbacks(frameRateGiveUpRunnable);
+                            final int pauseMs = displayModeSwitchRequested && mPrefs != null
+                                    ? Math.max(0, mPrefs.modeSwitchPauseMs) : 0;
+                            if (pauseMs > 0) {
+                                playerView.postDelayed(frameRateGiveUpRunnable, pauseMs);
+                            } else {
+                                frameRateSettled();
+                            }
                         }
                     };
                 }
@@ -14192,8 +14203,11 @@ public class PlayerActivity extends Activity {
             // a recovery, a return from the background — would start before its display had settled.
             playerView.removeCallbacks(frameRateGiveUpRunnable);
             if (play) {
-                playerView.postDelayed(frameRateGiveUpRunnable, resolutionSwitchRequested
-                        ? RESOLUTION_SWITCH_TIMEOUT_MS : FRAME_RATE_SWITCH_TIMEOUT_MS);
+                final long timeout = (resolutionSwitchRequested
+                        ? RESOLUTION_SWITCH_TIMEOUT_MS : FRAME_RATE_SWITCH_TIMEOUT_MS)
+                        + (displayModeSwitchRequested && mPrefs != null
+                        ? Math.max(0, mPrefs.modeSwitchPauseMs) : 0);
+                playerView.postDelayed(frameRateGiveUpRunnable, timeout);
             }
         } else {
             frameRateSettled();
