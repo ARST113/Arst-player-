@@ -4,6 +4,7 @@ com/brouken/player/PlayerActivity.java
 com/google/android/material/timepicker/TimePickerView.java
 defpackage/bs1.java
 defpackage/cz.java
+defpackage/e91.java
 defpackage/eu.java
 defpackage/fh.java
 defpackage/hm1.java
@@ -12,6 +13,9 @@ defpackage/j70.java
 defpackage/k03.java
 defpackage/kf2.java
 defpackage/lf2.java
+defpackage/mc2.java
+defpackage/mq1.java
+defpackage/n8.java
 defpackage/r70.java
 defpackage/si.java
 defpackage/tt1.java
