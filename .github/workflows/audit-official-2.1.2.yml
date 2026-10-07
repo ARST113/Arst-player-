@@ -134,7 +134,7 @@ jobs:
                   out.append('%s\\t%s\\t%s->%s' % row)
           out.append('APP_CHANGED_TOTAL '+str(len(app_changed)))
 
-          pats=['resume_mode','position_ms','duration_ms','positions_ms','ended_at','Opening','Credits','Intro','chapter','Retry','Set-Cookie','Cookie','User-Agent','Referer','frameRate','refreshRate','display mode','watched']
+          pats=['resume_mode','position_ms','duration_ms','positions_ms','ended_at','Opening','Credits','Intro','chapter','chapters','Retry','Set-Cookie','Cookie','User-Agent','Referer','frameRate','refreshRate','display mode','watched','frameRateCorrection','frameRateDoubling','modeSwitchPauseMs','askStillWatching','allowSystemFrameRate','frameRateMatching','voice','voices','playlist','result_callback','callback','headers','Accept-Language','JustPlayer v2.1.2']
           out.append('')
           out.append('=== FEATURE SIGNATURES IN 2.1.2 APP CLASSES ===')
           for pat in pats:
