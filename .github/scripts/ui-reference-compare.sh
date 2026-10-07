@@ -26,7 +26,9 @@ open_and_capture() {
   local deadline=$(( $(date +%s) + 90 ))
   while (( $(date +%s) < deadline )); do
     adb logcat -d -v threadtime > "$OUT/$name-logcat.txt" || true
-    if grep -q "first frame rendered" "$OUT/$name-logcat.txt" || grep -q "state READY" "$OUT/$name-logcat.txt"; then
+    if grep -q "first frame rendered" "$OUT/$name-logcat.txt" \
+      || grep -q "state READY" "$OUT/$name-logcat.txt" \
+      || grep -Eq "record=com\\.justplus\\.player/.*playbackState=PlaybackState \\{state=PLAYING\\(3\\)" "$OUT/$name-logcat.txt"; then
       break
     fi
     sleep 2
