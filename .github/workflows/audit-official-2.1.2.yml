@@ -181,6 +181,52 @@ jobs:
                   out.append('(none)')
 
           out.append('')
+          out.append('')
+          out.append('=== GLOBAL APK SIGNATURES ===')
+          global_pats=[
+              'frameRateCorrection','frameRateDoubling','modeSwitchPauseMs','askStillWatching',
+              'allowSystemFrameRate','frameRateMatching','displayResolutionMatching',
+              'androidx.media3.extractor.metadata.Chapter','getStartTimeMs','getEndTimeMs'
+          ]
+          for pat in global_pats:
+              out.append('--- '+pat+' ---')
+              hits=0
+              for k,p in sorted(fb.items()):
+                  # Ignore the Media3 implementation itself when looking for chapter consumers.
+                  if ('Chapter' in pat or 'getStartTimeMs' in pat or 'getEndTimeMs' in pat) and k.startswith('androidx/media3/'):
+                      continue
+                  lines=p.read_text(errors='replace').splitlines()
+                  for idx,line in enumerate(lines):
+                      if pat.lower() not in line.lower():
+                          continue
+                      out.append(f'[{k}:{idx+1}] {line.strip()}')
+                      hits += 1
+                      if hits >= 30:
+                          break
+                  if hits >= 30:
+                      break
+              if hits == 0:
+                  out.append('(none)')
+
+          # Prefs is R8-obfuscated in the release APK; dump the likely class if present so values can
+          # be inspected independently of source package names.
+          out.append('')
+          out.append('=== OBFUSCATED PREFS CANDIDATE ===')
+          for rel in ['defpackage/gu1.java']:
+              p=fb.get(rel)
+              out.append('--- '+rel+' ---')
+              if p is None:
+                  out.append('(missing)')
+              else:
+                  lines=p.read_text(errors='replace').splitlines()
+                  for idx,line in enumerate(lines):
+                      if any(x.lower() in line.lower() for x in [
+                          'framerate','resumemode','resumeMode','backBuffer','allowSystem',
+                          'displayResolution','stillWatching','modeSwitch'
+                      ]):
+                          lo=max(0,idx-4); hi=min(len(lines),idx+5)
+                          out.extend(f'{n+1:05d}: {lines[n]}' for n in range(lo,hi))
+
           out.append('=== SELECTED OBFUSCATED NETWORK CLASSES ===')
           for rel in ['defpackage/xp1.java']:
               p=fb.get(rel)
