@@ -149,6 +149,36 @@ public class SkipManager {
         }
     }
 
+    /**
+     * Position at which 2.1.2 considers the item watched. Normally this is the last five percent.
+     * A short SKIP segment that reaches that closing five-percent window is treated as end credits,
+     * and its start becomes the watched threshold.
+     */
+    public long completionThresholdMs(long durationMs) {
+        return completionThresholdMs(durationMs, segments);
+    }
+
+    public static long completionThresholdMs(long durationMs, List<SkipSegment> segments) {
+        if (durationMs <= 0) {
+            return Long.MAX_VALUE;
+        }
+        final long ninetyFivePercent = durationMs - durationMs / 20;
+        long threshold = ninetyFivePercent;
+        if (segments == null) {
+            return threshold;
+        }
+        for (SkipSegment segment : segments) {
+            final long startMs = Math.round(segment.startSec * 1000.0);
+            final long endMs = (long) Math.ceil(segment.endSec * 1000.0);
+            if (segment.type == SkipSegment.Type.SKIP
+                    && endMs >= ninetyFivePercent
+                    && endMs - startMs <= durationMs * 0.15) {
+                threshold = Math.min(threshold, startMs);
+            }
+        }
+        return threshold;
+    }
+
     public boolean hasSegments() {
         return !segments.isEmpty();
     }
