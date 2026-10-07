@@ -1452,17 +1452,6 @@ public class Utils {
                                              int videoWidth) {
         {
             boolean switchingModes = false;
-
-            // Just+ Player 2.1.2: optional NTSC correction is applied before optional doubling.
-            if (activity.mPrefs.frameRateCorrection) {
-                if (Math.abs(frameRate - 24f) < 0.01f
-                        || Math.abs(frameRate - 30f) < 0.01f
-                        || Math.abs(frameRate - 60f) < 0.01f) {
-                    frameRate = frameRate / 1.001f;
-                }
-            }
-            final float preferredRate = activity.mPrefs.frameRateDoubling && frameRate <= 30.1f
-                    ? frameRate * 2f : frameRate;
             activity.resolutionSwitchRequested = false;
 
             // A detached decor view answers null. Falling through to the settled path rather than returning:
@@ -1491,7 +1480,7 @@ public class Utils {
                     // width — would take that trade every time.
                     final boolean switchingResolution = targetWidth > 0
                             && targetWidth != activeMode.getPhysicalWidth()
-                            && hasRateCapableMode(supportedModes, targetWidth, preferredRate);
+                            && hasRateCapableMode(supportedModes, targetWidth, frameRate);
                     // Refresh rate >= video FPS
                     List<Display.Mode> modesHigh = new ArrayList<>();
                     // Max refresh rate. No starting point of its own when the frame is changing: the
@@ -1510,7 +1499,7 @@ public class Utils {
                         if (candidate) {
                             modesResolutionCount++;
 
-                            if (normRate(mode.getRefreshRate()) >= normRate(preferredRate))
+                            if (normRate(mode.getRefreshRate()) >= normRate(frameRate))
                                 modesHigh.add(mode);
 
                             if (modeTop == null
@@ -1524,35 +1513,20 @@ public class Utils {
                     if (switchingResolution ? modesResolutionCount > 0 : modesResolutionCount > 1) {
                         Display.Mode modeBest = null;
 
-                        // 2.1.2 prefers the requested rate itself over a higher whole multiple.
-                        // Therefore 25 fps -> 25 Hz when available; with doubling on, 25 -> 50 Hz.
-                        float bestError = Float.MAX_VALUE;
                         for (Display.Mode mode : modesHigh) {
-                            final float rate = mode.getRefreshRate();
-                            final float directError = Math.abs(rate - preferredRate)
-                                    / Math.max(preferredRate, 0.001f);
-                            if (directError < 0.0002f) {
-                                if (directError < bestError
-                                        || (Math.abs(directError - bestError) < 0.000001f
-                                        && (modeBest == null || rate < modeBest.getRefreshRate()))) {
+                            // A whole multiple of the content rate, judged on the *relative* error. The
+                            // centi-Hz remainder this replaces could not match 23.976 at all, since
+                            // normRate truncates it to 2397, which divides neither 4795 (47.952 Hz) nor
+                            // 11988 (119.88 Hz). But the tolerance has to stay under the 1/1001 that
+                            // separates an NTSC rate from its integer neighbour, or 120 Hz also "matches"
+                            // 23.976 content and, being the higher rate, beats the 119.88 mode that is the
+                            // exact one. 2e-4 sits between the float noise on these values (~5e-6) and
+                            // that 1e-3 gap.
+                            final float ratio = mode.getRefreshRate() / frameRate;
+                            final int multiple = Math.round(ratio);
+                            if (multiple >= 1 && Math.abs(ratio - multiple) < multiple * 0.0002f) {
+                                if (modeBest == null || normRate(mode.getRefreshRate()) > normRate(modeBest.getRefreshRate())) {
                                     modeBest = mode;
-                                    bestError = directError;
-                                }
-                            }
-                        }
-
-                        // Fall back to the smallest exact whole multiple only when the preferred rate
-                        // itself is unavailable. This keeps compatibility with displays that expose 50/60
-                        // but not 25/30 while avoiding the old "always take the highest multiple" behavior.
-                        if (modeBest == null) {
-                            for (Display.Mode mode : modesHigh) {
-                                final float ratio = mode.getRefreshRate() / preferredRate;
-                                final int multiple = Math.round(ratio);
-                                if (multiple >= 1 && Math.abs(ratio - multiple) < multiple * 0.0002f) {
-                                    if (modeBest == null
-                                            || mode.getRefreshRate() < modeBest.getRefreshRate()) {
-                                        modeBest = mode;
-                                    }
                                 }
                             }
                         }
@@ -1565,7 +1539,7 @@ public class Utils {
 
                         switchingModes = !(modeBest.getModeId() == activeMode.getModeId());
                         log("display mode: video " + videoWidth + "w @" + frameRate
-                                + " (target " + preferredRate + " Hz), active " + modeText(activeMode) + ", target width " + targetText
+                                + ", active " + modeText(activeMode) + ", target width " + targetText
                                 + ", " + modesResolutionCount + " candidates"
                                 + (switchingModes ? ", switching to " + modeText(modeBest)
                                         : ", staying put"));
