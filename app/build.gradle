@@ -74,6 +74,10 @@ android {
     }
     buildTypes {
         release {
+            // Test/ARX builds are distributed directly from Actions. Sign release with the
+            // standard debug keystore so the APK is installable and uses the same certificate
+            // as our debug build. This is intentionally not a production Play signing key.
+            signingConfig signingConfigs.debug
             minifyEnabled false
             //proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             // The two Intel ABIs are 23 of the 54 MB this APK used to weigh, and nothing that plays video
