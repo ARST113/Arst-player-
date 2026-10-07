@@ -1,0 +1,370 @@
+=== PlayerActivity around header setup ===
+        this.S0.setGravity(17);
+        this.S0.setTextColor(getColor(R.color.ink_tertiary));
+        this.S0.setTextSize(2, this.Z1.w());
+        TextView textView4 = this.S0;
+        Typeface typeface = Typeface.DEFAULT_BOLD;
+        textView4.setTypeface(typeface);
+        this.S0.setVisibility(8);
+        this.Q0.addView(this.S0);
+        TextView textViewZ = Z();
+        this.T0 = textViewZ;
+        this.Q0.addView(textViewZ);
+        this.E0.addView(this.Q0);
+        LinearLayout linearLayout2 = new LinearLayout(this);
+        linearLayout2.setOrientation(1);
+        LinearLayout.LayoutParams layoutParams4 = new LinearLayout.LayoutParams(0, -2, 1.0f);
+        layoutParams4.gravity = 48;
+        layoutParams4.setMarginEnd(yt2.p(16));
+        linearLayout2.setLayoutParams(layoutParams4);
+        TextView textView5 = new TextView(this);
+        this.U0 = textView5;
+        textView5.setTextColor(this.K0.e);
+        this.U0.setTypeface(Typeface.create("sans-serif-medium", 0));
+        this.U0.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
+        this.U0.setTextSize(2, this.Z1.u());
+        this.U0.setMaxLines(1);
+        TextView textView6 = this.U0;
+        TextUtils.TruncateAt truncateAt = TextUtils.TruncateAt.END;
+        textView6.setEllipsize(truncateAt);
+        this.U0.setTextDirection(5);
+        this.U0.setIncludeFontPadding(false);
+        this.l1 = (this.Z1.m() * 18) / 25;
+        this.m1 = (this.Z1.m() * 16) / 5;
+        this.V0 = new ImageView(this);
+        LinearLayout.LayoutParams layoutParams5 = new LinearLayout.LayoutParams(-2, -2);
+        layoutParams5.bottomMargin = this.Z1.b(4.0f);
+        this.V0.setLayoutParams(layoutParams5);
+        this.V0.setAdjustViewBounds(true);
+        this.V0.setMaxHeight(this.l1);
+        this.V0.setMaxWidth(this.m1);
+        this.V0.setScaleType(ImageView.ScaleType.FIT_START);
+        this.V0.setVisibility(8);
+        linearLayout2.addView(this.V0);
+        linearLayout2.addView(this.U0);
+        TextView textViewY = Y(this.Z1.b(2.0f));
+        this.o1 = textViewY;
+        textViewY.setTextColor(this.K0.f);
+        this.o1.setTextSize(2, this.Z1.t());
+        linearLayout2.addView(this.o1);
+        this.L0 = new LinearLayout(this);
+        LinearLayout.LayoutParams layoutParams6 = new LinearLayout.LayoutParams(-1, -2);
+        layoutParams6.topMargin = this.Z1.b(6.0f);
+        linearLayout2.addView(this.L0, layoutParams6);
+        TextView textViewY2 = Y(0);
+        this.p1 = textViewY2;
+        Y0(textViewY2, R.drawable.ic_theaters_24dp, 4, 20);
+        this.L0.addView(this.p1);
+        GradientDrawable gradientDrawable = new GradientDrawable();
+        gradientDrawable.setColor(eu.f(this.K0.g, 89));
+        gradientDrawable.setSize(Math.max(1, this.Z1.b(1.0f)), Math.round(this.Z1.v() * getResources().getDisplayMetrics().scaledDensity * 0.72f));
+        ImageView imageView2 = new ImageView(this);
+        imageView2.setScaleType(ImageView.ScaleType.CENTER);
+        imageView2.setImageDrawable(gradientDrawable);
+        this.r1 = imageView2;
+        LinearLayout.LayoutParams layoutParams7 = new LinearLayout.LayoutParams(-2, -1);
+        layoutParams7.setMarginStart(this.Z1.b(12.0f));
+        layoutParams7.setMarginEnd(this.Z1.b(12.0f));
+        this.L0.addView(this.r1, layoutParams7);
+        TextView textViewY3 = Y(0);
+        this.q1 = textViewY3;
+        Y0(textViewY3, R.drawable.ic_audiotrack_24dp, 3, 21);
+        this.L0.addView(this.q1);
+        j();
+        this.E0.addView(linearLayout2);
+        LinearLayout linearLayout3 = new LinearLayout(this);
+        linearLayout3.setOrientation(1);
+        linearLayout3.setGravity(8388613);
+        LinearLayout.LayoutParams layoutParams8 = new LinearLayout.LayoutParams(-2, -2);
+        layoutParams8.gravity = 48;
+        LinearLayout linearLayout4 = new LinearLayout(this);
+        linearLayout4.setOrientation(0);
+        linearLayout4.setGravity(16);
+        LinearLayout.LayoutParams layoutParams9 = new LinearLayout.LayoutParams(-2, -2);
+        layoutParams9.gravity = 8388613;
+        linearLayout4.setLayoutParams(layoutParams9);
+        hm1 hm1Var = new hm1(this);
+        this.y1 = hm1Var;
+        hm1Var.setFormat12Hour("h:mm a");
+        this.y1.setFormat24Hour("HH:mm");
+        this.y1.setTextColor(this.K0.h);
+        this.y1.setOutlineColor(this.K0.i);
+        this.y1.setTypeface(Typeface.create("sans-serif-medium", 0));
+        this.y1.setTextSize(2, this.Z1.q(20.0f, 21.0f, 22.0f, 22.0f));
+        linearLayout4.addView(this.y1);
+        linearLayout3.addView(linearLayout4);
+        TextView textView7 = new TextView(this);
+        this.s1 = textView7;
+        textView7.setTextColor(this.K0.g);
+        this.s1.setTextSize(2, this.Z1.t());
+        this.s1.setVisibility(8);
+        LinearLayout.LayoutParams layoutParams10 = new LinearLayout.LayoutParams(-2, -2);
+        layoutParams10.gravity = 8388613;
+        layoutParams10.topMargin = this.Z1.a(2.0f);
+        linearLayout3.addView(this.s1, layoutParams10);
+        this.y1.setIncludeFontPadding(false);
+        layoutParams8.topMargin = Math.max(0, this.y1.getPaint().getFontMetricsInt().ascent - this.U0.getPaint().getFontMetricsInt().ascent);
+        linearLayout3.setLayoutParams(layoutParams8);
+        Rect rect = new Rect();
+        this.y1.getPaint().getTextBounds("0", 0, 1, rect);
+        ((LinearLayout.LayoutParams) this.V0.getLayoutParams()).topMargin = Math.max(0, (-this.U0.getPaint().getFontMetricsInt().ascent) + rect.top);
+        this.E0.addView(linearLayout3);
+        this.E0.addOnLayoutChangeListener(new View.OnLayoutChangeListener(this) { // from class: zp1
+            public final /* synthetic */ PlayerActivity b;
+
+            {
+                this.b = this;
+            }
+
+            @Override // android.view.View.OnLayoutChangeListener
+            public final void onLayoutChange(View view2, int i2, int i3, int i4, int i5, int i6, int i7, int i8, int i9) {
+                byte b8 = b3;
+                PlayerActivity playerActivity2 = this.b;
+                switch (b8) {
+                    case DecoderInputBuffer.BUFFER_REPLACEMENT_MODE_DISABLED /* 0 */:
+                        LoudnessEnhancer loudnessEnhancer = PlayerActivity.l6;
+                        playerActivity2.D0();
+                        View view3 = (View) playerActivity2.o1.getParent();
+                        int iB = playerActivity2.Z1.b(2.0f);
+                        if (view3 != null && playerActivity2.o1.getVisibility() == 0 && playerActivity2.s1.getVisibility() == 0) {
+                            View view4 = playerActivity2.V0.getVisibility() == 0 ? playerActivity2.V0 : playerActivity2.U0;
+                            int bottom = view4.getBottom() + ((ViewGroup.MarginLayoutParams) view4.getLayoutParams()).bottomMargin;
+                            iB = Math.max(view4.getBottom() - bottom, (((playerActivity2.s1.getBaseline() + (playerActivity2.s1.getTop() + ((View) playerActivity2.s1.getParent()).getTop())) - view3.getTop()) - playerActivity2.o1.getBaseline()) - bottom);
+                        }
+                        ViewGroup.MarginLayoutParams marginLayoutParams = (ViewGroup.MarginLayoutParams) playerActivity2.o1.getLayoutParams();
+                        if (marginLayoutParams.topMargin != iB) {
+                            marginLayoutParams.topMargin = iB;
+                            playerActivity2.o1.setLayoutParams(marginLayoutParams);
+                        }
+                        break;
+                    case 1:
+                        LoudnessEnhancer loudnessEnhancer2 = PlayerActivity.l6;
+                        if (i5 - i3 != i9 - i7) {
+                            playerActivity2.H4();
+                        }
+                        break;
+                    case 2:
+                        LoudnessEnhancer loudnessEnhancer3 = PlayerActivity.l6;
+                        if (playerActivity2.v1 != null) {
+                            ViewGroup viewGroup = (ViewGroup) view2;
+                            int iB2 = playerActivity2.Z1.b(8.0f) + viewGroup.getChildAt(viewGroup.getChildCount() - 1).getBottom() + i3;
+                            yx yxVar = (yx) playerActivity2.v1.getLayoutParams();
+                            if (((ViewGroup.MarginLayoutParams) yxVar).topMargin != iB2) {
+                                ((ViewGroup.MarginLayoutParams) yxVar).topMargin = iB2;
+                                playerActivity2.v1.setLayoutParams(yxVar);
+                            }
+                            break;
+                        }
+                        break;
+                    case VideoDecoderOutputBuffer.COLORSPACE_BT2020 /* 3 */:
+                        LoudnessEnhancer loudnessEnhancer4 = PlayerActivity.l6;
+                        playerActivity2.e4();
+                        break;
+                    case 4:
+                        LoudnessEnhancer loudnessEnhancer5 = PlayerActivity.l6;
+                        if (i4 - i2 != i8 - i6) {
+                            playerActivity2.I1 = true;
+                        }
+                        break;
+                    case 5:
+                        LoudnessEnhancer loudnessEnhancer6 = PlayerActivity.l6;
+                        if (i5 - i3 != i9 - i7 && playerActivity2.L4()) {
+                            playerActivity2.E4();
+                            break;
+                        }
+                        break;
+                    default:
+                        LoudnessEnhancer loudnessEnhancer7 = PlayerActivity.l6;
+                        if (i5 - i3 != playerActivity2.A4) {
+                            playerActivity2.E4();
+                        }
+                        break;
+                }
+            }
+        });
+        this.F0.addView(this.E0);
+        this.B.getOverlayFrameLayout().addView(this.F0, new FrameLayout.LayoutParams(-1, -1));
+        int iO = this.Z1.o();
+        int iP3 = yt2.p(12);
+        Button button = new Button(this);
+        this.i5 = button;
+        button.setText(R.string.button_skip);
+        this.i5.setAllCaps(false);
+        this.i5.setTextColor(this.I0.e);
+        this.i5.setTextSize(2, this.Z1.r());
+        this.i5.setTypeface(typeface);
+        this.i5.setMinHeight(iO);
+        this.i5.setMinimumHeight(iO);
+        this.p5 = yt2.p(r5);
+        Drawable drawable = getDrawable(R.drawable.ic_double_arrow_24dp);
+        if (drawable != null) {
+            drawable.mutate();
+            drawable.setTint(this.I0.e);
+        }
+        this.j5 = drawable;
+        Drawable drawable2 = getDrawable(R.drawable.ic_play_arrow_24dp);
+        if (drawable2 != null) {
+            drawable2.mutate();
+            drawable2.setTint(this.I0.e);
+        }
+        this.k5 = drawable2;
+        Drawable drawable3 = getDrawable(R.drawable.ic_double_arrow_back_24dp);
+        if (drawable3 != null) {
+            drawable3.mutate();
+            drawable3.setTint(this.I0.e);
+        }
+        this.l5 = drawable3;
+        this.i5.setCompoundDrawablesRelative(null, null, null, null);
+        this.i5.setCompoundDrawablePadding(yt2.p(8));
+        this.i5.setCompoundDrawableTintList(ColorStateList.valueOf(this.I0.e));
+        int dimensionPixelSize = getResources().getDimensionPixelSize(R.dimen.focus_ring_width);
+        xr xrVar = this.I0;
+        this.q5 = new ir1(xrVar.b, (xrVar.j & 16777215) | 1191182336, dimensionPixelSize, iP3);
+        this.i5.setBackground(new InsetDrawable((Drawable) this.q5, 0, yt2.p(4), 0, yt2.p(4)));
+        this.i5.setPadding(yt2.p(20), 0, yt2.p(20), 0);
+        this.i5.setOnClickListener(new gp1(this, (byte) 8));
+        final byte b8 = 3;
+        this.i5.setOnLongClickListener(new View.OnLongClickListener(this) { // from class: yp1
+            public final /* synthetic */ PlayerActivity m;
+
+            {
+                this.m = this;
+            }
+
+            @Override // android.view.View.OnLongClickListener
+            public final boolean onLongClick(View view2) {
+                byte b9 = b8;
+                PlayerActivity playerActivity2 = this.m;
+                switch (b9) {
+                    case DecoderInputBuffer.BUFFER_REPLACEMENT_MODE_DISABLED /* 0 */:
+                        LoudnessEnhancer loudnessEnhancer = PlayerActivity.l6;
+                        playerActivity2.A1(null);
+                        return true;
+                    case 1:
+                        LoudnessEnhancer loudnessEnhancer2 = PlayerActivity.l6;
+                        playerActivity2.z0 = true;
+                        if (playerActivity2.B.getResizeMode() != 4) {
+                            playerActivity2.B.setResizeMode(4);
+                        }
+                        playerActivity2.B0 = playerActivity2.B.getVideoSurfaceView().getScaleX();
+                        cz czVar2 = playerActivity2.B;
+                        czVar2.removeCallbacks(czVar2.C0);
+                        playerActivity2.B.u(R.drawable.ic_fit_screen_24dp, ((int) (playerActivity2.B0 * 100.0f)) + "%");
+
+=== PlayerActivity around header update ===
+                                }
+                                z = false;
+                                break;
+                            }
+                        } catch (RuntimeException | p71 unused) {
+                        }
+                    } else {
+                        z = true;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    public final void I4() {
+        vg0 vg0Var = n6;
+        if (vg0Var == null) {
+            return;
+        }
+        z81 z81VarZ = vg0Var.z();
+        Uri uri = null;
+        h91 h91Var = z81VarZ != null ? z81VarZ.d : null;
+        CharSequence charSequenceW = h91Var != null ? h91Var.a : null;
+        if (charSequenceW == null || charSequenceW.length() == 0) {
+            charSequenceW = yt2.w(this, this.H.c);
+        }
+        this.U0.setText(charSequenceW);
+        q4();
+        Uri uri2 = h91Var != null ? h91Var.n : null;
+        if (uri2 == null) {
+            uri2 = this.i6;
+        }
+        int iV = n6.V();
+        Uri uri3 = (!"logo".equals(this.H.z0) || iV >= this.R3.size()) ? null : (Uri) this.R3.get(iV);
+        this.n1 = 0.0f;
+        D0();
+        if (uri3 == null) {
+            com.bumptech.glide.a.d(getApplicationContext()).m(this.V0);
+            this.V0.setVisibility(8);
+            this.U0.setVisibility(0);
+        } else {
+            this.V0.setVisibility(0);
+            this.U0.setVisibility(8);
+            s02 s02VarD = com.bumptech.glide.a.d(getApplicationContext());
+            s02VarD.getClass();
+            new l02(s02VarD.l, s02VarD, Drawable.class, s02VarD.m).z(uri3).y(new pq1(this)).x(this.V0);
+        }
+        if ("poster".equals(this.H.z0)) {
+            Uri uriF0 = f0();
+            boolean z = n6.a1() > 1;
+            String strValueOf = String.valueOf(iV + 1);
+            this.T0.setText(strValueOf);
+            this.S0.setText(strValueOf);
+            if (uri2 != null) {
+                uri = uri2;
+            } else {
+                String[] strArr = yt2.a;
+                String scheme = uriF0 == null ? null : uriF0.getScheme();
+                if ("file".equals(scheme) || "content".equals(scheme)) {
+                    uri = uriF0;
+                }
+            }
+            if (uri != null) {
+                this.Q0.setVisibility(0);
+                this.R0.setVisibility(0);
+                this.S0.setVisibility(8);
+                this.T0.setVisibility(z ? 0 : 8);
+                s02 s02VarD2 = com.bumptech.glide.a.d(getApplicationContext());
+                s02VarD2.getClass();
+                l02 l02VarZ = new l02(s02VarD2.l, s02VarD2, Bitmap.class, s02VarD2.m).a(s02.v).z(uri);
+                if (uri2 == null) {
+                    l02VarZ.getClass();
+                    l02VarZ = (l02) l02VarZ.l(zu2.d, 1000000L);
+                }
+                l02VarZ.y(new oq1(this, z)).x(this.R0);
+            } else {
+                r3(z);
+            }
+        } else {
+            com.bumptech.glide.a.d(getApplicationContext()).m(this.R0);
+            this.Q0.setVisibility(8);
+        }
+        boolean z2 = n6.a1() > 1;
+        ImageButton imageButton = this.z1;
+        if (imageButton != null) {
+            imageButton.setVisibility(z2 ? 0 : 8);
+        }
+        z4();
+        o4();
+        this.B.setShowNextButton(z2);
+        this.B.setShowPreviousButton(z2);
+        this.G0 = true;
+        s4();
+        w4();
+        p4();
+    }
+
+    public final ArrayList J() {
+        kr1 kr1Var;
+        ArrayList arrayList = new ArrayList();
+        if (n6 != null) {
+            HashMap map = new HashMap();
+            nw0 nw0VarN = n6.E().a.listIterator(0);
+            while (nw0VarN.hasNext()) {
+                oq2 oq2Var = (oq2) nw0VarN.next();
+
+=== prefs headerArt hits ===
+119:    public String z0 = "logo";
+628:        if (!sharedPreferences.getBoolean("headerInfoDetailedDefault", false)) {
+629:            SharedPreferences.Editor editorPutBoolean2 = sharedPreferences.edit().putBoolean("headerInfoDetailedDefault", true);
+630:            if ("brief".equals(sharedPreferences.getString("headerInfo", null))) {
+631:                editorPutBoolean2.putString("headerInfo", "detailed");
+695:        this.z0 = sharedPreferences.getString("headerArt", this.z0);
+696:        this.A0 = sharedPreferences.getString("headerInfo", this.A0);
+758:        map.remove("headerInfo");
