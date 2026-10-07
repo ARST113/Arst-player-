@@ -6,6 +6,8 @@ on:
       - arx-2.1.3-port-wip
     paths:
       - '.github/workflows/publish-arx-2.1.3-arx6.yml'
+      - 'keystore/**'
+      - 'app/build.gradle'
   workflow_dispatch:
 
 permissions:

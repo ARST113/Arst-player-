@@ -45,6 +45,21 @@ android {
     compileSdk = 37
     ndkVersion '29.0.14206865'
 
+    // Releases are distributed straight from Actions, and the debug keystore AGP invents on a fresh
+    // runner is a brand new key every run: an APK signed with it can never update the previous
+    // release in place, only replace it after an uninstall. Pin one keystore for every ARX release
+    // instead. It is a test key on purpose, not a production Play key, so the passwords live in the
+    // repository with it.
+    signingConfigs {
+        arx {
+            storeFile rootProject.file('keystore/arx-release.p12')
+            storeType 'PKCS12'
+            storePassword 'arxplayer'
+            keyAlias 'arx'
+            keyPassword 'arxplayer'
+        }
+    }
+
     defaultConfig {
         def abiFilter = project.findProperty("abiFilter")
         applicationId "com.justplus.player"
@@ -74,10 +89,9 @@ android {
     }
     buildTypes {
         release {
-            // Test/ARX builds are distributed directly from Actions. Sign release with the
-            // standard debug keystore so the APK is installable and uses the same certificate
-            // as our debug build. This is intentionally not a production Play signing key.
-            signingConfig signingConfigs.debug
+            // Test/ARX builds are distributed directly from Actions. Sign release with the pinned
+            // test keystore so every ARX release shares one certificate and updates in place.
+            signingConfig signingConfigs.arx
             minifyEnabled false
             //proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             // The two Intel ABIs are 23 of the 54 MB this APK used to weigh, and nothing that plays video
