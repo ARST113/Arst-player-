@@ -11731,7 +11731,13 @@ public class PlayerActivity extends Activity {
         if (officialControlLight()) {
             return network ? 0xFF8E8E93 : 0xFFBDC1C1;
         }
-        return network ? 0xC0FFFFFF : 0x33FFFFFF;
+        // The dark rail is a flat tone in the published build. Measured on the fixture's grid, which
+        // puts a bright line under the bar every 240px: the published bar reads 206,206,207 on every
+        // column, while the tag's translucent xr.l composited over whatever is behind it and moved to
+        // 193,202,203 across those lines. #CECECF is that same flat value — and it is also what xr.l
+        // comes to over the released unplayed tone (#38393C), so it holds whether the release draws an
+        // opaque colour or lays the rail down under a bar its library no longer composites over.
+        return network ? 0xFFCECECF : 0x33FFFFFF;
     }
 
     private int officialControlActiveColor() {
