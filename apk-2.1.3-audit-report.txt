@@ -1,0 +1,119 @@
+2.1.2 sha256 0e810c5bbaaef121bedca3e54298ef6d24aed3a85d1a9b8cfd0eccf667e0a131 size 28651392
+2.1.3 sha256 3e8bff06ebc1037142107c5c8321249c9a3fc4569de8d8be40e53716c5b042dc size 28651385
+
+=== APP CLASSES CHANGED 2.1.2 -> 2.1.3 ===
+CHANGED	com/brouken/player/App.java	113->113
+CHANGED	com/brouken/player/BottomBarLayout.java	17->17
+CHANGED	com/brouken/player/BrandWash.java	88->88
+CHANGED	com/brouken/player/BrowserActivity.java	1940->1940
+CHANGED	com/brouken/player/CustomDefaultTimeBar.java	368->368
+CHANGED	com/brouken/player/ErrorActivity.java	788->788
+CHANGED	com/brouken/player/LevelBar.java	50->50
+CHANGED	com/brouken/player/PlayerActivity.java	15929->15907
+CHANGED	com/brouken/player/RatioFrame.java	19->19
+CHANGED	com/brouken/player/SettingsActivity.java	1207->1207
+CHANGED	com/brouken/player/b.java	27->27
+CHANGED	com/brouken/player/c.java	631->631
+CHANGED	com/brouken/player/d.java	15->15
+CHANGED	com/brouken/player/dtpv/DoubleTapPlayerView.java	96->96
+CHANGED	com/brouken/player/dtpv/youtube/YouTubeOverlay.java	245->245
+CHANGED	com/brouken/player/dtpv/youtube/views/CircleClipTapView.java	186->186
+CHANGED	com/brouken/player/dtpv/youtube/views/SecondsView.java	101->101
+CHANGED	com/brouken/player/e.java	9->9
+APP_CHANGED_TOTAL 18
+
+=== 2.1.3 FEATURE SIGNATURES ===
+--- JustPlayer v2.1.3 ---
+defpackage/xk2.java:192:vk1Var.a("User-Agent", "JustPlayer v2.1.3");
+defpackage/xk2.java:770:vk1Var.a("User-Agent", "JustPlayer v2.1.3");
+com/brouken/player/PlayerActivity.java:7307:vk1Var.a("User-Agent", "JustPlayer v2.1.3");
+--- AndroidXMedia3/1.11.1 ---
+defpackage/vg0.java:124:ql.x("ExoPlayerImpl", "Init " + Integer.toHexString(System.identityHashCode(this)) + " [AndroidXMedia3/1.11.1] [" + qt2.a + "]");
+defpackage/vg0.java:1364:ql.x("ExoPlayerImpl", "Release " + Integer.toHexString(System.identityHashCode(this)) + " [AndroidXMedia3/1.11.1] [" + qt2.a + "] [" + a91.b() + "]");
+defpackage/pa1.java:52:ql.x("MediaSessionImpl", "Init " + Integer.toHexString(System.identityHashCode(this)) + " [AndroidXMedia3/1.11.1] [" + qt2.a + "]");
+defpackage/pa1.java:364:ql.x("MediaSessionImpl", "Release " + Integer.toHexString(System.identityHashCode(this)) + " [AndroidXMedia3/1.11.1] [" + qt2.a + "] [" + a91.b() + "]");
+defpackage/nf1.java:906:H("User-Agent", "AndroidXMedia3/1.11.1");
+com/brouken/player/PlayerActivity.java:7992:sbK.append(") AndroidXMedia3/1.11.1");
+--- WindowInsets ---
+defpackage/hx2.java:6:import android.view.WindowInsets;
+defpackage/hx2.java:12:Insets systemWindowInsets = view.computeSystemWindowInsets(new WindowInsets.Builder().setSystemWindowInsets(Insets.of(rect)).build(), rect2).getSystemWindowInsets();
+defpackage/hx2.java:13:rect.set(systemWindowInsets.left, systemWindowInsets.top, systemWindowInsets.right, systemWindowInsets.bottom);
+defpackage/b03.java:4:import android.view.WindowInsets;
+defpackage/b03.java:9:public static final g03 r = g03.g(null, WindowInsets.CONSUMED);
+defpackage/b03.java:11:public b03(g03 g03Var, WindowInsets windowInsets) {
+defpackage/b03.java:12:super(g03Var, windowInsets);
+defpackage/c03.java:3:import android.view.WindowInsets;
+defpackage/c03.java:8:public static final g03 s = g03.g(null, WindowInsets.CONSUMED);
+defpackage/c03.java:10:public c03(g03 g03Var, WindowInsets windowInsets) {
+defpackage/c03.java:11:super(g03Var, windowInsets);
+defpackage/pz2.java:4:import android.view.WindowInsetsAnimation;
+defpackage/pz2.java:9:public final WindowInsetsAnimation e;
+defpackage/pz2.java:11:public pz2(WindowInsetsAnimation windowInsetsAnimation) {
+defpackage/pz2.java:13:this.e = windowInsetsAnimation;
+defpackage/pz2.java:16:public static ux0 f(WindowInsetsAnimation.Bounds bounds) {
+defpackage/pz2.java:20:public static ux0 g(WindowInsetsAnimation.Bounds bounds) {
+defpackage/pz2.java:25:view.setWindowInsetsAnimationCallback(new oz2(wVar));
+defpackage/cw2.java:5:import android.view.WindowInsets;
+defpackage/cw2.java:10:public final class cw2 implements View.OnApplyWindowInsetsListener {
+defpackage/cw2.java:20:@Override // android.view.View.OnApplyWindowInsetsListener
+defpackage/cw2.java:21:public WindowInsets onApplyWindowInsets(View view, WindowInsets windowInsets) {
+defpackage/cw2.java:22:g03 g03VarG = g03.g(view, windowInsets);
+defpackage/cw2.java:26:dw2.a(windowInsets, this.b);
+defpackage/g03.java:5:import android.view.WindowInsets;
+defpackage/g03.java:26:public g03(WindowInsets windowInsets) {
+defpackage/g03.java:29:this.a = new c03(this, windowInsets);
+defpackage/g03.java:33:this.a = new b03(this, windowInsets);
+defpackage/g03.java:37:this.a = new a03(this, windowInsets);
+defpackage/g03.java:39:this.a = new zz2(this, windowInsets);
+--- getInsetsIgnoringVisibility ---
+defpackage/b03.java:22:return ux0.d(this.c.getInsetsIgnoringVisibility(e03.a(i)));
+defpackage/c03.java:21:return ux0.d(this.c.getInsetsIgnoringVisibility(f03.a(i)));
+defpackage/s2.java:724:Insets insetsMax = Insets.max(rootWindowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.displayCutout()), rootWindowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars()));
+defpackage/s2.java:869:Insets insetsMax = Insets.max(rootWindowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.displayCutout()), rootWindowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars()));
+com/brouken/player/PlayerActivity.java:10528:int iMax4 = i2 >= 30 ? Math.max(windowInsets.getSystemWindowInsetTop(), windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top) : Math.max(windowInsets.getSystemWindowInsetTop(), windowInsets.getStableInsetTop());
+--- error_stream_http_status ---
+defpackage/hr1.java:2178:string = ((PlayerActivity) this.m).getString(R.string.error_stream_http_status, Integer.valueOf(mu0Var.o), yt2.n0(mu0Var.m.a));
+com/justplus/player/R.java:5755:public static final int error_stream_http_status = 0x7f1300af;
+--- subtitleLanguages ---
+(none)
+--- SELECTION_FLAG_FORCED ---
+(none)
+--- last playback error ---
+(none)
+--- playback error ---
+defpackage/eh0.java:3272:ql.j("ExoPlayerImplInternal", "Playback error", e);
+defpackage/eh0.java:3294:ql.j("ExoPlayerImplInternal", "Playback error", eg0Var2);
+defpackage/eh0.java:3577:ql.j("ExoPlayerImplInternal", "Playback error", eg0Var);
+--- responseCode ---
+defpackage/qu0.java:30:return httpURLConnection.getResponseCode();
+defpackage/z30.java:50:this.v = httpURLConnectionN.getResponseCode();
+defpackage/hj1.java:754:spotlightIntegration.m.e(s4.DEBUG, "Envelope sent to spotlight: %d", Integer.valueOf(httpURLConnectionG.getResponseCode()));
+defpackage/hj1.java:781:spotlightIntegration.m.e(s4.DEBUG, "Envelope sent to spotlight: %d", Integer.valueOf(httpURLConnectionG.getResponseCode()));
+defpackage/hj1.java:783:spotlightIntegration.m.e(s4.DEBUG, "Envelope sent to spotlight: %d", Integer.valueOf(httpURLConnectionG.getResponseCode()));
+io/sentry/transport/e.java:135:int responseCode = httpURLConnection.getResponseCode();
+io/sentry/transport/e.java:136:e(httpURLConnection, responseCode);
+io/sentry/transport/e.java:137:if (responseCode == 200) {
+io/sentry/transport/e.java:143:logger.e(s4Var, "Request failed, API returned %s", Integer.valueOf(responseCode));
+io/sentry/transport/e.java:147:return new r(responseCode);
+--- systemBars ---
+defpackage/yt2.java:1237:insetsController.show(WindowInsets.Type.systemBars());
+defpackage/yt2.java:1239:insetsController.hide(WindowInsets.Type.systemBars());
+defpackage/k03.java:8:this.s.setSystemBarsBehavior(2);
+defpackage/j03.java:30:this.s.setSystemBarsAppearance(16, 16);
+defpackage/j03.java:35:this.s.setSystemBarsAppearance(0, 16);
+defpackage/j03.java:46:this.s.setSystemBarsAppearance(8, 8);
+defpackage/j03.java:51:this.s.setSystemBarsAppearance(0, 8);
+defpackage/j03.java:59:this.s.setSystemBarsBehavior(2);
+com/brouken/player/PlayerActivity.java:11213:insetsController.setSystemBarsBehavior(1);
+androidx/core/view/insets/ProtectionLayout.java:29:private em2 getOrInstallSystemBarStateMonitor() {
+androidx/core/view/insets/ProtectionLayout.java:45:this.m = new lv1(getOrInstallSystemBarStateMonitor(), arrayList);
+
+=== RESOURCE FILE DIFF ===
+CHANGED	AndroidManifest.xml
+CHANGED	META-INF/CERT.RSA
+CHANGED	META-INF/CERT.SF
+CHANGED	META-INF/MANIFEST.MF
+CHANGED	META-INF/version-control-info.textproto
+CHANGED	assets/dexopt/baseline.prof
+CHANGED	assets/dexopt/baseline.profm
+RESOURCE_CHANGED_TOTAL 7
