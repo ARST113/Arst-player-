@@ -49,12 +49,16 @@ open_and_capture() {
   # is still visible by the time playback becomes ready, so a blind tap can either show OR hide it.
   # Capture both toggle states (and the initial state), then choose the frame containing the largest
   # light neutral plate in the bottom third. System light mode is pinned above, so this is deterministic.
+  #
+  # The tap is up and to the left, over the picture, not at 1200 540: that point is the transport
+  # itself, so a "toggle the controller" tap was also a play/pause tap and the two captures could
+  # disagree on the state of the film -- 2411 px of hero glyph and a stopped position counter.
   sleep 1
   adb exec-out screencap -p > "$OUT/$name-before.png"
-  adb shell input tap 1200 540 || true
+  adb shell input tap 400 300 || true
   sleep 0.7
   adb exec-out screencap -p > "$OUT/$name-after1.png"
-  adb shell input tap 1200 540 || true
+  adb shell input tap 400 300 || true
   sleep 0.7
   adb exec-out screencap -p > "$OUT/$name-after2.png"
 
