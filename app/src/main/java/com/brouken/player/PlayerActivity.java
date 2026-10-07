@@ -190,7 +190,6 @@ import androidx.media3.ui.TimeBar;
 
 import com.brouken.player.dtpv.DoubleTapPlayerView;
 import com.brouken.player.dtpv.youtube.YouTubeOverlay;
-import com.brouken.player.skip.ChapterSegments;
 import com.brouken.player.skip.IntentSegmentsSource;
 import com.brouken.player.skip.NetworkSegmentsSource;
 import com.brouken.player.skip.SegmentFinder;
@@ -505,7 +504,6 @@ public class PlayerActivity extends Activity {
             .build();
     // Just+ 2.1.2 keeps Set-Cookie state for one playback/API session. It is separate from the
     // process-wide client so rebuilding the player keeps the cookies while a new session clears them.
-    private final SessionCookieInterceptor sessionCookies = new SessionCookieInterceptor();
     private final AnalyticsListener playbackInfoListener = new AnalyticsListener() {
         @Override
         public void onVideoDecoderInitialized(AnalyticsListener.EventTime eventTime, String decoderName,
@@ -4218,7 +4216,6 @@ public class PlayerActivity extends Activity {
         apiHeaders = null;
         nestedPlaylistSession = false;
         nestedResultCallback = null;
-        sessionCookies.clear();
         nestedReportIntervalMs = 0L;
         nestedResumeMode = null;
         nestedPlaylistModel = null;
@@ -13588,11 +13585,8 @@ public class PlayerActivity extends Activity {
             // files over a connection that never dropped. Give a read the same patience the load watchdog
             // gives the load: past that, the watchdog stops the player with a message that says what to
             // do, instead of a retry storm ending in a broken-stream error.
-            final okhttp3.OkHttpClient sessionHttpClient = MEDIA_HTTP_CLIENT.newBuilder()
-                    .addInterceptor(sessionCookies)
-                    .build();
             final OkHttpDataSource.Factory httpDataSourceFactory =
-                    new OkHttpDataSource.Factory(sessionHttpClient);
+                    new OkHttpDataSource.Factory(MEDIA_HTTP_CLIENT);
             if (userAgent != null) {
                 httpDataSourceFactory.setUserAgent(userAgent);
             }
@@ -14036,7 +14030,6 @@ public class PlayerActivity extends Activity {
      * hold had just filled.
      */
     private final Runnable frameRateGiveUpRunnable = this::frameRateSettled;
-    private final Runnable frameRatePauseRunnable = this::frameRateSettled;
 
     /**
      * Nothing more to wait for from the display: disarm the listener armed for a mode change and spend
@@ -14052,7 +14045,6 @@ public class PlayerActivity extends Activity {
     void frameRateSettled() {
         earlyModeSwitchRequested = false;
         playerView.removeCallbacks(frameRateGiveUpRunnable);
-        playerView.removeCallbacks(frameRatePauseRunnable);
         if (displayManager != null && displayListener != null) {
             displayManager.unregisterDisplayListener(displayListener);
         }
@@ -14066,15 +14058,7 @@ public class PlayerActivity extends Activity {
      * Just+ Player 2.1.2 can deliberately hold playback after the display reports a mode change.
      * Some TVs report the new mode before the HDMI link has finished its black-screen renegotiation.
      */
-    private void displayModeChanged() {
-        playerView.removeCallbacks(frameRateGiveUpRunnable);
-        playerView.removeCallbacks(frameRatePauseRunnable);
-        if (!play || mPrefs.modeSwitchPauseMs <= 0) {
-            frameRateSettled();
-            return;
-        }
-        playerView.postDelayed(frameRatePauseRunnable, Math.min(5_000, mPrefs.modeSwitchPauseMs));
-    }
+
 
     /**
      * The mode for a playlist item that started mid-session, asked for once its frame rate is readable.
@@ -14123,7 +14107,7 @@ public class PlayerActivity extends Activity {
 
                         @Override
                         public void onDisplayChanged(int displayId) {
-                            displayModeChanged();
+                            frameRateSettled();
                         }
                     };
                 }
@@ -14905,13 +14889,6 @@ public class PlayerActivity extends Activity {
             }
             // 2.1.2 also treats named file chapters as skip data. They outrank online/inferred
             // segments because their timecodes belong to this exact file.
-            if (skipManager != null) {
-                final List<SkipSegment> chapters = ChapterSegments.fromTracks(tracks);
-                if (skipManager.setChapterSegments(chapters)) {
-                    Utils.log("segments: " + chapters.size() + " from the file's chapters");
-                    rebuildSkip();
-                }
-            }
             matchDisplayModeForNewItem();
             sayIfTheVideoTrackWasDropped(tracks);
             Utils.log("tracks: video=" + selectedMime(tracks, C.TRACK_TYPE_VIDEO)
