@@ -2006,7 +2006,7 @@ public class PlayerActivity extends Activity {
         videoInfoView = createInfoLine(0);
         videoInfoView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        final Drawable videoIcon = ContextCompat.getDrawable(this, R.drawable.ic_theaters_24dp);
+        final Drawable videoIcon = ContextCompat.getDrawable(this, R.drawable.ic_movie_24dp);
         if (videoIcon != null) {
             final int icon = ui.dpS(18);
             videoIcon.setBounds(0, 0, icon, icon);
