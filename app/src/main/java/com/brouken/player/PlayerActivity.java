@@ -1813,7 +1813,7 @@ public class PlayerActivity extends Activity {
         buttonQuality.setOnClickListener(view -> showQualityDialog());
 
         buttonAudio = createOfficialValueChip(
-                R.drawable.ic_audiotrack_24dp, getString(R.string.button_audio_track));
+                R.drawable.ic_audiotrack_plate_24dp, getString(R.string.button_audio_track));
         buttonAudio.setOnClickListener(view -> showAudioDialog());
 
         buttonSubtitle = createOfficialValueChip(
