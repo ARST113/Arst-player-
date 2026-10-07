@@ -1696,7 +1696,8 @@ public class PlayerActivity extends Activity {
         // wears, and carries the brand in its glyph — the biggest plate on screen with the only coral on it.
         // Coral is ink here, never a fill: a fill's own edge against a bright frame is 1.31:1, while the
         // plate is the glyph's keyline and holds it at 4.6:1 on the brightest frame.
-        exoPlayPause.setBackground(new InsetDrawable((Drawable) Utils.plate(this, Utils.CIRCLE),
+        exoPlayPause.setBackground(new InsetDrawable(
+                (Drawable) Utils.shape(officialControlBaseColor(), Utils.CIRCLE),
                 ui.heroInset()));
         // Hero size scales per device class (phone = 90dp, unchanged; larger on tablet/TV). Overrides the
         // Media3 style's exo_icon_size so the transport isn't tiny on a 10-foot screen.
@@ -1704,7 +1705,8 @@ public class PlayerActivity extends Activity {
         heroLp.width = ui.heroBox();
         heroLp.height = ui.heroBox();
         exoPlayPause.setLayoutParams(heroLp);
-        exoPlayPause.setImageTintList(ColorStateList.valueOf(brandColor()));
+        exoPlayPause.setImageTintList(ColorStateList.valueOf(
+                ContextCompat.getColor(this, R.color.brand_accent)));
         // With the colour gone from the disc, presence has to come from the glyph. Media3 hands the button a
         // drawable whose canvas is exo_icon_size with the ink about a third of it; fitting that canvas to the
         // whole box instead of leaving it at its intrinsic size takes the ink to roughly half the disc, the
@@ -2460,69 +2462,51 @@ public class PlayerActivity extends Activity {
                 final int stableBottomInset = Build.VERSION.SDK_INT < 30
                         ? legacyBottomInsetMax : rawBottomInset;
 
-                // Balance the horizontal insets: offset BOTH sides by the larger of the two so the header and
-                // bottom-bar content stay symmetric even when only one side carries the status bar or a display
-                // cutout (in landscape that side would otherwise get a much bigger margin — the lopsided look).
-                // Applied as padding with no margin, so the scrim backgrounds still span the full width.
-                // On TV all system insets are 0, so synthesize overscan-safe insets here — every edge-anchored
-                // element (header, bottom bar, seek bar, Skip pill) keys off these, so the whole content grid
-                // moves inward as a unit and stays aligned. overscanH/V are 0 on phone/tablet (no visual change).
+                // Published 2.1.3 uses a detached bottom plate: system/cutout insets become
+                // OUTER margins, while the plate keeps its own small internal padding.
                 final int overscanV = ui.overscanV();
                 final int insetH = Math.max(Math.max(insetLeft, insetRight), ui.overscanH());
-                int paddingLeft = insetH;
-                int marginLeft = 0;
-                int paddingRight = insetH;
-                int marginRight = 0;
+                final int paddingLeft = insetH;
+                final int paddingRight = insetH;
+                final int marginLeft = 0;
+                final int marginRight = 0;
+                final int bottomPlateMarginH = insetH + ui.dpS(16);
+                final int bottomPlateMarginBottom = isTvBox
+                        ? ui.dpS(12) + overscanV
+                        : Math.max(ui.dpS(12), stableBottomInset + overscanV);
 
-                final int bottomBarPaddingBottom = stableBottomInset + overscanV;
-                final int progressBarMarginBottom = bottomBarPaddingBottom;
-
-                // Don't use exo_top (the built-in top scrim): it is a sibling of exo_controls_background and Media3
-                // animates it on a different schedule, so it appears before / lingers after the header. Instead the
-                // header panel's own background is extended up over the status-bar area (see topInfoPanel below) —
-                // being the header itself, it can never desync from it. Keep exo_top collapsed.
                 findViewById(R.id.exo_top).getLayoutParams().height = 0;
 
-                // Take the bottom inset by growing the bar, never by padding the control view itself: padding
-                // pulls every child up off the screen edge, the two scrims included (the full-screen dim and
-                // the bar's own gradient), and what shows through underneath is a bright strip of raw video.
-                // On TV that inset is pure overscan, so the strip appeared with nothing drawn over it at all.
                 final BottomBarLayout exoBottomBar = findViewById(R.id.exo_bottom_bar);
-                final int barHeight = getResources().getDimensionPixelSize(R.dimen.exo_styled_bottom_bar_height);
-                final ViewGroup.LayoutParams params = exoBottomBar.getLayoutParams();
-                params.height = barHeight + bottomBarPaddingBottom;
-                exoBottomBar.setLayoutParams(params);
-                // Media3 parks the bar by that unchanged resource height, so tell it how much taller the bar
-                // now is -- without this the park stops the inset short and the button row's top stays over
-                // the picture for as long as the seek bar is up on its own.
-                exoBottomBar.setTravelScale((float) params.height / barHeight);
+                final ViewGroup.LayoutParams barParams = exoBottomBar.getLayoutParams();
+                barParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                exoBottomBar.setLayoutParams(barParams);
+                exoBottomBar.setTravelScale(1f);
+                exoBottomBar.setPadding(
+                        ui.dpS(10),
+                        isTvBox ? ui.dpS(12) : ui.dpS(10),
+                        ui.dpS(10),
+                        isTvBox ? ui.dpS(10) : ui.dpS(4));
+                Utils.setViewMargins(exoBottomBar,
+                        bottomPlateMarginH, 0, bottomPlateMarginH, bottomPlateMarginBottom);
 
                 if (Build.VERSION.SDK_INT >= 35) {
-                    findViewById(R.id.exo_left).getLayoutParams().width = windowInsets.getInsets(WindowInsets.Type.navigationBars()).left;
-                    findViewById(R.id.exo_right).getLayoutParams().width = windowInsets.getInsets(WindowInsets.Type.navigationBars()).right;
+                    findViewById(R.id.exo_left).getLayoutParams().width =
+                            windowInsets.getInsets(WindowInsets.Type.navigationBars()).left;
+                    findViewById(R.id.exo_right).getLayoutParams().width =
+                            windowInsets.getInsets(WindowInsets.Type.navigationBars()).right;
                 }
 
-                // Extend the header's background up over the status-bar area (top margin -> 0, top inset moved into
-                // the top padding). The content position is unchanged (padding pushes it down by the same amount the
-                // margin used to), but the panel now paints the status-bar strip, in perfect sync with the header.
-                // Reserve that strip whether or not the status bar happens to be showing: the controls hide together
-                // with the system bars, so a top padding that tracked the live inset moved the header's clock every
-                // time they toggled, and the floating clock mirrors that position while remaining visible — which is
-                // how it crept upwards when a picker panel hid the controls. Landscape is where it showed, the top
-                // inset there really does fall to 0; in portrait a display cutout keeps it non-zero.
                 final int insetTop = Build.VERSION.SDK_INT >= 30
                         ? Math.max(windowInsets.getSystemWindowInsetTop(),
                                 windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top)
                         : Math.max(windowInsets.getSystemWindowInsetTop(), windowInsets.getStableInsetTop());
-                Utils.setViewParams(topInfoPanel, paddingLeft + titleViewPaddingHorizontal, insetTop + overscanV + Utils.dpToPx(4), paddingRight + titleViewPaddingHorizontal, titleViewPaddingVertical,
+                Utils.setViewParams(topInfoPanel,
+                        paddingLeft + titleViewPaddingHorizontal,
+                        insetTop + overscanV + Utils.dpToPx(4),
+                        paddingRight + titleViewPaddingHorizontal,
+                        titleViewPaddingVertical,
                         marginLeft, 0, marginRight, 0);
-
-
-                Utils.setViewParams(findViewById(R.id.exo_bottom_bar), paddingLeft, 0, paddingRight, bottomBarPaddingBottom,
-                        marginLeft, 0, marginRight, 0);
-
-                Utils.setViewParams(findViewById(R.id.exo_progress), insetH, 0, insetH, 0,
-                        0, 0, 0, getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom) + progressBarMarginBottom);
 
                 // Keep the Skip pill above the seek bar and clear of the nav-bar inset. It floats on the
                 // full-screen coordinator (not the controller), so a fixed bottom offset overlapped the
@@ -2597,10 +2581,11 @@ public class PlayerActivity extends Activity {
         // Brand the timeline: the played portion and the scrubber (the surfaces the user actually touches)
         // share the accent ink of the Play glyph above, over a solid dark rail instead of Media3's wash
         // of the frame behind.
-        final int timeBarPlayed = brandColor();
+        final int timeBarPlayed = ContextCompat.getColor(this, R.color.brand_accent);
         timeBar.setPlayedColor(timeBarPlayed);
         timeBar.setScrubberColor(timeBarPlayed);
-        timeBar.setUnplayedColor(ContextCompat.getColor(this, R.color.timebar_track));
+        timeBar.setUnplayedColor(0x20000000);
+        timeBar.setBufferedColor(0x33000000);
 
         try {
             trackNameProvider = new CustomDefaultTrackNameProvider(getResources());
@@ -2640,99 +2625,109 @@ public class PlayerActivity extends Activity {
 
         final LinearLayout exoBasicControls = playerView.findViewById(R.id.exo_basic_controls);
         exoSubtitle = exoBasicControls.findViewById(R.id.exo_subtitle);
-        exoBasicControls.removeView(exoSubtitle);
-        // Managed like the audio/quality buttons: hidden until the media actually has subtitle tracks,
-        // so it never shows greyed-out while loading. Re-asserted after Media3's own updates (see onEvents).
-        exoSubtitle.setVisibility(View.GONE);
-        exoSubtitle.setImageTintList(ContextCompat.getColorStateList(this, R.color.control_icon_tint));
-
-        exoSettings = exoBasicControls.findViewById(R.id.exo_settings);
-        exoBasicControls.removeView(exoSettings);
         final ImageButton exoRepeat = exoBasicControls.findViewById(R.id.exo_repeat_toggle);
-        exoBasicControls.removeView(exoRepeat);
-        //exoBasicControls.setVisibility(View.GONE);
-
-        // Open our native subtitle panel instead of Media3's built-in track popup.
-        exoSubtitle.setOnClickListener(v -> showSubtitleDialog());
-
-        exoSubtitle.setOnLongClickListener(v -> {
-            openSettings("subtitlesScreen");
-            return true;
-        });
+        if (exoSubtitle != null) {
+            exoSubtitle.setVisibility(View.GONE);
+            exoSubtitle.setOnClickListener(v -> showSubtitleDialog());
+            exoSubtitle.setOnLongClickListener(v -> {
+                openSettings("subtitlesScreen");
+                return true;
+            });
+        }
+        // The published 2.1.3 APK clears Media3's stock bottom controls and rebuilds the
+        // two-row plate itself. There is no exo_settings view in that APK layout.
+        exoBasicControls.removeAllViews();
+        exoSettings = null;
 
         updateButtons(false);
 
-        final HorizontalScrollView horizontalScrollView = (HorizontalScrollView) getLayoutInflater().inflate(R.layout.controls, null);
+        final BottomBarLayout bottomBarLayout = findViewById(R.id.exo_bottom_bar);
+        bottomBarLayout.setBackground(Utils.shape(officialControlBaseColor(), ui.dpS(24)));
+        bottomBarLayout.setClipChildren(false);
+        bottomBarLayout.setClipToPadding(false);
+
+        final View plateTimeRow = findViewById(R.id.plate_time_row);
+        final LinearLayout.LayoutParams timeRowLp =
+                (LinearLayout.LayoutParams) plateTimeRow.getLayoutParams();
+        final int naturalTimeRow = ui.dpS(24);
+        timeRowLp.height = ui.dpS(48);
+        if (!isTvBox) {
+            final int overlap = (ui.dpS(48) - naturalTimeRow) / 2;
+            timeRowLp.topMargin = -overlap;
+            timeRowLp.bottomMargin = -overlap;
+        }
+        plateTimeRow.setLayoutParams(timeRowLp);
+
+        final View plateRow = findViewById(R.id.plate_row);
+        final LinearLayout.LayoutParams plateRowLp =
+                (LinearLayout.LayoutParams) plateRow.getLayoutParams();
+        plateRowLp.height = isTvBox ? ui.dpS(48) : ui.clusterBox();
+        plateRowLp.topMargin = isTvBox ? ui.dpS(8) : ui.dpS(4);
+        plateRow.setLayoutParams(plateRowLp);
+
+        final TextView positionText = findViewById(R.id.exo_position);
+        final TextView durationText = findViewById(R.id.exo_duration);
+        positionText.setTextColor(officialControlInkColor());
+        durationText.setTextColor(officialControlSecondaryInkColor());
+        positionText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        durationText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        positionText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+
+        final LinearLayout.LayoutParams timeBarLp =
+                (LinearLayout.LayoutParams) timeBar.getLayoutParams();
+        timeBarLp.setMarginStart(ui.dpS(8));
+        timeBarLp.setMarginEnd(ui.dpS(8));
+        timeBar.setLayoutParams(timeBarLp);
+
+        final HorizontalScrollView horizontalScrollView =
+                (HorizontalScrollView) getLayoutInflater().inflate(R.layout.controls, null);
         final LinearLayout controls = horizontalScrollView.findViewById(R.id.controls);
+        controls.setClipChildren(false);
+        horizontalScrollView.setClipChildren(false);
 
-        // Multimedia pickers, each shown when relevant, live in the bottom bar on every device. Order per
-        // the design: quality, audio, subtitles, playlist.
-        controls.addView(buttonQuality);
-        controls.addView(buttonAudio);
-        controls.addView(buttonSubtitle);
-        controls.addView(buttonPlaylist);
-        if (mPrefs.repeatToggle) {
-            controls.addView(exoRepeat);
-        }
-
-        // Display / screen controls: beside the header clock on touch; in the bottom bar on TV so the remote
-        // keeps a single left/right focus zone.
-        final LinearLayout displayParent = isTvBox ? controls : null;
-        if (displayParent != null) {
-            displayParent.addView(buttonAspectRatio);
-            if (Utils.isPiPSupported(this) && buttonPiP != null) {
-                displayParent.addView(buttonPiP);
+        final View[] releasedControls =
+                new View[]{buttonQuality, buttonAudio, buttonSubtitle, buttonPlaylist, buttonUpdate, buttonMore};
+        for (View control : releasedControls) {
+            if (control instanceof ImageButton) {
+                styleOfficialRoundButton((ImageButton) control, controls.getChildCount() > 0);
+            } else if (controls.getChildCount() > 0 && isTvBox) {
+                final LinearLayout.LayoutParams lp =
+                        (LinearLayout.LayoutParams) control.getLayoutParams();
+                lp.setMarginStart(ui.dpS(8));
             }
+            controls.addView(control);
         }
-        // "Update available" sits immediately before the gear — one insertion point that lands in the same
-        // place on a phone and on TV, because the gear ends the bottom bar on both.
-        controls.addView(buttonUpdate);
-        // "More" (overflow) always lives at the end of the bottom bar.
-        controls.addView(buttonMore);
-
-        // One uniform button box across both clusters so the header pill and the bottom pill match in height,
-        // size and inter-button gap.
-        styleOfficialRoundButton(buttonPlaylist, controls.getChildCount() > 3);
-        if (mPrefs.repeatToggle) {
-            styleOfficialRoundButton(exoRepeat, true);
+        if (mPrefs.repeatToggle && exoRepeat != null) {
+            styleOfficialRoundButton(exoRepeat, controls.getChildCount() > 0);
+            controls.addView(exoRepeat, Math.max(0, controls.getChildCount() - 2));
         }
-        styleOfficialRoundButton(buttonUpdate, true);
+        buttonUpdate.setSelected(true);
         refreshUpdateButton();
-        styleOfficialRoundButton(buttonMore, true);
-        if (isTvBox) {
-            styleOfficialRoundButton(buttonAspectRatio, true);
+        exoBasicControls.addView(horizontalScrollView,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        final LinearLayout plateLeft = findViewById(R.id.plate_left);
+        plateLeft.setClipChildren(false);
+        if (!isTvBox) {
+            final ArrayList<ImageButton> lowerLeft = new ArrayList<>();
+            lowerLeft.add(buttonLock);
+            lowerLeft.add(buttonRotation);
+            lowerLeft.add(buttonAspectRatio);
+            if (Utils.isPiPSupported(this) && buttonPiP != null) {
+                lowerLeft.add(buttonPiP);
+            }
+            for (ImageButton button : lowerLeft) {
+                styleOfficialRoundButton(button, plateLeft.getChildCount() > 0);
+                plateLeft.addView(button);
+            }
+        } else {
+            // Keep ARX's TV behavior stable while adopting the released plate geometry.
+            styleOfficialRoundButton(buttonAspectRatio, plateLeft.getChildCount() > 0);
+            plateLeft.addView(buttonAspectRatio);
             if (buttonPiP != null) {
                 styleOfficialRoundButton(buttonPiP, true);
-            }
-        }
-
-        // Inset the bottom pill to the shared 14dp content grid so its right edge lines up with the header
-        // pill / clock and stays inside the progress bar, instead of running to the screen edge.
-        final LinearLayout.LayoutParams horizontalScrollViewLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        horizontalScrollViewLp.gravity = Gravity.CENTER_VERTICAL;
-        horizontalScrollViewLp.setMarginEnd(ui.gridH());
-        exoBasicControls.addView(horizontalScrollView, horizontalScrollViewLp);
-
-        // Released 2.1.3 keeps display controls in the lower-left lane on touch devices:
-        // lock, rotation, aspect/crop and PiP. They are separate circular plates rather than header icons.
-        if (!isTvBox) {
-            final View exoTime = findViewById(R.id.exo_time);
-            if (exoTime instanceof LinearLayout) {
-                final LinearLayout left = (LinearLayout) exoTime;
-                final ArrayList<ImageButton> lowerLeft = new ArrayList<>();
-                lowerLeft.add(buttonLock);
-                lowerLeft.add(buttonRotation);
-                lowerLeft.add(buttonAspectRatio);
-                if (Utils.isPiPSupported(this) && buttonPiP != null) {
-                    lowerLeft.add(buttonPiP);
-                }
-                int insert = 0;
-                for (ImageButton button : lowerLeft) {
-                    styleOfficialRoundButton(button, insert > 0);
-                    left.addView(button, insert++);
-                }
-                exoTime.bringToFront();
+                plateLeft.addView(buttonPiP);
             }
         }
 
@@ -6819,14 +6814,11 @@ public class PlayerActivity extends Activity {
         endsAtView.setVisibility(View.VISIBLE);
     }
 
-    /** The bottom bar's total and the dot in front of it; the elapsed slot beside them always shows. */
+    /** The released 2.1.3 plate has only elapsed and duration slots; no separator view. */
     private void setDurationVisible(boolean visible) {
-        final int visibility = visible ? View.VISIBLE : View.GONE;
-        for (int id : new int[]{R.id.exo_time_separator, R.id.exo_duration}) {
-            final View view = playerView.findViewById(id);
-            if (view != null) {
-                view.setVisibility(visibility);
-            }
+        final View duration = playerView.findViewById(R.id.exo_duration);
+        if (duration != null) {
+            duration.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
     }
 
@@ -11599,6 +11591,43 @@ public class PlayerActivity extends Activity {
      * Released 2.1.3 value selector (JADX I1): a one-line rounded chip whose label is the
      * current quality / dub / subtitle choice. The icon is optional; quality is text-only.
      */
+    // The published APK uses a light detached plate even though the player theme itself is dark.
+    // These values are the rendered controller palette from 2.1.3: 90% white base, a subtle
+    // 8% black inset surface, high-emphasis black ink and the darker brand accent for active ink.
+    private int officialControlBaseColor() {
+        return 0xE6FFFFFF;
+    }
+
+    private int officialControlInsetColor() {
+        return 0x14000000;
+    }
+
+    private int officialControlInkColor() {
+        return 0xDE000000;
+    }
+
+    private int officialControlSecondaryInkColor() {
+        return 0x99000000;
+    }
+
+    private ColorStateList officialControlIconTint() {
+        return new ColorStateList(
+                new int[][]{
+                        new int[]{android.R.attr.state_selected},
+                        new int[]{-android.R.attr.state_enabled},
+                        new int[0]
+                },
+                new int[]{
+                        ContextCompat.getColor(this, R.color.brand_accent),
+                        0x61000000,
+                        officialControlInkColor()
+                });
+    }
+
+    /**
+     * Released 2.1.3 value selector (JADX I1): one-line rounded chip carrying the
+     * current quality / dub / subtitle value. Background is inset 6dp on touch devices.
+     */
     private TextView createOfficialValueChip(final int iconRes, final String description) {
         final TextView chip = new TextView(this);
         chip.setId(View.generateViewId());
@@ -11608,32 +11637,33 @@ public class PlayerActivity extends Activity {
         chip.setSingleLine(true);
         chip.setEllipsize(TextUtils.TruncateAt.END);
         chip.setGravity(Gravity.CENTER_VERTICAL);
-        chip.setTextColor(Color.WHITE);
+        chip.setTextColor(officialControlInkColor());
         chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textAction());
         chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         chip.setVisibility(View.GONE);
 
-        final int inset = ui.dpS(6);
+        final int inset = isTvBox ? 0 : ui.dpS(6);
         chip.setBackground(new InsetDrawable(
-                (Drawable) Utils.plate(this, Utils.CIRCLE), inset));
+                (Drawable) Utils.shape(officialControlInsetColor(), Utils.CIRCLE), inset));
         chip.setForeground(Utils.chromeForeground(this, inset));
 
         final int endPad = ui.dpS(16) + inset;
         int startPad = endPad;
+        int extraWidth = 0;
         if (iconRes != 0) {
             final Drawable icon = ContextCompat.getDrawable(this, iconRes);
             if (icon != null) {
                 final int iconSize = ui.dpS(24);
                 icon.setBounds(0, 0, iconSize, iconSize);
                 chip.setCompoundDrawablesRelative(icon, null, null, null);
-                chip.setCompoundDrawableTintList(
-                        ContextCompat.getColorStateList(this, R.color.control_icon_tint));
+                chip.setCompoundDrawableTintList(officialControlIconTint());
                 chip.setCompoundDrawablePadding(ui.dpS(8));
                 startPad = ui.dpS(12) + inset;
+                extraWidth = iconSize + ui.dpS(8);
             }
         }
         chip.setPadding(startPad, 0, endPad, 0);
-        chip.setMaxWidth(ui.dpS(220));
+        chip.setMaxWidth(ui.dpS(160) + startPad + extraWidth + endPad);
 
         final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ui.clusterBox());
@@ -11642,7 +11672,7 @@ public class PlayerActivity extends Activity {
         return chip;
     }
 
-    /** Released 2.1.3 S3-equivalent: an independent circular control plate. */
+    /** Released 2.1.3 S3-equivalent: inset round control on the light bottom plate. */
     private void styleOfficialRoundButton(final ImageButton button, final boolean addMargin) {
         if (button == null) {
             return;
@@ -11650,15 +11680,16 @@ public class PlayerActivity extends Activity {
         final int size = ui.clusterBox();
         final int icon = ui.dpS(24);
         final int pad = Math.max(0, (size - icon) / 2);
+        final int inset = isTvBox ? 0 : ui.dpS(6);
         button.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        button.setImageTintList(ContextCompat.getColorStateList(this, R.color.control_icon_tint));
+        button.setImageTintList(officialControlIconTint());
         button.setBackground(new InsetDrawable(
-                (Drawable) Utils.plate(this, Utils.CIRCLE), ui.dpS(2)));
-        button.setForeground(Utils.chromeForeground(this, ui.dpS(2)));
+                (Drawable) Utils.shape(officialControlInsetColor(), Utils.CIRCLE), inset));
+        button.setForeground(Utils.chromeForeground(this, inset));
         button.setPadding(pad, pad, pad, pad);
         final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
         lp.gravity = Gravity.CENTER_VERTICAL;
-        if (addMargin) {
+        if (addMargin && isTvBox) {
             lp.setMarginStart(ui.dpS(8));
         }
         button.setLayoutParams(lp);
@@ -18573,10 +18604,10 @@ public class PlayerActivity extends Activity {
         button.setLayoutParams(lp);
         button.setPadding(padding, padding, padding, padding);
         button.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        button.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        button.setImageTintList(ColorStateList.valueOf(officialControlInkColor()));
         // The same chrome plate the hero sits on, circular to suit the round glyphs. The 12dp icon padding
         // leaves a ring matching the hero's proportion.
-        button.setBackground(Utils.plate(this, Utils.CIRCLE));
+        button.setBackground(Utils.shape(officialControlBaseColor(), Utils.CIRCLE));
         // Replacing the background drops the touch-press highlight, so re-add it with the focus contour.
         button.setForeground(Utils.chromeForeground(this, 0));
     }
@@ -18792,7 +18823,11 @@ public class PlayerActivity extends Activity {
         Utils.setButtonEnabled(this, buttonAspectRatio, enable);
         // The gear stays reachable with no player: its menu drops the player-dependent rows by itself
         // (see showMoreMenu) and keeps "Open" and the settings screen — the way out of a failed clip.
-        Utils.setButtonEnabled(this, exoSettings, true);
+        if (exoSettings != null) {
+            Utils.setButtonEnabled(this, exoSettings, true);
+        } else if (buttonMore != null) {
+            Utils.setButtonEnabled(this, buttonMore, true);
+        }
     }
 
     private void scaleStart() {
