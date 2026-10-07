@@ -7,6 +7,11 @@ ACT="com.brouken.player.PlayerActivity"
 URL="http://213.171.26.189:2367/stream/MobLand.S01E04.1080p.WEB-DL.RGzsRutracker.mkv?link=3198e8861318732299b77913076857c75a6bc754&index=4&play"
 mkdir -p "$OUT"
 
+# Suppress Android's first-use immersive-mode education overlay. Without this, a fresh
+# install can capture the system cling instead of the player chrome and make the visual
+# comparison nondeterministic.
+adb shell settings put secure immersive_mode_confirmations confirmed >/dev/null 2>&1 || true
+
 open_and_capture() {
   local name="$1"
   local apk="$2"
@@ -27,10 +32,12 @@ open_and_capture() {
     sleep 2
   done
 
-  # Let the frame settle, then explicitly show controller chrome.
+  # Let the frame settle, then explicitly show controller chrome from the centre of the
+  # fixed Pixel 6 landscape emulator (2400x1080). The previous lower-left tap could land
+  # in the gesture/navigation area and occasionally leave the official APK controller hidden.
   sleep 2
-  adb shell input tap 540 900 || true
-  sleep 2
+  adb shell input tap 1200 540 || true
+  sleep 1
   adb exec-out screencap -p > "$OUT/$name.png"
   adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
   adb pull /sdcard/window.xml "$OUT/$name-window.xml" >/dev/null 2>&1 || true
