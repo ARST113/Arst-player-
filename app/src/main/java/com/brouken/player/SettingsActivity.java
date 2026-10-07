@@ -469,6 +469,16 @@ public class SettingsActivity extends AppCompatActivity
             if (preferenceAutoPiP != null) {
                 preferenceAutoPiP.setEnabled(Utils.isPiPSupported(this.getContext()));
             }
+            if (Utils.isTvBox(requireContext())) {
+                final Preference orientation = findPreference("screenOrientation");
+                if (orientation != null) {
+                    orientation.setVisible(false);
+                }
+                final Preference roundValues = findPreference("roundValueButtons");
+                if (roundValues != null) {
+                    roundValues.setVisible(false);
+                }
+            }
             Preference preferenceFrameRateMatching = findPreference("frameRateMatching");
             if (preferenceFrameRateMatching != null) {
                 preferenceFrameRateMatching.setEnabled(Build.VERSION.SDK_INT >= 23);
