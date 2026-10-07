@@ -503,7 +503,9 @@ public class Utils {
 
     public enum Orientation {
         VIDEO(0, R.string.video_orientation_video),
-        SYSTEM(1, R.string.video_orientation_system);
+        SYSTEM(1, R.string.video_orientation_system),
+        SENSOR(2, R.string.video_orientation_sensor),
+        LANDSCAPE(3, R.string.video_orientation_landscape);
 
         public final int value;
         public final int description;
@@ -511,6 +513,15 @@ public class Utils {
         Orientation(int type, int description) {
             this.value = type;
             this.description = description;
+        }
+
+        public static Orientation fromValue(final int value) {
+            for (final Orientation orientation : values()) {
+                if (orientation.value == value) {
+                    return orientation;
+                }
+            }
+            return LANDSCAPE;
         }
     }
 
@@ -532,9 +543,12 @@ public class Utils {
             case SYSTEM:
                 activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
                 break;
-            /*case SENSOR:
+            case SENSOR:
                 activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
-                break;*/
+                break;
+            case LANDSCAPE:
+                activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                break;
         }
     }
 
