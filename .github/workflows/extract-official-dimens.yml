@@ -43,41 +43,22 @@ jobs:
           "$AAPT2" dump resources /tmp/official.apk > /tmp/res.txt
           wc -l /tmp/res.txt
           mkdir -p official-apk-res
+          cp /tmp/res.txt official-apk-res/resources-dump.txt
+          head -40 /tmp/res.txt
           python3 - <<'PY'
           import re
+          lines = open('/tmp/res.txt', errors='replace').read().splitlines()
+          name = None
           out = []
-          keep_type = ('dimen', 'color', 'integer', 'bool')
-          cur = None
-          cur_keep = False
-          for line in open('/tmp/res.txt', errors='replace'):
-              s = line.rstrip('\n')
-              m = re.match(r'\s*resource 0x[0-9a-f]+ (\S+)', s)
-              if m:
-                  cur = m.group(1)
-                  cur_keep = any((':' + t + '/') in cur for t in keep_type)
-                  if cur_keep:
-                      out.append(s)
-                  continue
-              if cur_keep:
-                  out.append(s)
-          open('official-apk-res/RESOURCE_VALUES.txt', 'w').write('\n'.join(out) + '\n')
-          print('kept', len(out), 'lines')
-          PY
-          # A compact, greppable one-resource-per-line view.
-          python3 - <<'PY'
-          import re
-          lines = open('official-apk-res/RESOURCE_VALUES.txt', errors='replace').read().splitlines()
-          out = []
-          cur = None
           for s in lines:
-              m = re.match(r'\s*resource 0x[0-9a-f]+ (\S+)', s)
+              m = re.search(r'(\S+):((?:dimen|color|integer|bool|string)/\S+)', s)
               if m:
-                  cur = m.group(1)
+                  name = m.group(0)
                   continue
               v = s.strip()
-              if cur and v and not v.startswith('resource'):
-                  out.append(f"{cur} = {v}")
-          open('official-apk-res/RESOURCE_VALUES_TSV.txt', 'w').write('\n'.join(out) + '\n')
+              if name and v.startswith('(') and '=' in v:
+                  out.append(f"{name} = {v.split('=',1)[1].strip()}")
+          open('official-apk-res/RESOURCE_VALUES_TSV.txt','w').write('\n'.join(out)+'\n')
           print('tsv', len(out))
           PY
           grep -E 'exo_styled|exo_icon|exo_bottom_bar|focus_ring|ink_|ui_controls' official-apk-res/RESOURCE_VALUES_TSV.txt | head -80 || true
