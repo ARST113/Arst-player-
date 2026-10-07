@@ -81,8 +81,14 @@ def plate_score(path):
     crop = im.crop((0, int(h * 0.62), w, h))
     if np is not None:
         a = np.asarray(crop).astype(int)
-        neutral = (a.max(axis=2) - a.min(axis=2)) <= 36
-        return int((neutral & (a.sum(axis=2) >= 570)).sum())
+        spread = a.max(axis=2) - a.min(axis=2)
+        total = a.sum(axis=2)
+        # Two profiles, because the same scorer has to find the plate in either appearance: the light
+        # one is a large near-neutral bright wash, and over a dark plate the rail is the only bright
+        # neutral thing there is (the fixture's grid is cyan and fails the neutrality test).
+        light = (spread <= 36) & (total >= 570)
+        dark_rail = (spread <= 30) & (total >= 450)
+        return int(light.sum() + dark_rail.sum())
     px = crop.load()
     score = 0
     for y in range(crop.height):
