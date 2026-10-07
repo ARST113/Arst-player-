@@ -6823,7 +6823,7 @@ public class PlayerActivity extends Activity {
         }
         final long endMs = System.currentTimeMillis() + (long) (remaining / speed);
         final String time = DateFormat.getTimeFormat(this).format(new Date(endMs));
-        endsAtView.setText(getString(R.string.time_ends_at_inline, time));
+        endsAtView.setText(getString(R.string.time_ends_at, time));
         endsAtView.setVisibility(View.VISIBLE);
     }
 
