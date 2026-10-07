@@ -448,8 +448,23 @@ class SubtitleUtils {
     }
 
     public static MediaItem.SubtitleConfiguration buildSubtitle(Context context, Uri uri, String subtitleName, boolean selected) {
-        final String subtitleMime = SubtitleUtils.getSubtitleMime(uri);
-        final String subtitleLanguage = SubtitleUtils.getSubtitleLanguage(uri);
+        return buildSubtitle(context, uri, null, null, subtitleName, selected);
+    }
+
+    /**
+     * 2.1.2 launcher API variant: mime/language supplied by the caller outrank filename inference.
+     * This is important for extensionless subtitle URLs and for a launcher that intentionally labels
+     * an otherwise ambiguous stream.
+     */
+    public static MediaItem.SubtitleConfiguration buildSubtitle(Context context, Uri uri,
+                                                                 String suppliedMime,
+                                                                 String suppliedLanguage,
+                                                                 String subtitleName,
+                                                                 boolean selected) {
+        final String subtitleMime = suppliedMime == null || suppliedMime.trim().isEmpty()
+                ? SubtitleUtils.getSubtitleMime(uri) : suppliedMime.trim();
+        final String subtitleLanguage = suppliedLanguage == null || suppliedLanguage.trim().isEmpty()
+                ? SubtitleUtils.getSubtitleLanguage(uri) : suppliedLanguage.trim();
         if (subtitleLanguage == null && subtitleName == null)
             subtitleName = Utils.getFileName(context, uri);
         // A name that is nothing but digits is not a name: it is what is left of a content:// URI whose
