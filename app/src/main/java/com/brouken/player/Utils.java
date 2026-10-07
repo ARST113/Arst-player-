@@ -1565,7 +1565,6 @@ public class Utils {
                                 modeBest = doubledBest;
                             }
                         }
-                        }
 
                         Window window = activity.getWindow();
                         WindowManager.LayoutParams layoutParams = window.getAttributes();
@@ -1574,6 +1573,7 @@ public class Utils {
                             modeBest = modeTop;
 
                         switchingModes = !(modeBest.getModeId() == activeMode.getModeId());
+                        activity.displayModeSwitchRequested = switchingModes;
                         log("display mode: video " + videoWidth + "w @" + frameRate
                                 + ", active " + modeText(activeMode) + ", target width " + targetText
                                 + ", " + modesResolutionCount + " candidates"
