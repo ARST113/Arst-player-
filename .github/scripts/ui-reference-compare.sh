@@ -22,13 +22,17 @@ open_and_capture() {
   local apk="$2"
   local url="${3:-$FIELD_URL}"
   local mime="${4:-video/x-matroska}"
+  shift 4 || true
+  # Anything left is passed to `am start` verbatim, which is how the legacy video_list contract is
+  # handed to both builds: the published APK carries the same keys under the same names.
+  local extra="${*:-}"
 
   adb uninstall "$PKG" >/dev/null 2>&1 || true
   adb install "$apk"
   adb shell am force-stop "$PKG" || true
   adb logcat -c
 
-  adb shell "am start -W -n $PKG/$ACT -a android.intent.action.VIEW -t $mime -d '$url'"     > "$OUT/$name-am-start.txt"
+  adb shell "am start -W -n $PKG/$ACT -a android.intent.action.VIEW -t $mime -d '$url' $extra"     > "$OUT/$name-am-start.txt"
 
   local deadline=$(( $(date +%s) + 90 ))
   while (( $(date +%s) < deadline )); do
@@ -155,6 +159,15 @@ if prepare_static_fixture; then
     || echo "static fixture: the published capture did not finish in time"
   run_bounded 300 open_and_capture arx-static "$ARX_APK" "$STATIC_URL" video/mp4 \
     || echo "static fixture: the ARX capture did not finish in time"
+  # Two items through the legacy contract, which is what brings the transport's previous/next pair
+  # onto the plate -- the plain launch shows the hero alone.
+  echo "capturing the two-item playlist"
+  run_bounded 300 open_and_capture official-playlist /tmp/JustPlus.Player.v2.1.3.apk "$STATIC_URL" video/mp4 \
+    --esa video_list "$STATIC_URL,$STATIC_URL" --esa video_list.name "One,Two" \
+    || echo "playlist: the published capture did not finish in time"
+  run_bounded 300 open_and_capture arx-playlist "$ARX_APK" "$STATIC_URL" video/mp4 \
+    --esa video_list "$STATIC_URL,$STATIC_URL" --esa video_list.name "One,Two" \
+    || echo "playlist: the ARX capture did not finish in time"
 else
   echo "no static fixture on this runner, chrome report will be skipped"
 fi
@@ -192,4 +205,5 @@ def side_by_side(a_name, b_name, dest):
 
 side_by_side("official.png", "arx.png", "official-vs-arx.png")
 side_by_side("official-static.png", "arx-static.png", "official-vs-arx-static.png")
+side_by_side("official-playlist.png", "arx-playlist.png", "official-vs-arx-playlist.png")
 PY
