@@ -1,0 +1,95 @@
+name: Extract official 2.1.3 dimens and colors
+
+on:
+  push:
+    branches:
+      - audit-official-2.1.3
+    paths:
+      - '.github/workflows/extract-official-dimens.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extract-official-dimens
+  cancel-in-progress: true
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-official-2.1.3
+          fetch-depth: 0
+
+      - name: Download official release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 --retry-delay 2 \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.3/JustPlus.Player.v2.1.3.apk \
+            -o /tmp/official.apk
+          echo "3e8bff06ebc1037142107c5c8321249c9a3fc4569de8d8be40e53716c5b042dc  /tmp/official.apk" | sha256sum -c -
+
+      - name: Dump packaged resource values
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n1)"
+          test -x "$AAPT2"
+          "$AAPT2" dump resources /tmp/official.apk > /tmp/res.txt
+          wc -l /tmp/res.txt
+          mkdir -p official-apk-res
+          python3 - <<'PY'
+          import re
+          out = []
+          keep_type = ('dimen', 'color', 'integer', 'bool')
+          cur = None
+          cur_keep = False
+          for line in open('/tmp/res.txt', errors='replace'):
+              s = line.rstrip('\n')
+              m = re.match(r'\s*resource 0x[0-9a-f]+ (\S+)', s)
+              if m:
+                  cur = m.group(1)
+                  cur_keep = any((':' + t + '/') in cur for t in keep_type)
+                  if cur_keep:
+                      out.append(s)
+                  continue
+              if cur_keep:
+                  out.append(s)
+          open('official-apk-res/RESOURCE_VALUES.txt', 'w').write('\n'.join(out) + '\n')
+          print('kept', len(out), 'lines')
+          PY
+          # A compact, greppable one-resource-per-line view.
+          python3 - <<'PY'
+          import re
+          lines = open('official-apk-res/RESOURCE_VALUES.txt', errors='replace').read().splitlines()
+          out = []
+          cur = None
+          for s in lines:
+              m = re.match(r'\s*resource 0x[0-9a-f]+ (\S+)', s)
+              if m:
+                  cur = m.group(1)
+                  continue
+              v = s.strip()
+              if cur and v and not v.startswith('resource'):
+                  out.append(f"{cur} = {v}")
+          open('official-apk-res/RESOURCE_VALUES_TSV.txt', 'w').write('\n'.join(out) + '\n')
+          print('tsv', len(out))
+          PY
+          grep -E 'exo_styled|exo_icon|exo_bottom_bar|focus_ring|ink_|ui_controls' official-apk-res/RESOURCE_VALUES_TSV.txt | head -80 || true
+
+      - name: Commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "arx-ui-audit"
+          git config user.email "actions@users.noreply.github.com"
+          git add official-apk-res
+          git diff --cached --quiet && exit 0
+          git commit -m "Audit: dump official 2.1.3 dimension and colour values [skip ci]"
+          git pull --rebase origin audit-official-2.1.3
+          git push origin HEAD:audit-official-2.1.3
