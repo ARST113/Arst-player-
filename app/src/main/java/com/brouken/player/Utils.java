@@ -1142,6 +1142,8 @@ public class Utils {
     private static final long LOG_BASE_MS = SystemClock.elapsedRealtime();
     private static String lastLogged;
     private static int lastLoggedRepeats;
+    private static volatile String lastPlayingReport;
+    private static volatile String lastPlaybackErrorReport;
 
     public static void log(final String text) {
         if (BuildConfig.DEBUG) {
@@ -1170,6 +1172,32 @@ public class Utils {
     private static String logLine(final String text) {
         final long ms = SystemClock.elapsedRealtime() - LOG_BASE_MS;
         return String.format(Locale.US, "%6.2f %s", ms / 1000f, text);
+    }
+
+    public static void setLastPlayingReport(final String value) {
+        lastPlayingReport = value;
+    }
+
+    public static void setLastPlaybackErrorReport(final String value) {
+        lastPlaybackErrorReport = value;
+    }
+
+    /** Official 2.1.3-style Settings report prefix followed by the ordinary ARX trace. */
+    public static String settingsReportLog() {
+        final StringBuilder out = new StringBuilder();
+        if (lastPlayingReport != null && !lastPlayingReport.isEmpty()) {
+            out.append("Playing: ").append(lastPlayingReport);
+        }
+        if (lastPlaybackErrorReport != null && !lastPlaybackErrorReport.isEmpty()) {
+            if (out.length() > 0) out.append('\n');
+            out.append("Last playback error: ").append(lastPlaybackErrorReport);
+        }
+        final String trace = recentLog();
+        if (!trace.isEmpty()) {
+            if (out.length() > 0) out.append("\n\n");
+            out.append(trace);
+        }
+        return out.toString();
     }
 
     /** The trace so far, oldest first; empty string when nothing has been traced. */
