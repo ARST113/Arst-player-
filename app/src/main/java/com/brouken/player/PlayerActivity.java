@@ -14032,7 +14032,9 @@ public class PlayerActivity extends Activity {
         // The item set above made its transition before the listener was there to trace it.
         final Uri startUri = currentMediaUri();
         if (startUri != null) {
-            Utils.log("media=" + Utils.reportUri(startUri, mPrefs.maskReports));
+            final String reportedMedia = Utils.reportUri(startUri, mPrefs.maskReports);
+            Utils.log("media=" + reportedMedia);
+            Utils.setLastPlayingReport(reportedMedia);
         }
         // The renderers factory has just loaded the extension libraries it needs, so this is free here.
         if (ffmpegAvailable == null
@@ -15280,6 +15282,7 @@ public class PlayerActivity extends Activity {
 
         @Override
         public void onPlayerError(PlaybackException error) {
+            Utils.setLastPlaybackErrorReport(error.getErrorCodeName() + ": " + ErrorActivity.rootMessage(error));
             Utils.log("error " + error.getErrorCodeName() + ": " + ErrorActivity.rootMessage(error)
                     + (error instanceof ExoPlaybackException
                         && ((ExoPlaybackException) error).rendererFormat != null
