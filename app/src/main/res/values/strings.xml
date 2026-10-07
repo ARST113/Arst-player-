@@ -580,4 +580,13 @@
     <string name="pref_mask_reports">Hide links in reports</string>
     <string name="pref_mask_reports_on">Video links are cut to the server and path, local files to their type</string>
     <string name="pref_mask_reports_off">Reports carry whole video links, tokens included. An uploaded report is public</string>
+
+    <string name="pref_section_player">Player</string>
+    <string name="pref_header_art">Header artwork</string>
+    <string name="pref_header_art_logo">Logo</string>
+    <string name="pref_header_art_poster">Picture and title</string>
+    <string name="pref_header_art_text">Title only</string>
+    <string name="pref_header_info">Media information</string>
+    <string name="pref_header_info_brief">Brief</string>
+    <string name="pref_header_info_detailed">Detailed</string>
 </resources>
