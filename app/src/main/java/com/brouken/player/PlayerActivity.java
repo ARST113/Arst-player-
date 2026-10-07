@@ -1980,14 +1980,18 @@ public class PlayerActivity extends Activity {
         infoColumn.addView(logoView);
 
         titleView = new TextView(this);
-        titleView.setTextColor(Color.WHITE);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        // Released 2.1.3 draws the title in the same medium weight as the clock (sans-serif-medium),
+        // at 90% white, with the font's own padding off so its ascent — not the font box top — is what
+        // the header's top padding measures from.
+        titleView.setTextColor(ContextCompat.getColor(this, R.color.ink_high));
+        titleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         titleView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textHeaderTitle());
         titleView.setMaxLines(1);
         titleView.setEllipsize(TextUtils.TruncateAt.END);
         titleView.setTextDirection(View.TEXT_DIRECTION_LOCALE);
+        titleView.setIncludeFontPadding(false);
         infoColumn.addView(titleView);
 
         // Official release puts "Season · Episode · episode title" below the series logo/title.
@@ -2007,39 +2011,32 @@ public class PlayerActivity extends Activity {
         videoInfoView = createInfoLine(0);
         videoInfoView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        final Drawable videoIcon = ContextCompat.getDrawable(this, R.drawable.ic_theaters_24dp);
-        if (videoIcon != null) {
-            final int icon = ui.dpS(18);
-            videoIcon.setBounds(0, 0, icon, icon);
-            videoInfoView.setCompoundDrawablesRelative(videoIcon, null, null, null);
-            videoInfoView.setCompoundDrawableTintList(
-                    ContextCompat.getColorStateList(this, R.color.control_icon_tint));
-            videoInfoView.setCompoundDrawablePadding(ui.dpS(7));
-        }
+        // Released 2.1.3 (Y0): 14dp canvas, the vector's own 4/24 inset taken off the left bound, and the
+        // gap to the label derived from the same 24-unit grid. The glyph is tinted with the line's own text
+        // colour (60% white), not a control tint — over the picture the metadata row is one weight of ink.
+        applyHeaderIcon(videoInfoView, R.drawable.ic_theaters_24dp, 4, 20);
         mediaInfoRow.addView(videoInfoView);
 
-        final View metaDivider = new View(this);
+        // Released 2.1.3: a 1dp rule as tall as 0.72 of the 12sp caption line, centred in the row, with
+        // 12dp of air on either side. It separates the two metadata groups without becoming a column.
+        final GradientDrawable dividerDrawable = new GradientDrawable();
+        dividerDrawable.setColor(0x59FFFFFF);
+        dividerDrawable.setSize(Math.max(1, ui.dpS(1)),
+                Math.round(ui.textInfo() * getResources().getDisplayMetrics().scaledDensity * 0.72f));
+        final ImageView metaDivider = new ImageView(this);
+        metaDivider.setScaleType(ImageView.ScaleType.CENTER);
+        metaDivider.setImageDrawable(dividerDrawable);
         final LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(
-                Math.max(1, ui.dpS(1)), ui.dpS(18));
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
         dividerLp.setMarginStart(ui.dpS(12));
         dividerLp.setMarginEnd(ui.dpS(12));
-        dividerLp.gravity = Gravity.CENTER_VERTICAL;
         metaDivider.setLayoutParams(dividerLp);
-        metaDivider.setBackgroundColor(0x59FFFFFF);
         mediaInfoRow.addView(metaDivider);
 
         audioInfoView = createInfoLine(0);
         audioInfoView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        final Drawable audioIcon = ContextCompat.getDrawable(this, R.drawable.ic_audiotrack_plate_24dp);
-        if (audioIcon != null) {
-            final int icon = ui.dpS(18);
-            audioIcon.setBounds(0, 0, icon, icon);
-            audioInfoView.setCompoundDrawablesRelative(audioIcon, null, null, null);
-            audioInfoView.setCompoundDrawableTintList(
-                    ContextCompat.getColorStateList(this, R.color.control_icon_tint));
-            audioInfoView.setCompoundDrawablePadding(ui.dpS(7));
-        }
+        applyHeaderIcon(audioInfoView, R.drawable.ic_audiotrack_plate_24dp, 3, 21);
         mediaInfoRow.addView(audioInfoView);
         infoColumn.addView(mediaInfoRow);
 
@@ -2051,10 +2048,10 @@ public class PlayerActivity extends Activity {
         final LinearLayout headerClockColumn = new LinearLayout(this);
         headerClockColumn.setOrientation(LinearLayout.VERTICAL);
         headerClockColumn.setGravity(Gravity.END);
-        // Full height, so the icon row below can be pushed to the header's bottom line rather than trailing
-        // the clock: the left column (poster, or the last meta line) is what sets that line.
+        // The released build wraps this column (-2) and aligns its top to the title's, so the clock and
+        // the title start on one line instead of each trailing its own font box.
         final LinearLayout.LayoutParams headerClockColumnParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         headerClockColumnParams.gravity = Gravity.TOP;
         headerClockColumn.setLayoutParams(headerClockColumnParams);
 
@@ -2073,13 +2070,15 @@ public class PlayerActivity extends Activity {
         headerClockColumn.addView(headerClock);
 
         endsAtView = new TextView(this);
-        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_medium));
-        endsAtView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textEndsAt());
+        // Same 12sp caption as the metadata line and the same 60% ink the released build gives it — the
+        // end time is a note beside the clock, not a second heading.
+        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
+        endsAtView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textCaption());
         endsAtView.setVisibility(View.GONE);
         final LinearLayout.LayoutParams endsLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         endsLp.gravity = Gravity.END;
-        endsLp.topMargin = ui.dpS(2);
+        endsLp.topMargin = ui.dp(2);
         endsAtView.setLayoutParams(endsLp);
         headerClockColumn.addView(endsAtView);
 
@@ -2088,9 +2087,12 @@ public class PlayerActivity extends Activity {
         headerButtons = new LinearLayout(this);
         headerButtons.setOrientation(LinearLayout.HORIZONTAL);
 
+        // Align the clock's ascent to the title's, not its font-box top: with includeFontPadding off the
+        // two are drawn from the ascent line, and the difference between them is what puts the 20sp clock
+        // on the 22sp title's first baseline.
         headerClockColumnParams.topMargin = Math.max(0,
-                headerClock.getPaint().getFontMetricsInt().top
-                        - titleView.getPaint().getFontMetricsInt().top);
+                headerClock.getPaint().getFontMetricsInt().ascent
+                        - titleView.getPaint().getFontMetricsInt().ascent);
         headerClockColumn.setLayoutParams(headerClockColumnParams);
 
         topInfoPanel.addView(headerClockColumn);
@@ -2500,10 +2502,15 @@ public class PlayerActivity extends Activity {
                         ? Math.max(windowInsets.getSystemWindowInsetTop(),
                                 windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top)
                         : Math.max(windowInsets.getSystemWindowInsetTop(), windowInsets.getStableInsetTop());
+                // Released 2.1.3 builds the header edge as iD = T6 ? Z1.d() : iA + Z1.j(): the plate's own
+                // margin (inset + 16dp) plus that plate's inner grid (16dp), so the title, the clock and the
+                // floating pills all land on the plate's content line rather than a token of our own. On a
+                // television the safe band alone is the edge and the insets are not added on top of it.
+                final int headerPadH = isTvBox ? ui.overscanH() : insetH + ui.dpS(32);
                 Utils.setViewParams(topInfoPanel,
-                        paddingLeft + titleViewPaddingHorizontal,
-                        insetTop + overscanV + Utils.dpToPx(4),
-                        paddingRight + titleViewPaddingHorizontal,
+                        headerPadH,
+                        insetTop + overscanV + (isTvBox ? 0 : Utils.dpToPx(12)),
+                        headerPadH,
                         titleViewPaddingVertical,
                         marginLeft, 0, marginRight, 0);
 
@@ -2523,7 +2530,7 @@ public class PlayerActivity extends Activity {
                             + ui.dpS(8);
                     // Align the floating Skip button's right edge to the shared content grid (same as the pills
                     // and the progress bar), instead of a fixed 24dp + insetRight that overshoots in landscape.
-                    skipLp.rightMargin = insetH + ui.gridH();
+                    skipLp.rightMargin = headerPadH;
                     buttonSkip.setLayoutParams(skipLp);
                 }
 
@@ -2536,7 +2543,7 @@ public class PlayerActivity extends Activity {
                     pillLp.bottomMargin = stableBottomInset + overscanV
                             + getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom)
                             + ui.dpS(24);
-                    pillLp.leftMargin = insetH + ui.gridH();
+                    pillLp.leftMargin = headerPadH;
                     roomPill.setLayoutParams(pillLp);
                 }
 
@@ -2548,8 +2555,8 @@ public class PlayerActivity extends Activity {
                     transferParams.bottomMargin = stableBottomInset + overscanV
                             + getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom)
                             + ui.dpS(24);
-                    transferParams.leftMargin = insetH + ui.gridH();
-                    transferParams.rightMargin = insetH + ui.gridH();
+                    transferParams.leftMargin = headerPadH;
+                    transferParams.rightMargin = headerPadH;
                     transferView.setLayoutParams(transferParams);
                 }
 
@@ -2559,7 +2566,7 @@ public class PlayerActivity extends Activity {
                 if (statsView != null) {
                     final CoordinatorLayout.LayoutParams statsParams =
                             (CoordinatorLayout.LayoutParams) statsView.getLayoutParams();
-                    statsParams.leftMargin = insetH + ui.gridH();
+                    statsParams.leftMargin = headerPadH;
                     // The panel is centred vertically, which is where the play/pause cluster lives, so its
                     // width has to stop short of it: half the window, less half that cluster (hero disc plus
                     // an episode arrow beside it) and the panel's own offset. A decoder name longer than
@@ -6364,6 +6371,30 @@ public class PlayerActivity extends Activity {
         return parts.isEmpty() ? null : TextUtils.join(" · ", parts);
     }
 
+    /**
+     * Released 2.1.3 (JADX {@code Y0}): attach a metadata glyph to an info line.
+     *
+     * <p>The canvas is 14dp (16dp on a television, the same value the released build reaches by scaling
+     * 12.307693 through the device factor). The drawable's own 24-unit inset — {@code insetStart} units on
+     * the left, {@code padEnd} units of advance to the label — is what sets both its left bound and the gap:
+     * the vector is drawn shifted so its ink starts at the line's edge, and the padding is the difference
+     * between the full 24-unit advance and the canvas. The tint is the line's own text colour, so the glyph
+     * reads at exactly the weight of the caption beside it.
+     */
+    private void applyHeaderIcon(TextView view, int drawableRes, int insetStart, int padEnd) {
+        final Drawable drawable = ContextCompat.getDrawable(this, drawableRes);
+        if (drawable == null) {
+            return;
+        }
+        final int canvas = ui.dpS(isTvBox ? 12.307693f : 14.0f);
+        final int shift = Math.round((canvas * insetStart) / 24.0f);
+        drawable.setBounds(-shift, 0, canvas - shift, canvas);
+        view.setCompoundDrawablesRelative(drawable, null, null, null);
+        view.setCompoundDrawableTintList(view.getTextColors());
+        view.setCompoundDrawablePadding(
+                (ui.dpS(8.0f) + Math.round(((padEnd - insetStart) * canvas) / 24.0f)) - canvas);
+    }
+
     private TextView createInfoLine(int topMargin) {
         final TextView view = new TextView(this);
         view.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
@@ -6810,7 +6841,7 @@ public class PlayerActivity extends Activity {
             endsAtView.setVisibility(View.VISIBLE);
             return;
         }
-        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_medium));
+        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
         final long duration = player.getDuration();
         if (duration == C.TIME_UNSET || duration <= 0) {
             endsAtView.setVisibility(View.GONE);
