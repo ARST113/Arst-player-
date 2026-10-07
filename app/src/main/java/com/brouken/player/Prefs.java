@@ -77,6 +77,10 @@ class Prefs {
     private static final String PREF_KEY_DISPLAY_RESOLUTION_MATCHING = "displayResolutionMatching";
     private static final String PREF_KEY_ALLOW_SYSTEM_FRAMERATE = "allowSystemFrameRate";
     private static final String PREF_KEY_REPEAT_TOGGLE = "repeatToggle";
+    private static final String PREF_KEY_HEADER_ART = "headerArt";
+    private static final String PREF_KEY_HEADER_INFO = "headerInfo";
+    private static final String PREF_KEY_ROUND_VALUE_BUTTONS = "roundValueButtons";
+    private static final String PREF_KEY_LOADING_SCREEN_MODE = "loadingScreenMode";
     private static final String PREF_KEY_PLAYLIST_GRID = "playlistGrid";
     private static final String PREF_KEY_TV_SINGLE_BACK = "tvSingleBack";
     private static final String PREF_KEY_KEEP_AWAKE_ON_PAUSE = "keepAwakeOnPause";
@@ -253,6 +257,10 @@ class Prefs {
     public boolean displayResolutionMatching = false;
     public boolean allowSystemFrameRate = true;
     public boolean repeatToggle = false;
+    public String headerArt = "logo";
+    public String headerInfo = "detailed";
+    public boolean roundValueButtons = false;
+    public String loadingScreenMode = "every";
     /** The playlist panel draws frames in a grid rather than a row per file. Off is the row per file. */
     /**
      * Frames rather than rows. On by default since the playlist became a rail standing on the progress
@@ -482,6 +490,10 @@ class Prefs {
                 displayResolutionMatching);
         allowSystemFrameRate = mSharedPreferences.getBoolean(PREF_KEY_ALLOW_SYSTEM_FRAMERATE, !Utils.isTvBox(mContext));
         repeatToggle = mSharedPreferences.getBoolean(PREF_KEY_REPEAT_TOGGLE, repeatToggle);
+        headerArt = mSharedPreferences.getString(PREF_KEY_HEADER_ART, headerArt);
+        headerInfo = mSharedPreferences.getString(PREF_KEY_HEADER_INFO, headerInfo);
+        roundValueButtons = mSharedPreferences.getBoolean(PREF_KEY_ROUND_VALUE_BUTTONS, roundValueButtons);
+        loadingScreenMode = mSharedPreferences.getString(PREF_KEY_LOADING_SCREEN_MODE, loadingScreenMode);
         playlistGrid = mSharedPreferences.getBoolean(PREF_KEY_PLAYLIST_GRID, playlistGrid);
         tvSingleBack = mSharedPreferences.getBoolean(PREF_KEY_TV_SINGLE_BACK, tvSingleBack);
         keepAwakeOnPause = mSharedPreferences.getBoolean(PREF_KEY_KEEP_AWAKE_ON_PAUSE, keepAwakeOnPause);
