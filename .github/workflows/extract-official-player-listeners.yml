@@ -1,0 +1,78 @@
+name: Extract official 2.1.3 player listeners
+
+on:
+  push:
+    branches:
+      - audit-official-2.1.3
+    paths:
+      - '.github/workflows/extract-official-player-listeners.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extract-official-player-listeners
+  cancel-in-progress: true
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-official-2.1.3
+          fetch-depth: 0
+
+      - name: Download official APK and JADX
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/j
+          curl -fL --retry 4 --retry-delay 2 \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.3/JustPlus.Player.v2.1.3.apk \
+            -o /tmp/j/official.apk
+          echo "3e8bff06ebc1037142107c5c8321249c9a3fc4569de8d8be40e53716c5b042dc  /tmp/j/official.apk" | sha256sum -c -
+          API=https://api.github.com/repos/skylot/jadx/releases/latest
+          JADX_URL="$(curl -fsSL "$API" | jq -r '.assets[] | select(.name | test("^jadx-[0-9].*\\.zip$")) | .browser_download_url' | head -n1)"
+          curl -fL --retry 3 -o /tmp/j/jadx.zip "$JADX_URL"
+          unzip -q /tmp/j/jadx.zip -d /tmp/j/jadx
+          /tmp/j/jadx/bin/jadx --show-bad-code -d /tmp/j/out /tmp/j/official.apk >/tmp/j/jadx.log 2>&1 || true
+          ls /tmp/j/out/sources | head
+
+      - name: Persist player listener classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p official-apk-listeners
+          # Everything that touches the controller-visibility protocol or the system bars.
+          grep -rl 'onVisibilityChanged' /tmp/j/out/sources | head -n 20 > /tmp/j/hits.txt || true
+          grep -rl 'WindowInsetsController' /tmp/j/out/sources | head -n 20 >> /tmp/j/hits.txt || true
+          grep -rl 'setControllerVisibilityListener' /tmp/j/out/sources | head -n 20 >> /tmp/j/hits.txt || true
+          for c in si hm1 cz wr1 eu lf2 r70 zx; do
+            f="$(find /tmp/j/out/sources -type f -name "$c.java" | head -n1)"
+            [ -n "$f" ] && echo "$f" >> /tmp/j/hits.txt || true
+          done
+          sort -u /tmp/j/hits.txt > /tmp/j/uniq.txt || true
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            cp "$f" "official-apk-listeners/$(basename "$f")"
+          done < /tmp/j/uniq.txt
+          {
+            echo "# classes matching onVisibilityChanged / WindowInsetsController / setControllerVisibilityListener"
+            sed 's#/tmp/j/out/sources/##' /tmp/j/uniq.txt
+          } > official-apk-listeners/INDEX.txt
+          ls -la official-apk-listeners | head -40
+
+      - name: Commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "arx-ui-audit"
+          git config user.email "actions@users.noreply.github.com"
+          git add official-apk-listeners
+          git diff --cached --quiet && exit 0
+          git commit -m "Audit: extract official 2.1.3 player listener classes [skip ci]"
+          git pull --rebase origin audit-official-2.1.3
+          git push origin HEAD:audit-official-2.1.3
