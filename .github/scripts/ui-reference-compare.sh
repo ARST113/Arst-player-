@@ -95,9 +95,33 @@ PY
 # on purpose: neither is a near-neutral bright wash, so the plate detector cannot mistake the picture
 # for chrome.
 STATIC_DIR=".github/fixtures"
+STATIC_SERVER_STARTED=0
+cleanup_static_server() {
+  if (( STATIC_SERVER_STARTED )); then
+    pkill -f "http.server ${STATIC_PORT}" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_static_server EXIT
+
+# Run a capture under a wall clock, so a wedged adb call can cost one pass instead of the whole job.
+run_bounded() {
+  local limit="$1"; shift
+  "$@" </dev/null &
+  local pid=$!
+  ( sleep "$limit"; kill -9 "$pid" >/dev/null 2>&1 || true ) &
+  local watchdog=$!
+  local rc=0
+  wait "$pid" || rc=$?
+  kill "$watchdog" >/dev/null 2>&1 || true
+  wait "$watchdog" >/dev/null 2>&1 || true
+  return "$rc"
+}
+
 prepare_static_fixture() {
   test -f "$STATIC_DIR/chrome-fixture.mp4" || { echo "static fixture: clip missing from the checkout"; return 1; }
-  ( cd . && nohup python3 -m http.server "$STATIC_PORT" --bind 127.0.0.1 --directory "$STATIC_DIR" >/tmp/static-http.log 2>&1 & )
+  setsid python3 -m http.server "$STATIC_PORT" --bind 127.0.0.1 --directory "$STATIC_DIR" \
+    </dev/null >/tmp/static-http.log 2>&1 &
+  STATIC_SERVER_STARTED=1
   local served=1
   for _ in 1 2 3 4 5 6; do
     sleep 1
@@ -115,6 +139,7 @@ prepare_static_fixture() {
     echo "static fixture: adb reverse refused"
     return 1
   fi
+  echo "static fixture: serving $STATIC_DIR/chrome-fixture.mp4 on ${STATIC_PORT}, reversed into the emulator"
   return 0
 }
 
@@ -126,11 +151,14 @@ open_and_capture arx "$ARX_APK"
 
 if prepare_static_fixture; then
   echo "static fixture ready, capturing chrome on it"
-  open_and_capture official-static /tmp/JustPlus.Player.v2.1.3.apk "$STATIC_URL" video/mp4 || true
-  open_and_capture arx-static "$ARX_APK" "$STATIC_URL" video/mp4 || true
+  run_bounded 300 open_and_capture official-static /tmp/JustPlus.Player.v2.1.3.apk "$STATIC_URL" video/mp4 \
+    || echo "static fixture: the published capture did not finish in time"
+  run_bounded 300 open_and_capture arx-static "$ARX_APK" "$STATIC_URL" video/mp4 \
+    || echo "static fixture: the ARX capture did not finish in time"
 else
   echo "no static fixture on this runner, chrome report will be skipped"
 fi
+cleanup_static_server
 
 python3 .github/scripts/chrome-report.py "$OUT" || true
 
