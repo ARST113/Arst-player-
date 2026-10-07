@@ -825,6 +825,7 @@ public class PlayerActivity extends Activity {
     private TextView videoInfoView;
     private TextView audioInfoView;
     private LinearLayout mediaInfoRow;
+    private ImageView metaDivider;
     private TextView endsAtView;
     /**
      * When the broadcast now playing was joined, for the "watching for" reading in the bottom bar.
@@ -2054,7 +2055,7 @@ public class PlayerActivity extends Activity {
         dividerDrawable.setColor(0x59FFFFFF);
         dividerDrawable.setSize(Math.max(1, ui.dpS(1)),
                 Math.round(ui.textInfo() * getResources().getDisplayMetrics().scaledDensity * 0.72f));
-        final ImageView metaDivider = new ImageView(this);
+        metaDivider = new ImageView(this);
         metaDivider.setScaleType(ImageView.ScaleType.CENTER);
         metaDivider.setImageDrawable(dividerDrawable);
         final LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(
@@ -6468,6 +6469,16 @@ public class PlayerActivity extends Activity {
             mediaInfoRow.setVisibility(
                     (videoInfoView.getVisibility() == View.VISIBLE
                             || audioInfoView.getVisibility() == View.VISIBLE)
+                            ? View.VISIBLE : View.GONE);
+        }
+        // Released 2.1.3 rule (JADX t4): the rule between the two groups is drawn only while both of
+        // them are — a file with no audio track left ours hanging after the video group with nothing
+        // to separate. Measured on the static fixture: three columns of #59FFFFFF the published build
+        // does not draw.
+        if (metaDivider != null) {
+            metaDivider.setVisibility(
+                    (videoInfoView.getVisibility() == View.VISIBLE
+                            && audioInfoView.getVisibility() == View.VISIBLE)
                             ? View.VISIBLE : View.GONE);
         }
     }
