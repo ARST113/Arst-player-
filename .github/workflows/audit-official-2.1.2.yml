@@ -180,6 +180,28 @@ jobs:
               if hits == 0:
                   out.append('(none)')
 
+          out.append('')
+          out.append('=== SELECTED OBFUSCATED NETWORK CLASSES ===')
+          for rel in ['defpackage/xp1.java']:
+              p=fb.get(rel)
+              out.append('--- '+rel+' ---')
+              if p is None:
+                  out.append('(missing)')
+              else:
+                  lines=p.read_text(errors='replace').splitlines()
+                  out.extend(f'{i+1:05d}: {line}' for i,line in enumerate(lines[:500]))
+
+          out.append('')
+          out.append('=== NETWORK PIPELINE CONTEXT ===')
+          p=fb.get('com/brouken/player/PlayerActivity.java')
+          if p is not None:
+              lines=p.read_text(errors='replace').splitlines()
+              for idx,line in enumerate(lines):
+                  if 'AndroidXMedia3/1.11.1' in line:
+                      lo=max(0,idx-35); hi=min(len(lines),idx+90)
+                      out.extend(f'{n+1:05d}: {lines[n]}' for n in range(lo,hi))
+                      break
+
           out.append('=== COMPACT DIFFS FOR CHANGED APP CLASSES ===')
           for _,k,_,_ in app_changed:
               if k not in fa or k not in fb:
