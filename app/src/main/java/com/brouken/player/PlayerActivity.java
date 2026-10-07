@@ -7783,9 +7783,21 @@ public class PlayerActivity extends Activity {
         if (buttonQuality == null) {
             return;
         }
-        final boolean show = player != null && buildQualityChoices().size() >= 2;
+        final ArrayList<VideoQualityChoice> choices = buildQualityChoices();
+        final boolean show = player != null && choices.size() >= 2;
         buttonQuality.setVisibility(show ? View.VISIBLE : View.GONE);
-        // Light the HD icon coral when a specific quality is pinned (anything other than Auto).
+        if (!show) {
+            return;
+        }
+        final int selected = selectedQualityIndex(choices);
+        String label = selected >= 0 && selected < choices.size()
+                ? qualityChoiceTitle(choices.get(selected)) : null;
+        if (label == null || label.isEmpty()) {
+            final Format video = player.getVideoFormat();
+            label = video != null ? resolutionClass(video.width, video.height)
+                    : getString(R.string.quality_auto);
+        }
+        buttonQuality.setText(mPrefs != null && mPrefs.roundValueButtons ? null : label);
         buttonQuality.setSelected(selectedVideoQualityMode != VideoQualityChoice.MODE_AUTO);
     }
 
@@ -8542,9 +8554,37 @@ public class PlayerActivity extends Activity {
         if (buttonAudio == null) {
             return;
         }
-        final boolean show = player != null
-                && (buildAudioChoices().size() >= 2 || hasNestedVoiceChoices());
+        final ArrayList<AudioChoice> choices = buildAudioChoices();
+        final PlaylistApi.Item nestedItem = currentNestedItem();
+        final boolean voices = nestedItem != null && nestedItem.voices.size() >= 2;
+        final boolean show = player != null && (choices.size() >= 2 || voices);
         buttonAudio.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) {
+            return;
+        }
+
+        String label = null;
+        if (voices) {
+            final PlaylistApi.Voice voice = nestedItem.currentVoice();
+            if (voice != null) {
+                label = voice.label;
+            }
+        }
+        if (label == null || label.trim().isEmpty()) {
+            for (final AudioChoice choice : choices) {
+                if (choice.selected) {
+                    label = choice.label;
+                    break;
+                }
+            }
+        }
+        if ((label == null || label.trim().isEmpty()) && !choices.isEmpty()) {
+            label = choices.get(0).label;
+        }
+        if (label == null || label.trim().isEmpty()) {
+            label = getString(R.string.button_audio_track);
+        }
+        buttonAudio.setText(mPrefs != null && mPrefs.roundValueButtons ? null : label);
     }
 
     private void applyNestedVoice(final int voiceIndex, final boolean viewerChoice) {
@@ -8766,35 +8806,66 @@ public class PlayerActivity extends Activity {
     }
 
     private void updateSubtitleButton() {
-        if (exoSubtitle == null) {
+        if (buttonSubtitle == null) {
             return;
         }
-        // Seeded from a subtitle painted without a track of its own; the loop below can only add.
-        // The second line counts for both, and for two separate reasons. The icon says "subtitles are
-        // on screen", and a hint is on screen — a dark icon over a line of text reads as the player
-        // having lost track of itself. And the button is the only door to the picker that can switch
-        // the hint off again: a film with no text track of its own and a downloaded hint would
-        // otherwise hide the button while the hint plays, with no way back to Off.
         boolean hasSubtitles = subtitleWithoutTrack() != null || secondaryActive();
         boolean textSelected =
                 paintedSubtitleUri != null || mainLineTrackSelected() || secondaryActive();
+        String label = null;
+
+        if (paintedSubtitleUri != null) {
+            label = subtitleFileLabel(paintedSubtitleUri);
+        }
         if (player != null) {
+            final Format secondary = secondaryTextTrack.get();
             for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
-                if (group.getType() == C.TRACK_TYPE_TEXT
-                        && !isPhantomClosedCaption(group.getMediaTrackGroup().getFormat(0))) {
+                if (group.getType() != C.TRACK_TYPE_TEXT) {
+                    continue;
+                }
+                final TrackGroup trackGroup = group.getMediaTrackGroup();
+                if (!isPhantomClosedCaption(trackGroup.getFormat(0))) {
                     hasSubtitles = true;
+                }
+                for (int i = 0; i < group.length; i++) {
+                    if (!group.isTrackSelected(i)) {
+                        continue;
+                    }
+                    final Format format = trackGroup.getFormat(i);
+                    if (secondary != null && format.equals(secondary)) {
+                        continue;
+                    }
+                    final String name = trackName(format);
+                    final String language = languageDisplayName(format.language);
+                    label = name != null && !name.isEmpty() ? name
+                            : language != null && !language.isEmpty() ? language
+                            : getString(R.string.subtitle_title);
+                    break;
+                }
+                if (label != null) {
                     break;
                 }
             }
         }
-        exoSubtitle.setVisibility(hasSubtitles ? View.VISIBLE : View.GONE);
-        // Media3 owns this button too (it keeps the id it found) and disables it whenever the player
-        // reports no text track — which is exactly the case for a subtitle painted from its file. It
-        // dims the icon with the same alpha this helper applies, so setEnabled alone would leave a
-        // working button that still looks dead. The deferred post() this runs from gives us last word.
-        Utils.setButtonEnabled(this, exoSubtitle, hasSubtitles);
-        // Light the CC icon coral while either line is actually showing something.
-        exoSubtitle.setSelected(textSelected);
+        if (label == null && subtitleWithoutTrack() != null) {
+            label = subtitleFileLabel(subtitleWithoutTrack());
+        }
+        if (label == null) {
+            label = getString(R.string.subtitle_off);
+        }
+
+        buttonSubtitle.setVisibility(hasSubtitles ? View.VISIBLE : View.GONE);
+        buttonSubtitle.setEnabled(hasSubtitles);
+        buttonSubtitle.setAlpha(hasSubtitles ? 1f : 0.4f);
+        buttonSubtitle.setText(mPrefs != null && mPrefs.roundValueButtons ? null : label);
+        buttonSubtitle.setSelected(textSelected);
+
+        // The Media3 button remains detached from the hierarchy, but keep its state sane because
+        // Media3 still knows the id and may update it on track changes.
+        if (exoSubtitle != null) {
+            exoSubtitle.setVisibility(View.GONE);
+            exoSubtitle.setSelected(textSelected);
+        }
     }
 
     private void applyAudio(AudioChoice choice) {
@@ -8807,6 +8878,7 @@ public class PlayerActivity extends Activity {
                 .setOverrideForType(new TrackSelectionOverride(
                         choice.group, Collections.singletonList(choice.trackIndex)))
                 .build());
+        playerView.post(this::updateAudioButton);
     }
 
     private void showAudioDialog() {
