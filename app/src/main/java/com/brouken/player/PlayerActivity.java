@@ -26,12 +26,16 @@ import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.Outline;
 import android.graphics.Rect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.shapes.RectShape;
+import android.graphics.drawable.ShapeDrawable;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.database.Cursor;
@@ -805,6 +809,8 @@ public class PlayerActivity extends Activity {
 
     CoordinatorLayout coordinatorLayout;
     private LinearLayout topInfoPanel;
+    private FrameLayout headerRoot;
+    private View headerScrim;
     private LinearLayout headerButtons;
     private FrameLayout posterSlot;
     private ImageView posterView;
@@ -1909,14 +1915,39 @@ public class PlayerActivity extends Activity {
         final int titleViewPaddingVertical = getResources().getDimensionPixelOffset(R.dimen.exo_styled_bottom_bar_time_padding);
         FrameLayout centerView = playerView.findViewById(R.id.exo_controls_background);
 
+        // The released build hangs the header on a scrim of its own: a RectShape behind the row, as tall
+        // as the poster column rather than as tall as the text, carrying the same three-stop gradient
+        // (70% black, 35% at half way, clear) so the picture breathes out from under it. The row itself is
+        // transparent and rides on top.
+        headerRoot = new FrameLayout(this);
+        headerRoot.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        headerRoot.setVisibility(View.GONE);
+
+        headerScrim = new View(this);
+        final ShapeDrawable scrimDrawable = new ShapeDrawable(new RectShape());
+        scrimDrawable.setShaderFactory(new ShapeDrawable.ShaderFactory() {
+            @Override
+            public Shader resize(int width, int height) {
+                return new LinearGradient(0f, 0f, 0f, height,
+                        new int[]{0xB3000000, 0x59000000, 0x00000000},
+                        new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
+            }
+        });
+        headerScrim.setBackground(scrimDrawable);
+        final FrameLayout.LayoutParams scrimParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ui.headerScrimHeight());
+        scrimParams.gravity = Gravity.TOP;
+        headerScrim.setLayoutParams(scrimParams);
+        headerRoot.addView(headerScrim);
+
         topInfoPanel = new LinearLayout(this);
         topInfoPanel.setOrientation(LinearLayout.HORIZONTAL);
         topInfoPanel.setGravity(Gravity.TOP);
-        // Soft top scrim (dark → transparent) instead of a flat opaque band, so the video breathes under the header.
-        topInfoPanel.setBackgroundResource(R.drawable.scrim_top);
-        topInfoPanel.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        topInfoPanel.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         topInfoPanel.setPadding(titleViewPaddingHorizontal, titleViewPaddingVertical, titleViewPaddingHorizontal, titleViewPaddingVertical);
-        topInfoPanel.setVisibility(View.GONE);
+        headerRoot.addView(topInfoPanel);
 
         posterSlot = new FrameLayout(this);
         // Poster anchors the left column and is sized to roughly match the right column's two rows (time +
@@ -2097,7 +2128,7 @@ public class PlayerActivity extends Activity {
 
         topInfoPanel.addView(headerClockColumn);
 
-        centerView.addView(topInfoPanel);
+        centerView.addView(headerRoot);
 
         // Skip button — a solid dark pill floating over the video (bottom-end), independent of the
         // controller. TV focus is the white contour every chrome control wears (no wash, no scale), with the
@@ -2467,10 +2498,6 @@ public class PlayerActivity extends Activity {
                 // OUTER margins, while the plate keeps its own small internal padding.
                 final int overscanV = ui.overscanV();
                 final int insetH = Math.max(Math.max(insetLeft, insetRight), ui.overscanH());
-                final int paddingLeft = insetH;
-                final int paddingRight = insetH;
-                final int marginLeft = 0;
-                final int marginRight = 0;
                 final int bottomPlateMarginH = isTvBox ? ui.dp(32) : insetH + ui.dpS(16);
                 final int bottomPlateMarginBottom = isTvBox
                         ? ui.dp(12)
@@ -2512,7 +2539,18 @@ public class PlayerActivity extends Activity {
                         insetTop + overscanV + (isTvBox ? 0 : Utils.dpToPx(12)),
                         headerPadH,
                         titleViewPaddingVertical,
-                        marginLeft, 0, marginRight, 0);
+                        0, 0, 0, 0);
+                if (headerScrim != null) {
+                    // The released scrim is the device token plus whatever the status bar takes: the
+                    // gradient is measured from the real top of the window, so the band it covers does not
+                    // shrink when the status bar is drawn over it.
+                    final ViewGroup.LayoutParams scrimLp = headerScrim.getLayoutParams();
+                    final int scrimHeight = ui.headerScrimHeight() + (isTvBox ? 0 : insetTop);
+                    if (scrimLp.height != scrimHeight) {
+                        scrimLp.height = scrimHeight;
+                        headerScrim.setLayoutParams(scrimLp);
+                    }
+                }
 
                 // Keep the Skip pill above the seek bar and clear of the nav-bar inset. It floats on the
                 // full-screen coordinator (not the controller), so a fixed bottom offset overlapped the
@@ -6346,7 +6384,7 @@ public class PlayerActivity extends Activity {
         playerView.setShowNextButton(hasPlaylist);
         playerView.setShowPreviousButton(hasPlaylist);
 
-        topInfoPanel.setVisibility(View.VISIBLE);
+        headerRoot.setVisibility(View.VISIBLE);
         updateMediaInfo();
         updateEndsAt();
     }
@@ -14858,7 +14896,7 @@ public class PlayerActivity extends Activity {
         setEpisodeNavLoading(false);
         Glide.with(getApplicationContext()).clear(posterView);
         posterSlot.setVisibility(View.GONE);
-        topInfoPanel.setVisibility(View.GONE);
+        headerRoot.setVisibility(View.GONE);
         if (playlistDialog != null) {
             playlistDialog.dismiss();
             playlistDialog = null;
