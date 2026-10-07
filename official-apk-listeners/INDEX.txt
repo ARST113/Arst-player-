@@ -2,11 +2,14 @@
 androidx/media3/ui/PlayerView.java
 com/brouken/player/PlayerActivity.java
 com/google/android/material/timepicker/TimePickerView.java
+defpackage/bs1.java
 defpackage/cz.java
 defpackage/eu.java
 defpackage/fh.java
 defpackage/hm1.java
 defpackage/j03.java
+defpackage/j70.java
+defpackage/k03.java
 defpackage/kf2.java
 defpackage/lf2.java
 defpackage/r70.java
@@ -14,5 +17,6 @@ defpackage/si.java
 defpackage/tt1.java
 defpackage/wg.java
 defpackage/wr1.java
+defpackage/xo1.java
 defpackage/yt2.java
 defpackage/zx.java

@@ -1,0 +1,6 @@
+      2 yt2.k0(this, this.B, true)
+      1 yt2.k0(this, this.B, false)
+      1 yt2.k0(playerActivity3, czVar, true)
+      1 yt2.k0(playerActivity3, czVar, false)
+      1 yt2.k0(playerActivity, playerActivity.B, visibility == 0)
+      1 yt2.k0(playerActivity, playerActivity.B, PlayerActivity.L6)
