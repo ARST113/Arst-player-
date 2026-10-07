@@ -21,6 +21,12 @@ def tagVersionCode = 1
 def versionMatcher = (gitDescribe.replaceFirst(/^v/, '') =~ /(\d+)\.(\d+)\.(\d+)/)
 if (versionMatcher.find()) {
     tagVersionCode = versionMatcher.group(1).toInteger() * 1000000 + versionMatcher.group(2).toInteger() * 1000 + versionMatcher.group(3).toInteger()
+} else {
+    // This port branch starts from the official 2.1.3 source commit, but the upstream release tags
+    // are not present in the fork. Keep Android's package version monotonic and make test APKs
+    // identify the actual 2.1.3 base instead of falling back to versionCode 1 / a bare commit SHA.
+    tagVersionCode = 2001003
+    tagVersionName = "2.1.3-arx1-" + (gitDescribe ?: 'dev')
 }
 
 // local.properties is not exposed as Gradle project properties (AGP only reads sdk.dir from it),
