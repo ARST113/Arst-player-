@@ -1,0 +1,50 @@
+name: Extract official 2.1.3 UI preferences
+
+on:
+  push:
+    branches:
+      - audit-official-2.1.3
+    paths:
+      - '.github/workflows/extract-official-ui-prefs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-official-2.1.3
+          fetch-depth: 0
+      - name: Decompile official 2.1.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/apk
+          curl -fL --retry 3 -o /tmp/apk/app.apk https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.3/JustPlus.Player.v2.1.3.apk
+          JADX_URL="$(curl -fsSL https://api.github.com/repos/skylot/jadx/releases/latest | jq -r '.assets[] | select(.name | test("^jadx-[0-9].*\\.zip$")) | .browser_download_url' | head -n1)"
+          curl -fL --retry 3 -o /tmp/apk/jadx.zip "$JADX_URL"
+          unzip -q /tmp/apk/jadx.zip -d /tmp/apk/jadx
+          /tmp/apk/jadx/bin/jadx --show-bad-code -d /tmp/apk/out /tmp/apk/app.apk >/tmp/apk/jadx.log 2>&1 || true
+      - name: Persist targeted UI evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=apk-2.1.3-ui-pref-evidence.txt
+          {
+            echo '=== SOURCE HITS: logo/poster/header ==='
+            grep -RniE '"(logo|poster)"|logo|poster|header.*mode|display.*mode' /tmp/apk/out/sources/com/brouken/player /tmp/apk/out/sources/defpackage 2>/dev/null | head -n 1000 || true
+            echo
+            echo '=== RESOURCE HITS ==='
+            grep -RniE 'logo|poster|header.*mode|display.*mode' /tmp/apk/out/resources/res /tmp/apk/out/resources/AndroidManifest.xml 2>/dev/null | head -n 1000 || true
+          } > "$OUT"
+          cp /tmp/apk/out/sources/com/brouken/player/SettingsActivity.java apk-2.1.3-SettingsActivity-jadx.java
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add "$OUT" apk-2.1.3-SettingsActivity-jadx.java
+          git commit -m "Audit: persist official 2.1.3 UI preference evidence [skip ci]" || true
+          git push origin HEAD:audit-official-2.1.3
