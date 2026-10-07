@@ -35,7 +35,7 @@ jobs:
           unzip -q /tmp/j/jadx.zip -d /tmp/j/jadx
           /tmp/j/jadx/bin/jadx --show-bad-code -d /tmp/j/out /tmp/j/official.apk >/tmp/j/jadx.log 2>&1 || true
 
-      - name: Persist chrome classes
+      - name: Persist chrome internals
         shell: bash
         run: |
           set -euo pipefail
@@ -45,10 +45,18 @@ jobs:
             test -n "$src"
             cp "$src" "official-apk-chrome/$c.java"
           done
+          for rel in \
+            drawable/ic_audiotrack_plate_24dp.xml \
+            layout/exo_player_control_view.xml \
+            layout/controls.xml; do
+            src="$(find /tmp/j/out/resources/res -type f -path "*/$rel" | head -n1)"
+            test -n "$src"
+            cp "$src" "official-apk-chrome/$(basename "$rel")"
+          done
           git config user.name arx-ui-audit
           git config user.email actions@users.noreply.github.com
           git add official-apk-chrome
           git diff --cached --quiet && exit 0
-          git commit -m "Audit: extract official 2.1.3 chrome internals [skip ci]"
+          git commit -m "Audit: extract official 2.1.3 chrome resources [skip ci]"
           git pull --rebase origin audit-official-2.1.3
           git push origin HEAD:audit-official-2.1.3
