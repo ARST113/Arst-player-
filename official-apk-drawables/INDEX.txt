@@ -1,0 +1,12 @@
+exo_styled_controls_next	res/Y_.xml
+exo_styled_controls_pause	res/Ca.xml
+exo_styled_controls_play	res/7O.xml
+ic_aspect_ratio_24dp	res/TP.xml
+ic_audiotrack_plate_24dp	res/6B.xml
+ic_fit_screen_24dp	res/9S.xml
+ic_lock_24dp	res/y6.xml
+ic_more_vert_24dp	res/71.xml
+ic_playlist_24dp	res/Ps.xml
+ic_screen_rotation_24dp	res/zQ1.xml
+ic_subtitles_24dp	res/-E.xml
+ic_theaters_24dp	res/x8.xml
