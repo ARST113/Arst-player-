@@ -1,0 +1,90 @@
+name: Extract official 2.1.3 chrome drawables
+
+on:
+  push:
+    branches:
+      - audit-official-2.1.3
+    paths:
+      - '.github/workflows/extract-official-drawables.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extract-official-drawables
+  cancel-in-progress: true
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-official-2.1.3
+          fetch-depth: 0
+
+      - name: Download official release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 --retry-delay 2 \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.1.3/JustPlus.Player.v2.1.3.apk \
+            -o /tmp/official.apk
+          echo "3e8bff06ebc1037142107c5c8321249c9a3fc4569de8d8be40e53716c5b042dc  /tmp/official.apk" | sha256sum -c -
+
+      - name: Decode the player's own vectors
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAPT2="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n1)"
+          test -x "$AAPT2"
+          "$AAPT2" dump resources /tmp/official.apk > /tmp/res.txt
+          mkdir -p official-apk-drawables
+          python3 - <<'PY'
+          import re, subprocess, sys, pathlib
+          lines = open('/tmp/res.txt', errors='replace').read().splitlines()
+          wanted = ('ic_playlist_24dp', 'ic_lock_24dp', 'ic_screen_rotation_24dp', 'ic_aspect_ratio_24dp',
+                    'ic_fit_screen_24dp', 'ic_theaters_24dp', 'ic_audiotrack_plate_24dp', 'ic_more_vert_24dp',
+                    'ic_subtitles_24dp', 'exo_styled_controls_play', 'exo_styled_controls_pause',
+                    'exo_styled_controls_next', 'exo_styled_controls_previous')
+          path = None
+          found = {}
+          for s in lines:
+              m = re.match(r'\s*resource 0x[0-9a-f]+ drawable/(\S+)', s)
+              if m:
+                  path = None
+                  name = m.group(1).split('/')[-1]
+                  cur = name if name in wanted else None
+                  continue
+              m = re.search(r'\(file\) (res/\S+\.xml)', s)
+              if m and cur:
+                  found[cur] = m.group(1)
+                  cur = None
+          aapt2 = subprocess.check_output(["bash", "-lc",
+              'find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n1']).decode().strip()
+          out = pathlib.Path('official-apk-drawables')
+          for name, res in sorted(found.items()):
+              try:
+                  tree = subprocess.check_output([aapt2, 'dump', 'xmltree', '--file', '/' + res,
+                                                  '/tmp/official.apk'], stderr=subprocess.STDOUT)
+              except subprocess.CalledProcessError as e:
+                  tree = b'<!-- decode failed -->\n' + (e.output or b'')
+              (out / f"{name}.xml").write_bytes(tree)
+              print(name, res, len(tree))
+          (out / 'INDEX.txt').write_text('\n'.join(f"{n}\t{r}" for n, r in sorted(found.items())) + '\n')
+          PY
+          ls -la official-apk-drawables | head -30
+
+      - name: Commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "arx-ui-audit"
+          git config user.email "actions@users.noreply.github.com"
+          git add official-apk-drawables
+          git diff --cached --quiet && exit 0
+          git commit -m "Audit: decode the published player vectors [skip ci]"
+          git pull --rebase origin audit-official-2.1.3
+          git push origin HEAD:audit-official-2.1.3
