@@ -34,18 +34,18 @@ jobs:
           test -n "$APK"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-          cp "$APK" /tmp/ARX.TPlayer.v2.1.3-arx1-release.apk
-          sha256sum /tmp/ARX.TPlayer.v2.1.3-arx1-release.apk
+          cp "$APK" /tmp/ARX.TPlayer.v2.1.3-arx2-release.apk
+          sha256sum /tmp/ARX.TPlayer.v2.1.3-arx2-release.apk
       - name: Publish GitHub release asset
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="arx-v2.1.3-arx1"
-          APK="/tmp/ARX.TPlayer.v2.1.3-arx1-release.apk"
+          TAG="arx-v2.1.3-arx2"
+          APK="/tmp/ARX.TPlayer.v2.1.3-arx2-release.apk"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" "$APK"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "ARX TPlayer 2.1.3-arx1"               --notes "Signed test release based on Just+ Player 2.1.3 with ARX HEVC/FFmpeg fallback."
+            gh release create "$TAG" "$APK"               --repo "$GITHUB_REPOSITORY"               --target "$GITHUB_SHA"               --title "ARX TPlayer 2.1.3-arx2"               --notes "Signed test release based on Just+ Player 2.1.3 with ARX HEVC/FFmpeg fallback."
           fi
