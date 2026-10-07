@@ -6308,35 +6308,32 @@ public class PlayerActivity extends Activity {
         }
         titleView.setText(title);
 
-        // The release APK defaults header artwork to "logo". A nested playlist supplies that logo
-        // separately from thumbnail; when present it replaces the title, while an absent logo falls
-        // back to text. It does NOT silently turn into the poster mode.
+        final String headerArt = mPrefs != null && mPrefs.headerArt != null ? mPrefs.headerArt : "logo";
         final Uri logo = nestedPlaylistSession && itemIndex >= 0 && itemIndex < apiPlaylistLogos.size()
                 ? apiPlaylistLogos.get(itemIndex) : null;
-        if (nestedPlaylistSession) {
+        Uri artworkUri = metadata != null ? metadata.artworkUri : null;
+        if (artworkUri == null) {
+            artworkUri = playingArtwork;
+        }
+
+        if ("logo".equals(headerArt) && logo != null) {
             posterSlot.setVisibility(View.GONE);
             Glide.with(this).clear(posterView);
-            if (logo != null) {
-                logoView.setVisibility(View.VISIBLE);
-                titleView.setVisibility(View.GONE);
-                Glide.with(this).load(logo).into(logoView);
-            } else {
-                Glide.with(this).clear(logoView);
-                logoView.setVisibility(View.GONE);
-                titleView.setVisibility(View.VISIBLE);
-            }
-            setInfoLine(episodeInfoView, nestedEpisodeInfo(itemIndex));
+            logoView.setVisibility(View.VISIBLE);
+            titleView.setVisibility(View.GONE);
+            Glide.with(this).load(logo).into(logoView);
         } else {
             Glide.with(this).clear(logoView);
             logoView.setVisibility(View.GONE);
             titleView.setVisibility(View.VISIBLE);
-            setInfoLine(episodeInfoView, null);
-            Uri artworkUri = metadata != null ? metadata.artworkUri : null;
-            if (artworkUri == null) {
-                artworkUri = playingArtwork;
+            if ("poster".equals(headerArt)) {
+                updatePoster(artworkUri, currentPlayingUri(), itemIndex, player.getMediaItemCount());
+            } else {
+                Glide.with(this).clear(posterView);
+                posterSlot.setVisibility(View.GONE);
             }
-            updatePoster(artworkUri, currentPlayingUri(), itemIndex, player.getMediaItemCount());
         }
+        setInfoLine(episodeInfoView, nestedPlaylistSession ? nestedEpisodeInfo(itemIndex) : null);
 
         final boolean hasPlaylist = player.getMediaItemCount() > 1;
         if (buttonPlaylist != null) {
