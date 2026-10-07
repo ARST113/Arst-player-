@@ -2545,7 +2545,7 @@ public class PlayerActivity extends Activity {
                     // gradient is measured from the real top of the window, so the band it covers does not
                     // shrink when the status bar is drawn over it.
                     final ViewGroup.LayoutParams scrimLp = headerScrim.getLayoutParams();
-                    final int scrimHeight = ui.headerScrimHeight() + (isTvBox ? 0 : insetTop);
+                    final int scrimHeight = ui.headerScrimHeight() + insetTop;
                     if (scrimLp.height != scrimHeight) {
                         scrimLp.height = scrimHeight;
                         headerScrim.setLayoutParams(scrimLp);
