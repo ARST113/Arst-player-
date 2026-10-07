@@ -891,7 +891,7 @@ public class PlayerActivity extends Activity {
     // with a black sheet faded over everything once the pause has stood a minute, and is given up
     // altogether once it has stood two hours: whoever fell asleep does not need the television on.
     private static final long DIM_DELAY_MS = 60_000L;
-    private static final long KEEP_AWAKE_MAX_MS = 2 * 60 * 60 * 1000L;
+    // The timeout itself is user-configurable in 2.1.3 (0/15/30/60/120 minutes).
     private static final float DIM_ALPHA = 0.85f;
     private static final int DIM_IN_MS = 800;
     private static final int DIM_OUT_MS = 300;
@@ -932,6 +932,10 @@ public class PlayerActivity extends Activity {
     };
     private PlayerControlView controlView;
     private CustomDefaultTimeBar timeBar;
+    // Official 2.1.3 keeps the legacy navigation-bar inset stable while bars hide/show.
+    // ARX still applies its symmetric cutout handling and TV overscan after this source inset.
+    private int legacyBottomInsetMax;
+    private int legacyBottomInsetOrientation = Configuration.ORIENTATION_UNDEFINED;
 
     private boolean restoreOrientationLock;
     private boolean restorePlayState;
@@ -2431,6 +2435,24 @@ public class PlayerActivity extends Activity {
 
                 int insetLeft = windowInsets.getSystemWindowInsetLeft();
                 int insetRight = windowInsets.getSystemWindowInsetRight();
+                if (Build.VERSION.SDK_INT < 30) {
+                    insetLeft = Math.max(insetLeft, windowInsets.getStableInsetLeft());
+                    insetRight = Math.max(insetRight, windowInsets.getStableInsetRight());
+                }
+
+                final int orientationNow = getResources().getConfiguration().orientation;
+                if (orientationNow != legacyBottomInsetOrientation) {
+                    legacyBottomInsetOrientation = orientationNow;
+                    legacyBottomInsetMax = 0;
+                }
+                final int rawBottomInset = Build.VERSION.SDK_INT >= 30
+                        ? windowInsets.getInsets(WindowInsets.Type.navigationBars()).bottom
+                        : windowInsets.getSystemWindowInsetBottom();
+                if (Build.VERSION.SDK_INT < 30) {
+                    legacyBottomInsetMax = Math.max(legacyBottomInsetMax, rawBottomInset);
+                }
+                final int stableBottomInset = Build.VERSION.SDK_INT < 30
+                        ? legacyBottomInsetMax : rawBottomInset;
 
                 // Balance the horizontal insets: offset BOTH sides by the larger of the two so the header and
                 // bottom-bar content stay symmetric even when only one side carries the status bar or a display
@@ -2446,7 +2468,7 @@ public class PlayerActivity extends Activity {
                 int paddingRight = insetH;
                 int marginRight = 0;
 
-                final int bottomBarPaddingBottom = windowInsets.getSystemWindowInsetBottom() + overscanV;
+                final int bottomBarPaddingBottom = stableBottomInset + overscanV;
                 final int progressBarMarginBottom = bottomBarPaddingBottom;
 
                 // Don't use exo_top (the built-in top scrim): it is a sibling of exo_controls_background and Media3
@@ -2485,7 +2507,7 @@ public class PlayerActivity extends Activity {
                 final int insetTop = Build.VERSION.SDK_INT >= 30
                         ? Math.max(windowInsets.getSystemWindowInsetTop(),
                                 windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top)
-                        : windowInsets.getSystemWindowInsetTop();
+                        : Math.max(windowInsets.getSystemWindowInsetTop(), windowInsets.getStableInsetTop());
                 Utils.setViewParams(topInfoPanel, paddingLeft + titleViewPaddingHorizontal, insetTop + overscanV + Utils.dpToPx(4), paddingRight + titleViewPaddingHorizontal, titleViewPaddingVertical,
                         marginLeft, 0, marginRight, 0);
 
@@ -2505,7 +2527,7 @@ public class PlayerActivity extends Activity {
                     // Clear of the seek bar's touch band, not just of its line: the band is the progress
                     // view's own height and the pill was measured 9.2dp inside it, where the rule asks for
                     // 8dp between targets. Its height plus that gap is the offset.
-                    skipLp.bottomMargin = windowInsets.getSystemWindowInsetBottom() + overscanV
+                    skipLp.bottomMargin = stableBottomInset + overscanV
                             + getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom)
                             + getResources().getDimensionPixelSize(
                                     androidx.media3.ui.R.dimen.exo_styled_progress_layout_height)
@@ -2522,7 +2544,7 @@ public class PlayerActivity extends Activity {
                 if (roomPill != null) {
                     final CoordinatorLayout.LayoutParams pillLp =
                             (CoordinatorLayout.LayoutParams) roomPill.getLayoutParams();
-                    pillLp.bottomMargin = windowInsets.getSystemWindowInsetBottom() + overscanV
+                    pillLp.bottomMargin = stableBottomInset + overscanV
                             + getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom)
                             + ui.dpS(24);
                     pillLp.leftMargin = insetH + ui.gridH();
@@ -2534,7 +2556,7 @@ public class PlayerActivity extends Activity {
                 if (transferView != null) {
                     final CoordinatorLayout.LayoutParams transferParams =
                             (CoordinatorLayout.LayoutParams) transferView.getLayoutParams();
-                    transferParams.bottomMargin = windowInsets.getSystemWindowInsetBottom() + overscanV
+                    transferParams.bottomMargin = stableBottomInset + overscanV
                             + getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom)
                             + ui.dpS(24);
                     transferParams.leftMargin = insetH + ui.gridH();
@@ -2558,7 +2580,7 @@ public class PlayerActivity extends Activity {
                     statsView.setLayoutParams(statsParams);
                 }
 
-                Utils.setViewMargins(findViewById(R.id.exo_error_message), 0, windowInsets.getSystemWindowInsetTop() / 2, 0, getResources().getDimensionPixelSize(R.dimen.exo_error_message_margin_bottom) + windowInsets.getSystemWindowInsetBottom() / 2);
+                Utils.setViewMargins(findViewById(R.id.exo_error_message), 0, insetTop / 2, 0, getResources().getDimensionPixelSize(R.dimen.exo_error_message_margin_bottom) + stableBottomInset / 2);
 
                 windowInsets.consumeSystemWindowInsets();
             }
@@ -17197,7 +17219,7 @@ public class PlayerActivity extends Activity {
 
     /** Whether a pause is currently entitled to hold the screen awake. */
     private boolean keepAwakeOnPause() {
-        return mPrefs != null && mPrefs.keepAwakeOnPause && isTvBox && haveMedia && !isInPip();
+        return mPrefs != null && mPrefs.keepAwakeMinutes > 0 && haveMedia && !isInPip();
     }
 
     /**
@@ -17219,7 +17241,8 @@ public class PlayerActivity extends Activity {
         final boolean holding = keepAwakeOnPause();
         holdScreen(playing || holding);
         if (holding && !playing) {
-            playerView.postDelayed(keepAwakeGiveUpRunnable, KEEP_AWAKE_MAX_MS);
+            playerView.postDelayed(keepAwakeGiveUpRunnable,
+                    TimeUnit.MINUTES.toMillis(Math.max(1, mPrefs.keepAwakeMinutes)));
         }
 
         if (dimOverlay == null) {
