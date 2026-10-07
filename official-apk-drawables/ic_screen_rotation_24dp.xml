@@ -1,2 +1,10 @@
-<!-- decode failed -->
-error: failed to find file.
+N: android=http://schemas.android.com/apk/res/android (line=3)
+  E: vector (line=3)
+    A: http://schemas.android.com/apk/res/android:tint(0x01010121)=#ffffffff
+    A: http://schemas.android.com/apk/res/android:height(0x01010155)=24.000000dp
+    A: http://schemas.android.com/apk/res/android:width(0x01010159)=24.000000dp
+    A: http://schemas.android.com/apk/res/android:viewportWidth(0x01010402)=24
+    A: http://schemas.android.com/apk/res/android:viewportHeight(0x01010403)=24
+      E: path (line=4)
+        A: http://schemas.android.com/apk/res/android:fillColor(0x01010404)=@0x0106000b
+        A: http://schemas.android.com/apk/res/android:pathData(0x01010405)="M16.48,2.52c3.27,1.55 5.61,4.72 5.97,8.48h1.5C23.44,4.84 18.29,0 12,0l-0.66,0.03 3.81,3.81 1.33,-1.32zM10.23,1.75c-0.59,-0.59 -1.54,-0.59 -2.12,0L1.75,8.11c-0.59,0.59 -0.59,1.54 0,2.12l12.02,12.02c0.59,0.59 1.54,0.59 2.12,0l6.36,-6.36c0.59,-0.59 0.59,-1.54 0,-2.12L10.23,1.75zM14.83,21.19L2.81,9.17l6.36,-6.36 12.02,12.02 -6.36,6.36zM7.52,21.48C4.25,19.94 1.91,16.76 1.55,13L0.05,13C0.56,19.16 5.71,24 12,24l0.66,-0.03 -3.81,-3.81 -1.33,1.32z" (Raw: "M16.48,2.52c3.27,1.55 5.61,4.72 5.97,8.48h1.5C23.44,4.84 18.29,0 12,0l-0.66,0.03 3.81,3.81 1.33,-1.32zM10.23,1.75c-0.59,-0.59 -1.54,-0.59 -2.12,0L1.75,8.11c-0.59,0.59 -0.59,1.54 0,2.12l12.02,12.02c0.59,0.59 1.54,0.59 2.12,0l6.36,-6.36c0.59,-0.59 0.59,-1.54 0,-2.12L10.23,1.75zM14.83,21.19L2.81,9.17l6.36,-6.36 12.02,12.02 -6.36,6.36zM7.52,21.48C4.25,19.94 1.91,16.76 1.55,13L0.05,13C0.56,19.16 5.71,24 12,24l0.66,-0.03 -3.81,-3.81 -1.33,1.32z")

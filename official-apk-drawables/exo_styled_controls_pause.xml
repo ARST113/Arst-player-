@@ -1,2 +1,4 @@
-<!-- decode failed -->
-error: failed to find file.
+N: android=http://schemas.android.com/apk/res/android (line=6)
+  E: inset (line=6)
+    A: http://schemas.android.com/apk/res/android:drawable(0x01010199)=@0x7f08012e
+    A: http://schemas.android.com/apk/res/android:inset(0x010104b5)=24.000000dp

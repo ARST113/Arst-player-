@@ -1,2 +1,10 @@
-<!-- decode failed -->
-error: failed to find file.
+N: android=http://schemas.android.com/apk/res/android (line=4)
+  E: layer-list (line=4)
+      E: item (line=5)
+        A: http://schemas.android.com/apk/res/android:drawable(0x01010199)=@0x7f080095
+      E: item (line=11)
+        A: http://schemas.android.com/apk/res/android:drawable(0x01010199)=@0x7f0800b1
+        A: http://schemas.android.com/apk/res/android:left(0x010101ad)=3.000000dp
+        A: http://schemas.android.com/apk/res/android:top(0x010101ae)=3.000000dp
+        A: http://schemas.android.com/apk/res/android:right(0x010101af)=3.000000dp
+        A: http://schemas.android.com/apk/res/android:bottom(0x010101b0)=3.000000dp

@@ -1,2 +1,10 @@
-<!-- decode failed -->
-error: failed to find file.
+N: android=http://schemas.android.com/apk/res/android (line=10)
+  E: vector (line=10)
+    A: http://schemas.android.com/apk/res/android:tint(0x01010121)=#ffffffff
+    A: http://schemas.android.com/apk/res/android:height(0x01010155)=24.000000dp
+    A: http://schemas.android.com/apk/res/android:width(0x01010159)=24.000000dp
+    A: http://schemas.android.com/apk/res/android:viewportWidth(0x01010402)=24
+    A: http://schemas.android.com/apk/res/android:viewportHeight(0x01010403)=24
+      E: path (line=13)
+        A: http://schemas.android.com/apk/res/android:fillColor(0x01010404)=@0x0106000b
+        A: http://schemas.android.com/apk/res/android:pathData(0x01010405)="M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2s-2,0.9 -2,2S10.9,8 12,8zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2s2,-0.9 2,-2S13.1,10 12,10zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2s2,-0.9 2,-2S13.1,16 12,16z" (Raw: "M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2s-2,0.9 -2,2S10.9,8 12,8zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2s2,-0.9 2,-2S13.1,10 12,10zM12,16c-1.1,0 -2,0.9 -2,2s0.9,2 2,2s2,-0.9 2,-2S13.1,16 12,16z")
