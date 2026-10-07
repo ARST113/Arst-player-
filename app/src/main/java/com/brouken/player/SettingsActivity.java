@@ -727,7 +727,7 @@ public class SettingsActivity extends AppCompatActivity
             if (sendAppLog != null) {
                 sendAppLog.setOnPreferenceClickListener(preference -> {
                     ErrorActivity.showReport(requireContext(), getString(R.string.pref_send_app_log),
-                            getString(R.string.pref_send_app_log_summary), Utils.recentLog());
+                            getString(R.string.pref_send_app_log_summary), Utils.settingsReportLog());
                     return true;
                 });
             }
