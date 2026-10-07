@@ -1446,131 +1446,126 @@ public class Utils {
         });
     }
 
-    /**
-     * Pick the exact display mode used by the 2.1.2 APK.
-     *
-     * <p>The APK chooses the valid whole multiple nearest the requested multiplier (1x normally,
-     * 2x when doubling is enabled), breaking ties in favour of the lower refresh rate. This is
-     * what makes 25 fps prefer 25 Hz, and 25 fps with doubling prefer 50 Hz.
-     */
-    @RequiresApi(api = Build.VERSION_CODES.M)
-    private static Display.Mode selectFrameRateMode(final List<Display.Mode> modes,
-                                                    final float frameRate,
-                                                    final int targetMultiple) {
-        Display.Mode best = null;
-        int bestDistance = 0;
-        for (Display.Mode mode : modes) {
-            final float ratio = mode.getRefreshRate() / frameRate;
-            final int multiple = Math.round(ratio);
-            if (multiple < 1 || Math.abs(ratio - multiple) >= multiple * 0.0002f) {
-                continue;
-            }
-            final int distance = Math.abs(multiple - targetMultiple);
-            if (best == null
-                    || distance < bestDistance
-                    || (distance == bestDistance
-                    && normRate(mode.getRefreshRate()) < normRate(best.getRefreshRate()))) {
-                best = mode;
-                bestDistance = distance;
-            }
-        }
-        return best;
-    }
-
     /** @return whether a mode change was actually requested, so the caller knows to wait for it. */
     @RequiresApi(api = Build.VERSION_CODES.M)
     private static boolean chooseDisplayMode(final PlayerActivity activity, float frameRate,
                                              int videoWidth) {
-        activity.resolutionSwitchRequested = false;
+        {
+            boolean switchingModes = false;
+            activity.resolutionSwitchRequested = false;
 
-        // Exact 2.1.2 APK behaviour: optionally convert the three integer broadcast rates to
-        // their 1000/1001 counterparts before matching. If that corrected rate has no exact
-        // display mode, the selector gets one fallback pass with the original rate.
-        final float originalFrameRate = frameRate;
-        final int centiRate = (int) (frameRate * 100f);
-        if (activity.mPrefs.frameRateCorrection
-                && (centiRate == 2400 || centiRate == 3000 || centiRate == 6000)) {
-            frameRate = (1000f * frameRate) / 1001f;
-        }
+            // A detached decor view answers null. Falling through to the settled path rather than returning:
+            // the caller has already told the player a switch is pending, so bailing out here left the
+            // file on its first frame with no spinner and no error. Unreachable until the rate started
+            // coming from Format — before that a stream had no rate at all and never entered this block.
+            final Display display = frameRate > 0
+                    ? activity.getWindow().getDecorView().getDisplay() : null;
+            if (display != null) {
+                Display.Mode[] supportedModes = display.getSupportedModes();
+                Display.Mode activeMode = display.getMode();
 
-        final Display display = frameRate > 0
-                ? activity.getWindow().getDecorView().getDisplay() : null;
-        if (display == null) {
-            return false;
-        }
+                if (supportedModes.length > 1) {
+                    // The resolution the video asks for, when the viewer has asked for that at all and
+                    // the video says what it is. Without it the search stays inside the current frame
+                    // and only the refresh rate moves, which is what this did before the setting existed.
+                    final int targetWidth = activity.mPrefs.displayResolutionMatching
+                            ? targetDisplayWidth(activeMode.getPhysicalWidth(), videoWidth) : -1;
+                    // Three different things print as -1 otherwise, and the first question asked of this
+                    // line is always which of them happened.
+                    final String targetText = !activity.mPrefs.displayResolutionMatching ? "off"
+                            : targetWidth > 0 ? String.valueOf(targetWidth) : "none for this video";
+                    // Not when the frame the video asks for cannot carry its rate: the point of the
+                    // whole search is the rate, and 4K at 30 Hz for 60 fps content is a worse picture
+                    // than 1080p at 60. Without this the fallback below — top rate at the target
+                    // width — would take that trade every time.
+                    final boolean switchingResolution = targetWidth > 0
+                            && targetWidth != activeMode.getPhysicalWidth()
+                            && hasRateCapableMode(supportedModes, targetWidth, frameRate);
+                    // Refresh rate >= video FPS
+                    List<Display.Mode> modesHigh = new ArrayList<>();
+                    // Max refresh rate. No starting point of its own when the frame is changing: the
+                    // current mode is not a candidate then, since it is the resolution being left.
+                    Display.Mode modeTop = switchingResolution ? null : activeMode;
+                    int modesResolutionCount = 0;
 
-        final Display.Mode[] supportedModes = display.getSupportedModes();
-        final Display.Mode activeMode = display.getMode();
-        if (supportedModes.length <= 1) {
-            log("display mode: video " + videoWidth + "w @" + frameRate + ", active "
-                    + modeText(activeMode) + ", the display offers no other mode");
-            return false;
-        }
+                    // Modes at the resolution being aimed at — the current one unless the frame is
+                    // changing. Width alone when it is changing, height as well when it is not: that is
+                    // the reference's own split between its two mode filters, m1987c and m1988d.
+                    for (Display.Mode mode : supportedModes) {
+                        final boolean candidate = switchingResolution
+                                ? mode.getPhysicalWidth() == targetWidth
+                                : mode.getPhysicalWidth() == activeMode.getPhysicalWidth()
+                                        && mode.getPhysicalHeight() == activeMode.getPhysicalHeight();
+                        if (candidate) {
+                            modesResolutionCount++;
 
-        final int targetWidth = activity.mPrefs.displayResolutionMatching
-                ? targetDisplayWidth(activeMode.getPhysicalWidth(), videoWidth) : -1;
-        final String targetText = !activity.mPrefs.displayResolutionMatching ? "off"
-                : targetWidth > 0 ? String.valueOf(targetWidth) : "none for this video";
-        final boolean switchingResolution = targetWidth > 0
-                && targetWidth != activeMode.getPhysicalWidth()
-                && hasRateCapableMode(supportedModes, targetWidth, frameRate);
+                            if (normRate(mode.getRefreshRate()) >= normRate(frameRate))
+                                modesHigh.add(mode);
 
-        final List<Display.Mode> modesHigh = new ArrayList<>();
-        Display.Mode modeTop = switchingResolution ? null : activeMode;
-        int modesResolutionCount = 0;
-        for (Display.Mode mode : supportedModes) {
-            final boolean candidate = switchingResolution
-                    ? mode.getPhysicalWidth() == targetWidth
-                    : mode.getPhysicalWidth() == activeMode.getPhysicalWidth()
-                    && mode.getPhysicalHeight() == activeMode.getPhysicalHeight();
-            if (!candidate) {
-                continue;
+                            if (modeTop == null
+                                    || normRate(mode.getRefreshRate()) > normRate(modeTop.getRefreshRate()))
+                                modeTop = mode;
+                        }
+                    }
+
+                    // One mode is enough to be worth taking when it is at another resolution; at the
+                    // current one it can only be the mode already running.
+                    if (switchingResolution ? modesResolutionCount > 0 : modesResolutionCount > 1) {
+                        Display.Mode modeBest = null;
+
+                        for (Display.Mode mode : modesHigh) {
+                            // A whole multiple of the content rate, judged on the *relative* error. The
+                            // centi-Hz remainder this replaces could not match 23.976 at all, since
+                            // normRate truncates it to 2397, which divides neither 4795 (47.952 Hz) nor
+                            // 11988 (119.88 Hz). But the tolerance has to stay under the 1/1001 that
+                            // separates an NTSC rate from its integer neighbour, or 120 Hz also "matches"
+                            // 23.976 content and, being the higher rate, beats the 119.88 mode that is the
+                            // exact one. 2e-4 sits between the float noise on these values (~5e-6) and
+                            // that 1e-3 gap.
+                            final float ratio = mode.getRefreshRate() / frameRate;
+                            final int multiple = Math.round(ratio);
+                            if (multiple >= 1 && Math.abs(ratio - multiple) < multiple * 0.0002f) {
+                                if (modeBest == null || normRate(mode.getRefreshRate()) > normRate(modeBest.getRefreshRate())) {
+                                    modeBest = mode;
+                                }
+                            }
+                        }
+
+                        Window window = activity.getWindow();
+                        WindowManager.LayoutParams layoutParams = window.getAttributes();
+
+                        if (modeBest == null)
+                            modeBest = modeTop;
+
+                        switchingModes = !(modeBest.getModeId() == activeMode.getModeId());
+                        log("display mode: video " + videoWidth + "w @" + frameRate
+                                + ", active " + modeText(activeMode) + ", target width " + targetText
+                                + ", " + modesResolutionCount + " candidates"
+                                + (switchingModes ? ", switching to " + modeText(modeBest)
+                                        : ", staying put"));
+                        if (switchingModes) {
+                            // A different frame is a longer wait than a different rate — the sink
+                            // renegotiates — so the caller gives it more time before giving up.
+                            activity.resolutionSwitchRequested =
+                                    modeBest.getPhysicalWidth() != activeMode.getPhysicalWidth();
+                            layoutParams.preferredDisplayModeId = modeBest.getModeId();
+                            window.setAttributes(layoutParams);
+                        }
+                    } else {
+                        log("display mode: video " + videoWidth + "w @" + frameRate
+                                + ", active " + modeText(activeMode) + ", target width " + targetText
+                                + ", " + modesResolutionCount + " candidates, nothing to switch to");
+                    }
+                } else {
+                    log("display mode: video " + videoWidth + "w @" + frameRate + ", active "
+                            + modeText(activeMode) + ", the display offers no other mode");
+                }
             }
-            modesResolutionCount++;
-            if (normRate(mode.getRefreshRate()) >= normRate(frameRate)) {
-                modesHigh.add(mode);
-            }
-            if (modeTop == null
-                    || normRate(mode.getRefreshRate()) > normRate(modeTop.getRefreshRate())) {
-                modeTop = mode;
-            }
-        }
 
-        if (!(switchingResolution ? modesResolutionCount > 0 : modesResolutionCount > 1)) {
-            log("display mode: video " + videoWidth + "w @" + frameRate
-                    + ", active " + modeText(activeMode) + ", target width " + targetText
-                    + ", " + modesResolutionCount + " candidates, nothing to switch to");
-            return false;
+            return switchingModes;
         }
-
-        final int targetMultiple =
-                (!activity.mPrefs.frameRateDoubling || frameRate >= 31f) ? 1 : 2;
-        Display.Mode modeBest = selectFrameRateMode(modesHigh, frameRate, targetMultiple);
-        if (modeBest == null && frameRate != originalFrameRate) {
-            modeBest = selectFrameRateMode(modesHigh, originalFrameRate, targetMultiple);
-        }
-        if (modeBest == null) {
-            modeBest = modeTop;
-        }
-        if (modeBest == null) {
-            return false;
-        }
-
-        final boolean switchingModes = modeBest.getModeId() != activeMode.getModeId();
-        log("display mode: video " + videoWidth + "w @" + frameRate
-                + ", active " + modeText(activeMode) + ", target width " + targetText
-                + ", " + modesResolutionCount + " candidates"
-                + (switchingModes ? ", switching to " + modeText(modeBest) : ", staying put"));
-        if (switchingModes) {
-            activity.resolutionSwitchRequested =
-                    modeBest.getPhysicalWidth() != activeMode.getPhysicalWidth();
-            final Window window = activity.getWindow();
-            final WindowManager.LayoutParams layoutParams = window.getAttributes();
-            layoutParams.preferredDisplayModeId = modeBest.getModeId();
-            window.setAttributes(layoutParams);
-        }
-        return switchingModes;
     }
+
 
 
     public static Uri convertToUTF(PlayerActivity activity, Uri subtitleUri) {
