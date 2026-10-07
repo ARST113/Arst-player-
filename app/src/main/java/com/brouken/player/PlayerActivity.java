@@ -420,6 +420,10 @@ public class PlayerActivity extends Activity {
     // Read by the codec selector on the playback thread.
     private volatile boolean forceHevcForDolbyVision;
     private boolean pendingStuckRecovery;
+    // Generic HEVC recovery for devices that accept a stream in MediaCodec and then fail on the
+    // first buffers. 0 = normal, 1 = c2.android software, 2 = OMX.google alias, 3 = FFmpeg.
+    private volatile int forceHevcSoftwareStage;
+    private boolean pendingHevcSoftwareRecovery;
     // Installed for this player build when Dolby Vision profile 7 is being rewritten as profile 8.1;
     // null when it is not. Kept only so the dump can say which mode the stream actually got.
     @Nullable
@@ -455,6 +459,9 @@ public class PlayerActivity extends Activity {
     // recovery rebuilds the player, and a screen restart must not hand the track back to the decoder that
     // has already been proven unable to carry it.
     private static final Set<String> sessionFfmpegAudioFormats = new HashSet<>();
+    // Video formats whose platform decoder has failed through the MediaCodec fallback ladder.
+    // The platform renderer then refuses only this exact format so Media3 can select FFmpeg.
+    private static final Set<String> sessionFfmpegVideoFormats = new HashSet<>();
 
     // Video formats a decoder refused with ERROR_INSUFFICIENT_RESOURCE even though the device's own
     // capability table said it could take them. The table is a promise about geometry and rate; the
@@ -11620,6 +11627,11 @@ public class PlayerActivity extends Activity {
         } else {
             forceHevcForDolbyVision = mPrefs.refuseDolbyVision;
         }
+        if (pendingHevcSoftwareRecovery) {
+            pendingHevcSoftwareRecovery = false;
+        } else {
+            forceHevcSoftwareStage = 0;
+        }
 
         // A fresh player, but not a fresh budget when it is the same stream: the rebuild rungs
         // (tunneling, Dolby Vision, an audio mime) go through here, and each one used to hand the source
@@ -11861,6 +11873,15 @@ public class PlayerActivity extends Activity {
                         mediaCodecSelector, allowedVideoJoiningTimeMs, enableDecoderFallback,
                         eventHandler, eventListener, MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY) {
                     @Override
+                    protected int supportsFormat(MediaCodecSelector selector, Format format)
+                            throws MediaCodecUtil.DecoderQueryException {
+                        if (sessionFfmpegVideoFormats.contains(videoFormatKey(format))) {
+                            return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE);
+                        }
+                        return super.supportsFormat(selector, format);
+                    }
+
+                    @Override
                     protected float getCodecOperatingRateV23(float targetPlaybackSpeed, Format format,
                                                              Format[] streamFormats) {
                         final float rate = super.getCodecOperatingRateV23(targetPlaybackSpeed, format,
@@ -12069,7 +12090,7 @@ public class PlayerActivity extends Activity {
                 // reads back as "exceeds capabilities" — which plays, but drops those renditions out of
                 // the quality list. The refusal means no Dolby Vision anywhere, so mapping it is free.
                 .setMapDV7ToHevc(mPrefs.mapDV7ToHevc || mPrefs.refuseDolbyVision);
-        if (forceHevcForDolbyVision || isTvBox) {
+        if (forceHevcForDolbyVision || forceHevcSoftwareStage > 0 || isTvBox) {
             // One combined codec selector for two independent needs:
             // - heavy MKV audio on a TV: no platform decoder for those codecs, so they passthrough (if
             //   the sink supports it) or fall back to ffmpeg (see above).
@@ -12094,6 +12115,28 @@ public class PlayerActivity extends Activity {
                     infos.addAll(MediaCodecSelector.DEFAULT.getDecoderInfos(
                             mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
                     return infos;
+                }
+                if (forceHevcSoftwareStage > 0 && forceHevcSoftwareStage < 3
+                        && MimeTypes.VIDEO_H265.equals(mimeType)
+                        && !requiresSecureDecoder && !requiresTunnelingDecoder) {
+                    if (forceHevcSoftwareStage == 2) {
+                        final MediaCodecInfo legacy = legacyGoogleHevcDecoder();
+                        if (legacy != null) {
+                            return Collections.singletonList(legacy);
+                        }
+                    } else {
+                        final List<MediaCodecInfo> all = MediaCodecSelector.DEFAULT.getDecoderInfos(
+                                mimeType, false, false);
+                        final List<MediaCodecInfo> software = new ArrayList<>();
+                        for (MediaCodecInfo info : all) {
+                            if (info.name.startsWith("c2.android.")) {
+                                software.add(info);
+                            }
+                        }
+                        if (!software.isEmpty()) {
+                            return software;
+                        }
+                    }
                 }
                 return MediaCodecSelector.DEFAULT.getDecoderInfos(
                         mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
@@ -13928,6 +13971,11 @@ public class PlayerActivity extends Activity {
                             ((ExoPlaybackException) error).rendererFormat)) {
                 return;
             }
+            if (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
+                    && error instanceof ExoPlaybackException
+                    && recoverHevcSoftwareDecoder(((ExoPlaybackException) error).rendererFormat)) {
+                return;
+            }
             // The clip can no longer be opened: a foreign app's one-off URI grant has expired (a video
             // streamed from a messenger, reopened after that app restarted) or the file is gone. Expected
             // external state, not an app bug, so a notice rather than a report. The player stays where it
@@ -14119,6 +14167,111 @@ public class PlayerActivity extends Activity {
         Utils.log("source retry " + sourceRetries + "/" + MAX_SOURCE_RETRIES + " in " + delayMs + " ms");
         playerView.postDelayed(sourceRetryRunnable, delayMs);
         return true;
+    }
+
+    /**
+     * Pixel/Android 17 can accept an ordinary HEVC track in the hardware codec and fail on the
+     * first buffer. Walk the software MediaCodec implementations and finally the bundled FFmpeg
+     * renderer without widening the refusal beyond the exact codec/profile that failed.
+     */
+    private boolean recoverHevcSoftwareDecoder(@Nullable final Format failingFormat) {
+        if (player == null || failingFormat == null
+                || !MimeTypes.VIDEO_H265.equals(failingFormat.sampleMimeType)
+                || forceHevcSoftwareStage >= 3) {
+            return false;
+        }
+        if (forceHevcSoftwareStage == 0) {
+            boolean hasCodec2Software = false;
+            try {
+                for (MediaCodecInfo info : MediaCodecSelector.DEFAULT.getDecoderInfos(
+                        MimeTypes.VIDEO_H265, false, false)) {
+                    if (info.name.startsWith("c2.android.")) {
+                        hasCodec2Software = true;
+                        break;
+                    }
+                }
+            } catch (MediaCodecUtil.DecoderQueryException ignored) {
+                // Fall through to FFmpeg when the codec query itself is broken.
+            }
+            if (hasCodec2Software) {
+                forceHevcSoftwareStage = 1;
+                Utils.log("rebuild: HEVC " + failingFormat.codecs
+                        + " with c2.android software decoder");
+            } else if (io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
+                    && io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
+                            .supportsFormat(MimeTypes.VIDEO_H265)) {
+                forceHevcSoftwareStage = 3;
+                sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+                Utils.log("rebuild: HEVC " + failingFormat.codecs
+                        + " with NextLib FFmpeg/libavcodec video decoder");
+            } else {
+                return false;
+            }
+        } else if (forceHevcSoftwareStage == 1) {
+            if (videoDecoderName != null && videoDecoderName.startsWith("c2.android.")
+                    && legacyGoogleHevcDecoder() != null) {
+                forceHevcSoftwareStage = 2;
+                Utils.log("rebuild: HEVC " + failingFormat.codecs
+                        + " with OMX.google software decoder");
+            } else if (io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
+                    && io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
+                            .supportsFormat(MimeTypes.VIDEO_H265)) {
+                forceHevcSoftwareStage = 3;
+                sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+                Utils.log("rebuild: HEVC " + failingFormat.codecs
+                        + " with NextLib FFmpeg/libavcodec video decoder");
+            } else {
+                return false;
+            }
+        } else {
+            if (!io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
+                    || !io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
+                            .supportsFormat(MimeTypes.VIDEO_H265)) {
+                return false;
+            }
+            forceHevcSoftwareStage = 3;
+            sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+            Utils.log("rebuild: HEVC " + failingFormat.codecs
+                    + " with NextLib FFmpeg/libavcodec video decoder");
+        }
+
+        pendingHevcSoftwareRecovery = true;
+        restorePlayState = player.getPlayWhenReady();
+        sourceSwitchKeepPaused = !restorePlayState;
+        playerView.post(() -> {
+            releasePlayer();
+            initializePlayer();
+        });
+        return true;
+    }
+
+    @Nullable
+    private static MediaCodecInfo legacyGoogleHevcDecoder() {
+        try {
+            final android.media.MediaCodecInfo[] codecs =
+                    new MediaCodecList(MediaCodecList.ALL_CODECS).getCodecInfos();
+            for (android.media.MediaCodecInfo codec : codecs) {
+                if (codec.isEncoder() || !"OMX.google.hevc.decoder".equals(codec.getName())) {
+                    continue;
+                }
+                for (String type : codec.getSupportedTypes()) {
+                    if (MimeTypes.VIDEO_H265.equalsIgnoreCase(type)) {
+                        final android.media.MediaCodecInfo.CodecCapabilities caps =
+                                codec.getCapabilitiesForType(type);
+                        return MediaCodecInfo.newInstance(
+                                codec.getName(), MimeTypes.VIDEO_H265, type, caps,
+                                /* hardwareAccelerated= */ false,
+                                /* softwareOnly= */ true,
+                                /* vendor= */ false,
+                                /* forceDisableAdaptive= */ false,
+                                /* forceSecure= */ false);
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            Utils.log("OMX.google HEVC lookup failed: " + e);
+        }
+        return null;
     }
 
     // Rebuild the player forcing a Dolby Vision track through the plain HEVC decoder, bypassing a device
