@@ -74,13 +74,14 @@ run_case() {
       return 1
     fi
 
-    if grep -q "NextLib FFmpeg/libavcodec video decoder" "$dir/logcat.txt"; then
-      echo "HEVC path: NextLib FFmpeg fallback was exercised" | tee -a "$dir/result.txt"
+    decoder="$(grep "video decoder: init" "$dir/logcat.txt" | tail -n1 || true)"
+    if grep -q "ffmpegLavc.*-hevc" "$dir/logcat.txt"; then
+      echo "HEVC path: FFmpeg/libavcodec decoder active. $decoder" | tee -a "$dir/result.txt"
+    elif grep -q "NextLib FFmpeg/libavcodec video decoder" "$dir/logcat.txt"; then
+      echo "HEVC path: NextLib FFmpeg fallback was exercised. $decoder" | tee -a "$dir/result.txt"
     else
-      decoder="$(grep "video decoder: init" "$dir/logcat.txt" | tail -n1 || true)"
-      echo "HEVC path: MediaCodec survived on this emulator; fallback was not required. $decoder"         | tee -a "$dir/result.txt"
-    fi
-  fi
+      echo "HEVC path: MediaCodec decoder active; FFmpeg fallback was not required. $decoder" | tee -a "$dir/result.txt"
+    fi  fi
 
   if (( !ready || !playing || !frame )); then
     echo "::error::$name playback failed: READY=$ready playing=$playing first_frame=$frame"
