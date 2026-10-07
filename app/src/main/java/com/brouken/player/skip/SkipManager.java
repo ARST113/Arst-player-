@@ -39,8 +39,6 @@ public class SkipManager {
     private static final double MAX_SEGMENT_FRACTION = 1.0 / 3;
 
     private SkipSource source;
-    /** File-accurate intro/credits marks read from Media3 Chapter metadata. */
-    private List<SkipSegment> chapterSegments = Collections.emptyList();
     private List<SkipSegment> segments = Collections.emptyList();
 
     /** User-configured global shift applied to every segment (seconds); 0 = off. */
@@ -54,93 +52,20 @@ public class SkipManager {
     /** Set the source for the current media (e.g. a new {@link IntentSegmentsSource}); clears segments. */
     public void setSource(SkipSource source) {
         this.source = source;
-        this.chapterSegments = Collections.emptyList();
         this.segments = Collections.emptyList();
     }
 
     public void clear() {
         this.source = null;
-        this.chapterSegments = Collections.emptyList();
         this.segments = Collections.emptyList();
-    }
-
-    /**
-     * Replace the chapter-derived marks for the current item.
-     *
-     * @return true when the semantic list changed and the caller should rebuild/highlight it.
-     */
-    public boolean setChapterSegments(List<SkipSegment> chapters) {
-        final List<SkipSegment> next = chapters == null
-                ? Collections.<SkipSegment>emptyList() : new ArrayList<>(chapters);
-        if (sameSegments(chapterSegments, next)) {
-            return false;
-        }
-        chapterSegments = next;
-        return true;
-    }
-
-    private static boolean sameSegments(List<SkipSegment> left, List<SkipSegment> right) {
-        if (left.size() != right.size()) {
-            return false;
-        }
-        for (int i = 0; i < left.size(); i++) {
-            final SkipSegment a = left.get(i);
-            final SkipSegment b = right.get(i);
-            if (Double.compare(a.startSec, b.startSec) != 0
-                    || Double.compare(a.endSec, b.endSec) != 0
-                    || a.type != b.type || a.category != b.category
-                    || a.coordBase != b.coordBase || a.timeTrust != b.timeTrust) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /** Recompute segments against the now-known duration. Safe to call repeatedly. */
     public void rebuild(double durationSec) {
         final List<SkipSegment> base = source != null
                 ? source.getSegments(durationSec) : Collections.<SkipSegment>emptyList();
-        List<SkipSegment> resolved = offsetSec != 0 ? applyOffset(base, durationSec) : base;
-
-        // 2.1.2 gives file chapters precedence over inferred/network timings. A chapter is tied to this
-        // exact file, so an overlapping external mark is discarded; when the file names its own credits,
-        // a generic late SKIP mark is discarded too instead of offering two different credits ranges.
-        if (!chapterSegments.isEmpty()) {
-            boolean hasChapterCredits = false;
-            for (SkipSegment chapter : chapterSegments) {
-                hasChapterCredits |= chapter.category == SkipSegment.Category.CREDITS;
-            }
-            final boolean durationKnown = durationSec > 0 && !Double.isNaN(durationSec);
-            final List<SkipSegment> filtered = new ArrayList<>(resolved.size());
-            for (SkipSegment candidate : resolved) {
-                boolean overlapsChapter = false;
-                for (SkipSegment chapter : chapterSegments) {
-                    overlapsChapter |= candidate.startSec < chapter.endSec
-                            && chapter.startSec < candidate.endSec;
-                }
-                final boolean lateSkip = durationKnown
-                        && candidate.endSec >= durationSec * CREDITS_END_FRACTION;
-                if (candidate.type != SkipSegment.Type.SKIP
-                        || (!overlapsChapter && (!hasChapterCredits || !lateSkip))) {
-                    filtered.add(candidate);
-                }
-            }
-            resolved = filtered;
-        }
-
-        final List<SkipSegment> merged = new ArrayList<>(resolved);
-        for (SkipSegment chapter : chapterSegments) {
-            merged.add(copyOf(chapter));
-        }
-        segments = sanitize(merged, durationSec);
+        segments = sanitize(offsetSec != 0 ? applyOffset(base, durationSec) : base, durationSec);
         classifyCredits(durationSec);
-    }
-
-    private static SkipSegment copyOf(SkipSegment source) {
-        final SkipSegment copy = new SkipSegment(source.startSec, source.endSec, source.type,
-                source.category, source.coordBase, source.timeTrust);
-        copy.confirmed = source.confirmed;
-        return copy;
     }
 
     /** An end past a day cannot be a real mark; it is the open-end sentinel (99999) or worse. */
@@ -222,36 +147,6 @@ public class SkipManager {
             seg.reachesEnd = durationKnown
                     && seg.endSec >= durationSec - CREDITS_END_TOLERANCE_SEC;
         }
-    }
-
-    /**
-     * Position at which 2.1.2 considers the item watched. Ordinarily this is the last five percent.
-     * A short SKIP segment that reaches that closing five-percent window is treated as end credits,
-     * and its start becomes the watched threshold.
-     */
-    public long completionThresholdMs(long durationMs) {
-        return completionThresholdMs(durationMs, segments);
-    }
-
-    public static long completionThresholdMs(long durationMs, List<SkipSegment> segments) {
-        if (durationMs <= 0) {
-            return Long.MAX_VALUE;
-        }
-        final long ninetyFivePercent = durationMs - durationMs / 20;
-        long threshold = ninetyFivePercent;
-        if (segments == null) {
-            return threshold;
-        }
-        for (SkipSegment segment : segments) {
-            final long startMs = Math.round(segment.startSec * 1000.0);
-            final long endMs = (long) Math.ceil(segment.endSec * 1000.0);
-            if (segment.type == SkipSegment.Type.SKIP
-                    && endMs >= ninetyFivePercent
-                    && endMs - startMs <= durationMs * 0.15) {
-                threshold = Math.min(threshold, startMs);
-            }
-        }
-        return threshold;
     }
 
     public boolean hasSegments() {
