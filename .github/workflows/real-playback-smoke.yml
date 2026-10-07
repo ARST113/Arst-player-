@@ -1,4 +1,5 @@
 name: Real playback smoke
+# Generates and plays a real H.264/AAC MP4 inside the Android emulator.
 
 on:
   workflow_dispatch:
