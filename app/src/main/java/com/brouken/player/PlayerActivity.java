@@ -2007,7 +2007,7 @@ public class PlayerActivity extends Activity {
         videoInfoView = createInfoLine(0);
         videoInfoView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        final Drawable videoIcon = ContextCompat.getDrawable(this, R.drawable.ic_movie_24dp);
+        final Drawable videoIcon = ContextCompat.getDrawable(this, R.drawable.ic_theaters_24dp);
         if (videoIcon != null) {
             final int icon = ui.dpS(18);
             videoIcon.setBounds(0, 0, icon, icon);
@@ -2031,7 +2031,7 @@ public class PlayerActivity extends Activity {
         audioInfoView = createInfoLine(0);
         audioInfoView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        final Drawable audioIcon = ContextCompat.getDrawable(this, R.drawable.ic_audiotrack_24dp);
+        final Drawable audioIcon = ContextCompat.getDrawable(this, R.drawable.ic_audiotrack_plate_24dp);
         if (audioIcon != null) {
             final int icon = ui.dpS(18);
             audioIcon.setBounds(0, 0, icon, icon);
@@ -6384,8 +6384,14 @@ public class PlayerActivity extends Activity {
         }
         final Format video = player.getVideoFormat();
         final boolean detailed = mPrefs == null || "detailed".equals(mPrefs.headerInfo);
-        setInfoLine(videoInfoView, buildVideoInfo(video, videoFrameRate(), detailed));
-        setInfoLine(audioInfoView, buildAudioInfo(getSelectedAudioFormat(), detailed));
+        final boolean qualityChipHidden =
+                buttonQuality == null || buttonQuality.getVisibility() != View.VISIBLE;
+        final boolean audioChipHidden =
+                buttonAudio == null || buttonAudio.getVisibility() != View.VISIBLE;
+        setInfoLine(videoInfoView,
+                buildVideoInfo(video, videoFrameRate(), detailed, qualityChipHidden));
+        setInfoLine(audioInfoView,
+                buildAudioInfo(getSelectedAudioFormat(), detailed, audioChipHidden));
         if (mediaInfoRow != null) {
             mediaInfoRow.setVisibility(
                     (videoInfoView.getVisibility() == View.VISIBLE
@@ -6406,12 +6412,15 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    private static String buildVideoInfo(Format video, float frameRate, boolean detailed) {
+    private static String buildVideoInfo(
+            Format video, float frameRate, boolean detailed, boolean qualityChipHidden) {
         if (video == null) {
             return null;
         }
         final StringBuilder b = new StringBuilder();
-        appendField(b, resolutionClass(video.width, video.height));
+        if (qualityChipHidden) {
+            appendField(b, resolutionClass(video.width, video.height));
+        }
         if (detailed) {
             appendField(b, codecName(video));
         }
@@ -6469,31 +6478,33 @@ public class PlayerActivity extends Activity {
         return new String[]{headline, detail.length() == 0 ? null : detail.toString()};
     }
 
-    private String buildAudioInfo(Format audio, boolean detailed) {
+    private String buildAudioInfo(Format audio, boolean detailed, boolean audioChipHidden) {
         if (audio == null) {
             return null;
         }
-        // Same shape as the track list: <label or container name or language> [<codec> <channels> <bitrate>k] (<lang>)
+        // Published 2.1.3 avoids repeating the value already visible in the audio chip.
+        // If the chip is hidden, include the track/container name. If the chip is visible
+        // and already carries that name (or the language when there is no name), the header
+        // keeps only the complementary language plus technical details.
         final String language = languageDisplayName(audio.language);
-        // Rich release label: Media3's Format.label first, then the name read from the container.
         final String metaName = trackName(audio);
-        final String title = (metaName != null && !metaName.isEmpty()) ? metaName : language;
         final StringBuilder b = new StringBuilder();
-        if (title != null && !title.isEmpty()) {
-            b.append(title);
+
+        if (audioChipHidden && metaName != null && !metaName.isEmpty()) {
+            appendField(b, metaName);
         }
+
+        final boolean chipShowsLanguage =
+                !audioChipHidden && (metaName == null || metaName.isEmpty());
+        if (!chipShowsLanguage && language != null && !language.isEmpty()
+                && !language.equals(metaName)) {
+            appendField(b, language);
+        }
+
         final String tech = detailed
                 ? CustomDefaultTrackNameProvider.techInfo(audio)
                 : (audio.channelCount > 2 ? Utils.formatChannels(audio.channelCount) : "");
-        if (tech != null && !tech.isEmpty()) {
-            if (b.length() > 0) b.append(' ');
-            b.append('[').append(tech).append(']');
-        }
-        // If we led with a rich name, still surface the language after it.
-        if (metaName != null && !metaName.isEmpty() && language != null) {
-            if (b.length() > 0) b.append(' ');
-            b.append('(').append(language).append(')');
-        }
+        appendField(b, tech);
         return b.toString();
     }
 
