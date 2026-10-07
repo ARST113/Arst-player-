@@ -2470,9 +2470,9 @@ public class PlayerActivity extends Activity {
                 final int paddingRight = insetH;
                 final int marginLeft = 0;
                 final int marginRight = 0;
-                final int bottomPlateMarginH = insetH + ui.dpS(16);
+                final int bottomPlateMarginH = isTvBox ? ui.dp(32) : insetH + ui.dpS(16);
                 final int bottomPlateMarginBottom = isTvBox
-                        ? ui.dpS(12) + overscanV
+                        ? ui.dp(12)
                         : Math.max(ui.dpS(12), stableBottomInset + overscanV);
 
                 findViewById(R.id.exo_top).getLayoutParams().height = 0;
@@ -2483,10 +2483,10 @@ public class PlayerActivity extends Activity {
                 exoBottomBar.setLayoutParams(barParams);
                 exoBottomBar.setTravelScale(1f);
                 exoBottomBar.setPadding(
-                        ui.dpS(10),
-                        isTvBox ? ui.dpS(12) : ui.dpS(10),
-                        ui.dpS(10),
-                        isTvBox ? ui.dpS(10) : ui.dpS(4));
+                        isTvBox ? ui.dp(20) : ui.dpS(16),
+                        isTvBox ? ui.dp(12) : ui.dpS(10),
+                        isTvBox ? ui.dp(20) : ui.dpS(16),
+                        isTvBox ? ui.dp(10) : ui.dpS(4));
                 Utils.setViewMargins(exoBottomBar,
                         bottomPlateMarginH, 0, bottomPlateMarginH, bottomPlateMarginBottom);
 
@@ -2584,7 +2584,7 @@ public class PlayerActivity extends Activity {
         final int timeBarPlayed = ContextCompat.getColor(this, R.color.brand_accent);
         timeBar.setPlayedColor(timeBarPlayed);
         timeBar.setScrubberColor(timeBarPlayed);
-        timeBar.setUnplayedColor(0x20000000);
+        timeBar.setUnplayedColor(0xFFC9C9CC);
         timeBar.setBufferedColor(0x33000000);
 
         try {
@@ -2642,27 +2642,30 @@ public class PlayerActivity extends Activity {
         updateButtons(false);
 
         final BottomBarLayout bottomBarLayout = findViewById(R.id.exo_bottom_bar);
-        bottomBarLayout.setBackground(Utils.shape(officialControlBaseColor(), ui.dpS(24)));
+        bottomBarLayout.setBackground(Utils.shape(officialControlBaseColor(), ui.dp(28)));
         bottomBarLayout.setClipChildren(false);
         bottomBarLayout.setClipToPadding(false);
 
         final View plateTimeRow = findViewById(R.id.plate_time_row);
         final LinearLayout.LayoutParams timeRowLp =
                 (LinearLayout.LayoutParams) plateTimeRow.getLayoutParams();
-        final int naturalTimeRow = ui.dpS(24);
-        timeRowLp.height = ui.dpS(48);
+        final int naturalTimeRow = isTvBox ? ui.dp(28) : ui.dpS(24);
+        timeRowLp.height = isTvBox ? naturalTimeRow : ui.dpS(48);
         if (!isTvBox) {
             final int overlap = (ui.dpS(48) - naturalTimeRow) / 2;
             timeRowLp.topMargin = -overlap;
             timeRowLp.bottomMargin = -overlap;
+        } else {
+            timeRowLp.topMargin = 0;
+            timeRowLp.bottomMargin = 0;
         }
         plateTimeRow.setLayoutParams(timeRowLp);
 
         final View plateRow = findViewById(R.id.plate_row);
         final LinearLayout.LayoutParams plateRowLp =
                 (LinearLayout.LayoutParams) plateRow.getLayoutParams();
-        plateRowLp.height = isTvBox ? ui.dpS(48) : ui.clusterBox();
-        plateRowLp.topMargin = isTvBox ? ui.dpS(8) : ui.dpS(4);
+        plateRowLp.height = isTvBox ? ui.dp(48) : officialControlBox();
+        plateRowLp.topMargin = isTvBox ? ui.dp(8) : ui.dpS(4);
         plateRow.setLayoutParams(plateRowLp);
 
         final TextView positionText = findViewById(R.id.exo_position);
@@ -11607,7 +11610,16 @@ public class PlayerActivity extends Activity {
     }
 
     private int officialControlSecondaryInkColor() {
-        return 0x99000000;
+        return 0x8A000000;
+    }
+
+    /** Exact ss2.g()/i() geometry from the published 2.1.3 APK. */
+    private int officialControlBox() {
+        return isTvBox ? ui.dp(40) : ui.dpS(48);
+    }
+
+    private int officialControlIconSize() {
+        return isTvBox ? ui.dp(24) : ui.dpS(22);
     }
 
     private ColorStateList officialControlIconTint() {
@@ -11653,7 +11665,7 @@ public class PlayerActivity extends Activity {
         if (iconRes != 0) {
             final Drawable icon = ContextCompat.getDrawable(this, iconRes);
             if (icon != null) {
-                final int iconSize = ui.dpS(24);
+                final int iconSize = officialControlIconSize();
                 icon.setBounds(0, 0, iconSize, iconSize);
                 chip.setCompoundDrawablesRelative(icon, null, null, null);
                 chip.setCompoundDrawableTintList(officialControlIconTint());
@@ -11666,7 +11678,7 @@ public class PlayerActivity extends Activity {
         chip.setMaxWidth(ui.dpS(160) + startPad + extraWidth + endPad);
 
         final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ui.clusterBox());
+                ViewGroup.LayoutParams.WRAP_CONTENT, officialControlBox());
         lp.gravity = Gravity.CENTER_VERTICAL;
         chip.setLayoutParams(lp);
         return chip;
@@ -11677,8 +11689,8 @@ public class PlayerActivity extends Activity {
         if (button == null) {
             return;
         }
-        final int size = ui.clusterBox();
-        final int icon = ui.dpS(24);
+        final int size = officialControlBox();
+        final int icon = officialControlIconSize();
         final int pad = Math.max(0, (size - icon) / 2);
         final int inset = isTvBox ? 0 : ui.dpS(6);
         button.setScaleType(ImageView.ScaleType.FIT_CENTER);
