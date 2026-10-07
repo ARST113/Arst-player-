@@ -7,6 +7,9 @@ on:
     paths:
       - '.github/workflows/audit-official-2.1.2.yml'
 
+permissions:
+  contents: write
+
 jobs:
   audit:
     runs-on: ubuntu-latest
@@ -88,6 +91,97 @@ jobs:
             echo "--- $pat ---"
             grep -RniF --include='*.java' "$pat" "$ROOT" 2>/dev/null | head -n 80 || true
           done
+
+      - name: Persist compact APK audit report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, difflib, hashlib
+
+          r211=Path('/tmp/apk-audit/jadx211/sources')
+          r212=Path('/tmp/apk-audit/jadx212/sources')
+          fa={p.relative_to(r211).as_posix():p for p in r211.rglob('*.java')}
+          fb={p.relative_to(r212).as_posix():p for p in r212.rglob('*.java')}
+
+          def norm_text(p):
+              s=p.read_text(errors='replace')
+              s=re.sub(r'0x7f[0-9a-fA-F]{6}', '0x7fXXXXXX', s)
+              s=re.sub(r'/\\* JADX WARN:.*?\\*/', '', s)
+              return s
+
+          changed=[]
+          for k in sorted(set(fa)|set(fb)):
+              if k not in fa:
+                  changed.append(('ADDED',k,0,len(fb[k].read_text(errors='replace').splitlines())))
+              elif k not in fb:
+                  changed.append(('REMOVED',k,len(fa[k].read_text(errors='replace').splitlines()),0))
+              elif norm_text(fa[k]) != norm_text(fb[k]):
+                  changed.append(('CHANGED',k,len(fa[k].read_text(errors='replace').splitlines()),len(fb[k].read_text(errors='replace').splitlines())))
+
+          out=[]
+          out.append('OFFICIAL JUST+ 2.1.1 -> 2.1.2 APK AUDIT')
+          out.append('2.1.1 sha256: '+hashlib.sha256(Path('/tmp/apk-audit/2.1.1.apk').read_bytes()).hexdigest())
+          out.append('2.1.2 sha256: '+hashlib.sha256(Path('/tmp/apk-audit/2.1.2.apk').read_bytes()).hexdigest())
+          out.append('')
+          out.append('=== CHANGED APP CLASSES ===')
+          app_changed=[]
+          for row in changed:
+              if 'com/brouken/player/' in row[1]:
+                  app_changed.append(row)
+                  out.append('%s\\t%s\\t%s->%s' % row)
+          out.append('APP_CHANGED_TOTAL '+str(len(app_changed)))
+
+          pats=['resume_mode','position_ms','duration_ms','positions_ms','ended_at','Opening','Credits','Intro','chapter','Retry','Set-Cookie','Cookie','User-Agent','Referer','frameRate','refreshRate','display mode','watched']
+          out.append('')
+          out.append('=== FEATURE SIGNATURES IN 2.1.2 APP CLASSES ===')
+          for pat in pats:
+              out.append('--- '+pat+' ---')
+              hits=0
+              for k,p in sorted(fb.items()):
+                  if 'com/brouken/player/' not in k:
+                      continue
+                  for n,line in enumerate(p.read_text(errors='replace').splitlines(),1):
+                      if pat.lower() in line.lower():
+                          out.append(f'{k}:{n}: {line.strip()}')
+                          hits += 1
+                          if hits >= 40:
+                              break
+                  if hits >= 40:
+                      break
+              if hits == 0:
+                  out.append('(none)')
+
+          out.append('')
+          out.append('=== COMPACT DIFFS FOR CHANGED APP CLASSES ===')
+          for _,k,_,_ in app_changed:
+              if k not in fa or k not in fb:
+                  continue
+              diff=list(difflib.unified_diff(
+                  norm_text(fa[k]).splitlines(), norm_text(fb[k]).splitlines(),
+                  fromfile='2.1.1/'+k, tofile='2.1.2/'+k, n=2, lineterm=''))
+              if not diff:
+                  continue
+              out.append('')
+              out.append('### '+k)
+              # Keep report bounded but retain all small application diffs.
+              out.extend(diff[:1200])
+              if len(diff) > 1200:
+                  out.append(f'... truncated {len(diff)-1200} diff lines ...')
+
+          Path('apk-audit-report.txt').write_text('\\n'.join(out)+'\\n')
+          PY
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apk-audit-report.txt
+          if git diff --cached --quiet; then
+            echo 'Audit report unchanged'
+          else
+            git commit -m 'Audit: persist official 2.1.2 APK diff report'
+            git push origin HEAD:arx-2.1.2-port-wip
+          fi
 
       - name: Save changed decompiled classes
         shell: bash
