@@ -73,6 +73,11 @@ class Prefs {
     private static final String PREF_KEY_HOLD_SPEED_MODE = "holdSpeedMode";
     private static final String PREF_KEY_TUNNELING = "tunneling";
     private static final String PREF_KEY_FRAMERATE_MATCHING = "frameRateMatching";
+    private static final String PREF_KEY_FRAME_RATE_CORRECTION = "frameRateCorrection";
+    private static final String PREF_KEY_FRAME_RATE_DOUBLING = "frameRateDoubling";
+    private static final String PREF_KEY_MODE_SWITCH_PAUSE_MS = "modeSwitchPauseMs";
+    private static final String PREF_KEY_BUFFER_MODE = "bufferMode";
+    private static final String PREF_KEY_BUFFER_RESUME_PERCENT = "bufferResumePercent";
     private static final String PREF_KEY_BACK_BUFFER_MS = "backBufferMs";
     private static final String PREF_KEY_DISPLAY_RESOLUTION_MATCHING = "displayResolutionMatching";
     private static final String PREF_KEY_ALLOW_SYSTEM_FRAMERATE = "allowSystemFrameRate";
@@ -83,7 +88,12 @@ class Prefs {
     private static final String PREF_KEY_LOADING_SCREEN_MODE = "loadingScreenMode";
     private static final String PREF_KEY_PLAYLIST_GRID = "playlistGrid";
     private static final String PREF_KEY_TV_SINGLE_BACK = "tvSingleBack";
-    private static final String PREF_KEY_KEEP_AWAKE_ON_PAUSE = "keepAwakeOnPause";
+    private static final String PREF_KEY_RESUME_MODE = "resumeMode";
+    private static final String PREF_KEY_KEEP_AWAKE_MINUTES = "keepAwakeMinutes";
+    private static final String PREF_KEY_KEEP_AWAKE_ON_PAUSE = "keepAwakeOnPause"; // legacy migration only
+    private static final String PREF_KEY_ASK_STILL_WATCHING = "askStillWatching";
+    private static final String PREF_KEY_ASK_PREFER_AUDIO = "askPreferAudio";
+    private static final String PREF_KEY_ORIENTATION_LANDSCAPE_DEFAULT = "screenOrientationLandscapeDefault";
     private static final String PREF_KEY_AUDIO_PASSTHROUGH = "audioPassthrough";
     private static final String PREF_KEY_SPEED = "speed";
     private static final String PREF_KEY_BROWSE_TRAIL = "browseTrail";
@@ -212,7 +222,7 @@ class Prefs {
     public String mediaType;
     public int resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT;
     // A setting now, not what the rotate button last left behind: the button only turns the screen.
-    public Utils.Orientation orientation = Utils.Orientation.VIDEO;
+    public Utils.Orientation orientation = Utils.Orientation.LANDSCAPE;
     public float scale = 1.f;
     public float aspectRatio = 0f; // 0 = natural video AR; >0 = forced display AR (16:9, 4:3, …)
     // Which shape of picture the three fields above were chosen for, -1 until the video reports one.
@@ -241,6 +251,11 @@ class Prefs {
 
     public boolean tunneling = false;
     public boolean frameRateMatching = false;
+    public boolean frameRateCorrection = false;
+    public boolean frameRateDoubling = false;
+    public int modeSwitchPauseMs = 0;
+    public String bufferMode = "time";
+    public int bufferResumePercent = 30;
     // How much played media to keep behind the playhead, in milliseconds, so that a step back lands in
     // memory instead of in a new request. Streams only — see initializePlayer.
     //
@@ -270,7 +285,9 @@ class Prefs {
      */
     public boolean playlistGrid = true;
     public boolean tvSingleBack = false;
-    public boolean keepAwakeOnPause = true;
+    public String resumeMode = "askOpen";
+    public int keepAwakeMinutes = 0;
+    public boolean askStillWatching = false;
     // Whether compressed surround (Dolby, DTS) may be bitstreamed to the receiver. Off by default: every
     // track is decoded in the player to PCM (see PlayerActivity's audio sink), multichannel included -
     // only the compressed bitstream path is refused. That path is the whole fragile chain on a box whose
@@ -312,6 +329,7 @@ class Prefs {
     // Preferred audio languages, most wanted first: comma-separated ISO-639-2/T codes ("ukr,eng").
     // Empty means no preference at all, i.e. whatever the media itself puts first.
     public String languageAudio = "";
+    public boolean askPreferAudio = true;
     // Preferred subtitle languages, same shape as languageAudio. Empty means no preference, which is
     // what every install starts from: unlike audio, a subtitle nobody asked for is in the way.
     public String languageSubtitle = "";
@@ -476,14 +494,33 @@ class Prefs {
     }
 
     public void loadUserPreferences() {
-        orientation = Utils.Orientation.values()[Integer.parseInt(mSharedPreferences.getString(
-                PREF_KEY_ORIENTATION, String.valueOf(orientation.value)))];
+        // Official 2.1.3 changed the orientation default from video-driven (0) to landscape (3).
+        // Migrate the old default once, exactly as the released app does; afterwards a deliberate
+        // user choice is left alone.
+        if (!mSharedPreferences.getBoolean(PREF_KEY_ORIENTATION_LANDSCAPE_DEFAULT, false)) {
+            final String oldOrientation = mSharedPreferences.getString(PREF_KEY_ORIENTATION, "0");
+            final SharedPreferences.Editor editor = mSharedPreferences.edit();
+            if ("0".equals(oldOrientation)) {
+                editor.putString(PREF_KEY_ORIENTATION, "3");
+            }
+            editor.putBoolean(PREF_KEY_ORIENTATION_LANDSCAPE_DEFAULT, true).apply();
+        }
+        final int orientationValue = Integer.parseInt(mSharedPreferences.getString(
+                PREF_KEY_ORIENTATION, String.valueOf(orientation.value)));
+        orientation = Utils.Orientation.fromValue(orientationValue);
         autoPiP = mSharedPreferences.getBoolean(PREF_KEY_AUTO_PIP, autoPiP);
         disableVolumeBrightnessGestures = mSharedPreferences.getBoolean(
                 PREF_KEY_DISABLE_VOLUME_BRIGHTNESS_GESTURES, disableVolumeBrightnessGestures);
         holdSpeedMode = getHoldSpeedMode(mContext);
         tunneling = mSharedPreferences.getBoolean(PREF_KEY_TUNNELING, tunneling);
         frameRateMatching = mSharedPreferences.getBoolean(PREF_KEY_FRAMERATE_MATCHING, frameRateMatching);
+        frameRateCorrection = mSharedPreferences.getBoolean(PREF_KEY_FRAME_RATE_CORRECTION, frameRateCorrection);
+        frameRateDoubling = mSharedPreferences.getBoolean(PREF_KEY_FRAME_RATE_DOUBLING, frameRateDoubling);
+        modeSwitchPauseMs = Integer.parseInt(mSharedPreferences.getString(
+                PREF_KEY_MODE_SWITCH_PAUSE_MS, String.valueOf(modeSwitchPauseMs)));
+        bufferMode = mSharedPreferences.getString(PREF_KEY_BUFFER_MODE, bufferMode);
+        bufferResumePercent = Integer.parseInt(mSharedPreferences.getString(
+                PREF_KEY_BUFFER_RESUME_PERCENT, String.valueOf(bufferResumePercent)));
         backBufferMs = Integer.parseInt(mSharedPreferences.getString(PREF_KEY_BACK_BUFFER_MS,
                 String.valueOf(backBufferMs)));
         displayResolutionMatching = mSharedPreferences.getBoolean(PREF_KEY_DISPLAY_RESOLUTION_MATCHING,
@@ -496,7 +533,18 @@ class Prefs {
         loadingScreenMode = mSharedPreferences.getString(PREF_KEY_LOADING_SCREEN_MODE, loadingScreenMode);
         playlistGrid = mSharedPreferences.getBoolean(PREF_KEY_PLAYLIST_GRID, playlistGrid);
         tvSingleBack = mSharedPreferences.getBoolean(PREF_KEY_TV_SINGLE_BACK, tvSingleBack);
-        keepAwakeOnPause = mSharedPreferences.getBoolean(PREF_KEY_KEEP_AWAKE_ON_PAUSE, keepAwakeOnPause);
+        resumeMode = mSharedPreferences.getString(PREF_KEY_RESUME_MODE, resumeMode);
+        if (!mSharedPreferences.contains(PREF_KEY_KEEP_AWAKE_MINUTES)) {
+            final boolean legacyKeepAwake = mSharedPreferences.getBoolean(PREF_KEY_KEEP_AWAKE_ON_PAUSE, false);
+            final int migratedMinutes = legacyKeepAwake && Utils.isTvBox(mContext) ? 120 : 0;
+            mSharedPreferences.edit()
+                    .putString(PREF_KEY_KEEP_AWAKE_MINUTES, String.valueOf(migratedMinutes))
+                    .remove(PREF_KEY_KEEP_AWAKE_ON_PAUSE)
+                    .apply();
+        }
+        keepAwakeMinutes = Integer.parseInt(mSharedPreferences.getString(
+                PREF_KEY_KEEP_AWAKE_MINUTES, String.valueOf(keepAwakeMinutes)));
+        askStillWatching = mSharedPreferences.getBoolean(PREF_KEY_ASK_STILL_WATCHING, askStillWatching);
         audioPassthrough = mSharedPreferences.getBoolean(PREF_KEY_AUDIO_PASSTHROUGH, audioPassthrough);
         audioPassthroughForce = mSharedPreferences.getBoolean(PREF_KEY_AUDIO_PASSTHROUGH_FORCE,
                 audioPassthroughForce);
@@ -509,6 +557,7 @@ class Prefs {
         removeHdr10Plus = mSharedPreferences.getBoolean(PREF_KEY_REMOVE_HDR10_PLUS, removeHdr10Plus);
         refuseDolbyVision = mSharedPreferences.getBoolean(PREF_KEY_REFUSE_DOLBY_VISION, refuseDolbyVision);
         languageAudio = getLanguageAudio(mContext);
+        askPreferAudio = mSharedPreferences.getBoolean(PREF_KEY_ASK_PREFER_AUDIO, askPreferAudio);
         languageSubtitle = getLanguageSubtitle(mContext);
         languageSubtitleSecondary = getLanguageSubtitleSecondary(mContext);
         final String searchMode = getSubtitleSearchMode(mContext);
