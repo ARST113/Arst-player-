@@ -52,8 +52,8 @@ android {
         targetSdkVersion 36
         // ARX port is intentionally pinned so test/release APKs identify the upstream base
         // unambiguously even when several upstream release tags point at the same source commit.
-        versionCode 2001006
-        versionName "2.1.3-arx4"
+        versionCode 2001007
+        versionName "2.1.3-arx5"
         // Sentry DSN is a public client key (shipped in every APK). Supply it via a SENTRY_DSN entry
         // in local.properties/gradle.properties, -PSENTRY_DSN=, or the SENTRY_DSN env var (see above).
         // When empty, Sentry initialization is skipped (no-op) and the build still works.
