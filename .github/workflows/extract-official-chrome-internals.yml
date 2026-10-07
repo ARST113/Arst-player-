@@ -41,8 +41,8 @@ jobs:
           set -euo pipefail
           mkdir -p official-apk-chrome
           for c in xr ss2 yt2; do
-            src="/tmp/j/out/sources/com/brouken/player/$c.java"
-            test -f "$src"
+            src="$(find /tmp/j/out/sources -type f -name "$c.java" | head -n1)"
+            test -n "$src"
             cp "$src" "official-apk-chrome/$c.java"
           done
           git config user.name arx-ui-audit
