@@ -1705,8 +1705,7 @@ public class PlayerActivity extends Activity {
         heroLp.width = ui.heroBox();
         heroLp.height = ui.heroBox();
         exoPlayPause.setLayoutParams(heroLp);
-        exoPlayPause.setImageTintList(ColorStateList.valueOf(
-                ContextCompat.getColor(this, R.color.brand_accent)));
+        exoPlayPause.setImageTintList(ColorStateList.valueOf(officialControlActiveColor()));
         // With the colour gone from the disc, presence has to come from the glyph. Media3 hands the button a
         // drawable whose canvas is exo_icon_size with the ink about a third of it; fitting that canvas to the
         // whole box instead of leaving it at its intrinsic size takes the ink to roughly half the disc, the
@@ -2581,11 +2580,11 @@ public class PlayerActivity extends Activity {
         // Brand the timeline: the played portion and the scrubber (the surfaces the user actually touches)
         // share the accent ink of the Play glyph above, over a solid dark rail instead of Media3's wash
         // of the frame behind.
-        final int timeBarPlayed = ContextCompat.getColor(this, R.color.brand_accent);
+        final int timeBarPlayed = officialControlActiveColor();
         timeBar.setPlayedColor(timeBarPlayed);
         timeBar.setScrubberColor(timeBarPlayed);
-        timeBar.setUnplayedColor(0xFFC9C9CC);
-        timeBar.setBufferedColor(0x33000000);
+        timeBar.setUnplayedColor(officialControlUnplayedColor());
+        timeBar.setBufferedColor(officialControlBufferedColor());
 
         try {
             trackNameProvider = new CustomDefaultTrackNameProvider(getResources());
@@ -11594,23 +11593,48 @@ public class PlayerActivity extends Activity {
      * Released 2.1.3 value selector (JADX I1): a one-line rounded chip whose label is the
      * current quality / dub / subtitle choice. The icon is optional; quality is text-only.
      */
-    // The published APK uses a light detached plate even though the player theme itself is dark.
-    // These values are the rendered controller palette from 2.1.3: 90% white base, a subtle
-    // 8% black inset surface, high-emphasis black ink and the darker brand accent for active ink.
+    // Exact player chrome palette from the published 2.1.3 APK (xr(activity, false)).
+    // Unlike the old ARX chrome, the released build follows the resolved Appearance mode:
+    // light -> detached white plate, dark -> translucent black, AMOLED dark -> solid black.
+    private boolean officialControlLight() {
+        return Prefs.isLight(this);
+    }
+
     private int officialControlBaseColor() {
-        return 0xE6FFFFFF;
+        if (officialControlLight()) {
+            return 0xE6FFFFFF;
+        }
+        return Prefs.isAmoledBlack(this) ? 0xFF000000 : 0xCC000000;
     }
 
     private int officialControlInsetColor() {
-        return 0x14000000;
+        return officialControlLight() ? 0x14000000 : 0x1AFFFFFF;
     }
 
     private int officialControlInkColor() {
-        return 0xDE000000;
+        return officialControlLight() ? 0xDE000000 : 0xE6FFFFFF;
     }
 
     private int officialControlSecondaryInkColor() {
-        return 0x8A000000;
+        return officialControlLight() ? 0x8A000000 : 0x99FFFFFF;
+    }
+
+    private int officialControlUnplayedColor() {
+        return officialControlLight() ? 0xFFC9C9CC : 0xFF38393C;
+    }
+
+    private int officialControlBufferedColor() {
+        return officialControlLight() ? 0xFFBDBDC1 : 0x33FFFFFF;
+    }
+
+    private int officialControlActiveColor() {
+        final boolean light = officialControlLight();
+        final android.view.ContextThemeWrapper themed =
+                new android.view.ContextThemeWrapper(this, Prefs.accentOverlay(this, light));
+        return MaterialColors.getColor(
+                themed,
+                light ? R.attr.accentFill : R.attr.accentInk,
+                brandColor());
     }
 
     /** Exact ss2.g()/i() geometry from the published 2.1.3 APK. */
@@ -11630,8 +11654,8 @@ public class PlayerActivity extends Activity {
                         new int[0]
                 },
                 new int[]{
-                        ContextCompat.getColor(this, R.color.brand_accent),
-                        0x61000000,
+                        officialControlActiveColor(),
+                        officialControlLight() ? 0x61000000 : 0x66FFFFFF,
                         officialControlInkColor()
                 });
     }
