@@ -155,6 +155,31 @@ jobs:
                   out.append('(none)')
 
           out.append('')
+          out.append('')
+          out.append('=== TARGETED 2.1.2 CONTEXT ===')
+          context_pats=['resume_mode','position_ms','duration_ms','positions_ms','ended_at','Retry','User-Agent','Cookie','frameRateCorrection','frameRateDoubling','modeSwitchPauseMs','askStillWatching','allowSystemFrameRate','frameRateMatching','voice','voices','playlist','headers','Accept-Language']
+          for pat in context_pats:
+              out.append('--- '+pat+' ---')
+              hits=0
+              for k,p in sorted(fb.items()):
+                  if 'com/brouken/player/' not in k:
+                      continue
+                  lines=p.read_text(errors='replace').splitlines()
+                  for idx,line in enumerate(lines):
+                      if pat.lower() not in line.lower():
+                          continue
+                      hits += 1
+                      out.append(f'[{k}:{idx+1}]')
+                      lo=max(0,idx-10); hi=min(len(lines),idx+11)
+                      for n in range(lo,hi):
+                          out.append(f'{n+1:05d}: {lines[n]}')
+                      if hits >= 8:
+                          break
+                  if hits >= 8:
+                      break
+              if hits == 0:
+                  out.append('(none)')
+
           out.append('=== COMPACT DIFFS FOR CHANGED APP CLASSES ===')
           for _,k,_,_ in app_changed:
               if k not in fa or k not in fb:
