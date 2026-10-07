@@ -50,6 +50,7 @@ jobs:
                     'ic_subtitles_24dp', 'exo_styled_controls_play', 'exo_styled_controls_pause',
                     'exo_styled_controls_next', 'exo_styled_controls_previous')
           path = None
+          cur = None
           found = {}
           for s in lines:
               m = re.match(r'\s*resource 0x[0-9a-f]+ drawable/(\S+)', s)
