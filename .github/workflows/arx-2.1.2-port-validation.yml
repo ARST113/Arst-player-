@@ -18,10 +18,12 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Build and test
-        run: ./gradlew :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+        run: ./gradlew :app:assembleLatestUniversalDebug :app:assembleLatestUniversalRelease :app:testLatestUniversalDebugUnitTest
       - name: Upload test APK
         uses: actions/upload-artifact@v4
         with:
-          name: ARX-TPlayer-2.1.2-port-debug
-          path: app/build/outputs/apk/latestUniversal/debug/*.apk
+          name: ARX-TPlayer-2.1.2-port-apks
+          path: |
+            app/build/outputs/apk/latestUniversal/debug/*.apk
+            app/build/outputs/apk/latestUniversal/release/*.apk
           if-no-files-found: error
