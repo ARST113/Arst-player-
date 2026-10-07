@@ -1467,6 +1467,7 @@ public class Utils {
         {
             boolean switchingModes = false;
             activity.resolutionSwitchRequested = false;
+            activity.displayModeSwitchRequested = false;
 
             // Official 2.1.3 correction is opt-in. Keep the ARX matcher identical when it is off.
             if (activity.mPrefs != null && activity.mPrefs.frameRateCorrection) {
