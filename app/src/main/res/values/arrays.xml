@@ -252,4 +252,23 @@
     <item>1250</item>
     <item>1500</item>
   </string-array>
+
+  <string-array name="header_art_entries">
+    <item>@string/pref_header_art_logo</item>
+    <item>@string/pref_header_art_poster</item>
+    <item>@string/pref_header_art_text</item>
+  </string-array>
+  <string-array name="header_art_values" translatable="false">
+    <item>logo</item>
+    <item>poster</item>
+    <item>text</item>
+  </string-array>
+  <string-array name="header_info_entries">
+    <item>@string/pref_header_info_brief</item>
+    <item>@string/pref_header_info_detailed</item>
+  </string-array>
+  <string-array name="header_info_values" translatable="false">
+    <item>brief</item>
+    <item>detailed</item>
+  </string-array>
 </resources>
