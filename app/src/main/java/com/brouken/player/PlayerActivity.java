@@ -834,8 +834,9 @@ public class PlayerActivity extends Activity {
     private OutlineTextClock overlayClock;
     private OutlineTextClock headerClock;
     private ImageButton buttonPlaylist;
-    private ImageButton buttonQuality;
-    private ImageButton buttonAudio;
+    private TextView buttonQuality;
+    private TextView buttonAudio;
+    private TextView buttonSubtitle;
     private ImageButton buttonMore;
     private ImageButton buttonUpdate;
     private android.app.Dialog qualityDialog;
@@ -1802,20 +1803,23 @@ public class PlayerActivity extends Activity {
         buttonPlaylist.setVisibility(View.GONE);
         buttonPlaylist.setOnClickListener(view -> showPlaylistDialog());
 
-        buttonQuality = new ImageButton(this, null, 0, R.style.ExoStyledControls_Button_Bottom);
-        buttonQuality.setImageResource(R.drawable.ic_high_quality_24dp);
-        buttonQuality.setImageTintList(ContextCompat.getColorStateList(this, R.color.control_icon_tint));
-        buttonQuality.setId(View.generateViewId());
-        buttonQuality.setContentDescription(getString(R.string.button_quality));
-        buttonQuality.setVisibility(View.GONE);
+        // Released 2.1.3 does not use icon-only buttons for the three value selectors.
+        // JADX I1(...) builds compact rounded TextViews carrying the current value: quality,
+        // dub/audio and subtitle language. Keep that shape here so the controller matches the APK.
+        buttonQuality = createOfficialValueChip(0, getString(R.string.button_quality));
         buttonQuality.setOnClickListener(view -> showQualityDialog());
 
-        buttonAudio = new ImageButton(this, null, 0, R.style.ExoStyledControls_Button_Bottom);
-        buttonAudio.setImageResource(R.drawable.ic_audiotrack_24dp);
-        buttonAudio.setId(View.generateViewId());
-        buttonAudio.setContentDescription(getString(R.string.button_audio_track));
-        buttonAudio.setVisibility(View.GONE);
+        buttonAudio = createOfficialValueChip(
+                R.drawable.ic_audiotrack_24dp, getString(R.string.button_audio_track));
         buttonAudio.setOnClickListener(view -> showAudioDialog());
+
+        buttonSubtitle = createOfficialValueChip(
+                R.drawable.ic_subtitles_24dp, getString(R.string.subtitle_title));
+        buttonSubtitle.setOnClickListener(view -> showSubtitleDialog());
+        buttonSubtitle.setOnLongClickListener(view -> {
+            openSettings("subtitlesScreen");
+            return true;
+        });
 
         buttonMore = new ImageButton(this, null, 0, R.style.ExoStyledControls_Button_Bottom);
         // The overflow glyph, not a gear. A gear here meant three things at once: press it for this
@@ -2666,7 +2670,7 @@ public class PlayerActivity extends Activity {
         // the design: quality, audio, subtitles, playlist.
         controls.addView(buttonQuality);
         controls.addView(buttonAudio);
-        controls.addView(exoSubtitle);
+        controls.addView(buttonSubtitle);
         controls.addView(buttonPlaylist);
         if (mPrefs.repeatToggle) {
             controls.addView(exoRepeat);
@@ -2674,13 +2678,12 @@ public class PlayerActivity extends Activity {
 
         // Display / screen controls: beside the header clock on touch; in the bottom bar on TV so the remote
         // keeps a single left/right focus zone.
-        final LinearLayout displayParent = isTvBox ? controls : headerButtons;
-        displayParent.addView(buttonAspectRatio);
-        if (Utils.isPiPSupported(this) && buttonPiP != null) {
-            displayParent.addView(buttonPiP);
-        }
-        if (!isTvBox) {
-            displayParent.addView(buttonRotation);
+        final LinearLayout displayParent = isTvBox ? controls : null;
+        if (displayParent != null) {
+            displayParent.addView(buttonAspectRatio);
+            if (Utils.isPiPSupported(this) && buttonPiP != null) {
+                displayParent.addView(buttonPiP);
+            }
         }
         // "Update available" sits immediately before the gear — one insertion point that lands in the same
         // place on a phone and on TV, because the gear ends the bottom bar on both.
@@ -2690,43 +2693,19 @@ public class PlayerActivity extends Activity {
 
         // One uniform button box across both clusters so the header pill and the bottom pill match in height,
         // size and inter-button gap.
-        styleClusterButton(exoSubtitle);
-        styleClusterButton(buttonAudio);
-        styleClusterButton(buttonQuality);
-        styleClusterButton(buttonPlaylist);
+        styleOfficialRoundButton(buttonPlaylist, controls.getChildCount() > 3);
         if (mPrefs.repeatToggle) {
-            styleClusterButton(exoRepeat);
+            styleOfficialRoundButton(exoRepeat, true);
         }
-        styleClusterButton(buttonUpdate);
+        styleOfficialRoundButton(buttonUpdate, true);
         refreshUpdateButton();
-        styleClusterButton(buttonMore);
-        styleClusterButton(buttonAspectRatio);
-        if (buttonPiP != null) {
-            styleClusterButton(buttonPiP);
-        }
-        if (!isTvBox) {
-            styleClusterButton(buttonRotation);
-            // No chrome behind the header icons: the design keeps the top light, so the glyphs are the only
-            // thing there — and it is the glyph edge, not a pill edge, that has to sit on the header's grid
-            // lines. Nudge the row out by the button padding that used to hide inside the pill: its glyphs
-            // then finish on the clock's right-hand line and on the bottom line where the poster and the last
-            // meta line end. Translation, not margins: a negative end margin squeezes the last button instead
-            // of moving the row. The panel must stop clipping to its padding for the nudge to survive.
-            final boolean rtl = getResources().getConfiguration().getLayoutDirection()
-                    == View.LAYOUT_DIRECTION_RTL;
-            headerButtons.setTranslationX(rtl ? -ui.clusterPad() : ui.clusterPad());
-            headerButtons.setTranslationY(ui.clusterPad());
-            // The nudge moves the row outside its own layout box, so every ancestor that would clip it has to
-            // stop: the padding clip on the panel, and the child clip on both the panel and the column. Without
-            // the child clips off, the row is cut by exactly the nudge — a fifth of every glyph.
-            topInfoPanel.setClipToPadding(false);
-            topInfoPanel.setClipChildren(false);
-            if (headerButtons.getParent() instanceof ViewGroup) {
-                ((ViewGroup) headerButtons.getParent()).setClipChildren(false);
+        styleOfficialRoundButton(buttonMore, true);
+        if (isTvBox) {
+            styleOfficialRoundButton(buttonAspectRatio, true);
+            if (buttonPiP != null) {
+                styleOfficialRoundButton(buttonPiP, true);
             }
         }
-        // Group the bottom-right pickers (subtitle / audio / HD / playlist / settings) into a matching pill.
-        applyControlPill(controls);
 
         // Inset the bottom pill to the shared 14dp content grid so its right edge lines up with the header
         // pill / clock and stays inside the progress bar, instead of running to the screen edge.
@@ -2736,30 +2715,24 @@ public class PlayerActivity extends Activity {
         horizontalScrollViewLp.setMarginEnd(ui.gridH());
         exoBasicControls.addView(horizontalScrollView, horizontalScrollViewLp);
 
-        // Lock sits isolated at the far-left of the bottom bar — prepended into the time row, away from the
-        // display cluster (MX-style) so it is no longer adjacent to the rotation button. Touch only (the lock
-        // feature is not offered on TV).
+        // Released 2.1.3 keeps display controls in the lower-left lane on touch devices:
+        // lock, rotation, aspect/crop and PiP. They are separate circular plates rather than header icons.
         if (!isTvBox) {
             final View exoTime = findViewById(R.id.exo_time);
             if (exoTime instanceof LinearLayout) {
-                // Match the right-hand controls: same 40dp box + chrome pill, so the lock reads as part of the
-                // same control language instead of a lone heavy glyph. The time text stays bare, to its right.
-                styleClusterButton(buttonLock);
-                final GradientDrawable lockPill = new GradientDrawable();
-                lockPill.setColor(ContextCompat.getColor(this, R.color.ui_controls_background));
-                lockPill.setCornerRadius(ui.pillCorner());
-                buttonLock.setBackground(lockPill);
-                buttonLock.setClipToOutline(true);
-                final LinearLayout.LayoutParams lockLp = (LinearLayout.LayoutParams) buttonLock.getLayoutParams();
-                lockLp.setMarginEnd(ui.lockMarginEnd());
-                buttonLock.setLayoutParams(lockLp);
-                ((LinearLayout) exoTime).addView(buttonLock, 0);
-
-                // exo_basic_controls (the right-hand cluster, holding a full-width HorizontalScrollView) is
-                // laid out after exo_time, so it sits on top of it and its empty left area swallows taps on
-                // the lock (a scroll view consumes touches for its own drag detection). Bring exo_time to the
-                // front so the lock wins its taps. The cluster's buttons sit to the right, clear of exo_time
-                // (which is ~494px wide and non-clickable outside the lock), so they and scrolling still work.
+                final LinearLayout left = (LinearLayout) exoTime;
+                final ArrayList<ImageButton> lowerLeft = new ArrayList<>();
+                lowerLeft.add(buttonLock);
+                lowerLeft.add(buttonRotation);
+                lowerLeft.add(buttonAspectRatio);
+                if (Utils.isPiPSupported(this) && buttonPiP != null) {
+                    lowerLeft.add(buttonPiP);
+                }
+                int insert = 0;
+                for (ImageButton button : lowerLeft) {
+                    styleOfficialRoundButton(button, insert > 0);
+                    left.addView(button, insert++);
+                }
                 exoTime.bringToFront();
             }
         }
@@ -11545,6 +11518,75 @@ public class PlayerActivity extends Activity {
     // the glyph at the standard 24dp. Nothing is drawn at rest — the pill behind is the frame. Focus draws a
     // contour on the box less 4dp on every side, so the line has air against the pill's edge and against its
     // neighbour, and keeps the pill's own corner language rather than cutting a circle into it.
+    /**
+     * Released 2.1.3 value selector (JADX I1): a one-line rounded chip whose label is the
+     * current quality / dub / subtitle choice. The icon is optional; quality is text-only.
+     */
+    private TextView createOfficialValueChip(final int iconRes, final String description) {
+        final TextView chip = new TextView(this);
+        chip.setId(View.generateViewId());
+        chip.setContentDescription(description);
+        chip.setFocusable(true);
+        chip.setClickable(true);
+        chip.setSingleLine(true);
+        chip.setEllipsize(TextUtils.TruncateAt.END);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setTextColor(Color.WHITE);
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textAction());
+        chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        chip.setVisibility(View.GONE);
+
+        final int inset = ui.dpS(6);
+        chip.setBackground(new InsetDrawable(
+                (Drawable) Utils.plate(this, Utils.CIRCLE), inset));
+        chip.setForeground(Utils.chromeForeground(this, inset));
+
+        final int endPad = ui.dpS(16) + inset;
+        int startPad = endPad;
+        if (iconRes != 0) {
+            final Drawable icon = ContextCompat.getDrawable(this, iconRes);
+            if (icon != null) {
+                final int iconSize = ui.dpS(24);
+                icon.setBounds(0, 0, iconSize, iconSize);
+                chip.setCompoundDrawablesRelative(icon, null, null, null);
+                chip.setCompoundDrawableTintList(
+                        ContextCompat.getColorStateList(this, R.color.control_icon_tint));
+                chip.setCompoundDrawablePadding(ui.dpS(8));
+                startPad = ui.dpS(12) + inset;
+            }
+        }
+        chip.setPadding(startPad, 0, endPad, 0);
+        chip.setMaxWidth(ui.dpS(220));
+
+        final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ui.clusterBox());
+        lp.gravity = Gravity.CENTER_VERTICAL;
+        chip.setLayoutParams(lp);
+        return chip;
+    }
+
+    /** Released 2.1.3 S3-equivalent: an independent circular control plate. */
+    private void styleOfficialRoundButton(final ImageButton button, final boolean addMargin) {
+        if (button == null) {
+            return;
+        }
+        final int size = ui.clusterBox();
+        final int icon = ui.dpS(24);
+        final int pad = Math.max(0, (size - icon) / 2);
+        button.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        button.setImageTintList(ContextCompat.getColorStateList(this, R.color.control_icon_tint));
+        button.setBackground(new InsetDrawable(
+                (Drawable) Utils.plate(this, Utils.CIRCLE), ui.dpS(2)));
+        button.setForeground(Utils.chromeForeground(this, ui.dpS(2)));
+        button.setPadding(pad, pad, pad, pad);
+        final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+        lp.gravity = Gravity.CENTER_VERTICAL;
+        if (addMargin) {
+            lp.setMarginStart(ui.dpS(8));
+        }
+        button.setLayoutParams(lp);
+    }
+
     private void styleClusterButton(final ImageButton button) {
         if (button == null) {
             return;
