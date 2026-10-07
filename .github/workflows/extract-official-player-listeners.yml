@@ -56,6 +56,9 @@ jobs:
           grep -rh -o 'yt2\.k0([^;]*' /tmp/j/out/sources | sort | uniq -c | sort -rn > /tmp/j/k0-callers.txt || true
           cp /tmp/j/k0-callers.txt official-apk-listeners/K0_CALLERS.txt || true
           grep -rl 'SystemBarsBehavior' /tmp/j/out/sources | head -n 20 >> /tmp/j/hits.txt || true
+          # the top/bottom scrims are ShapeDrawables driven by a LinearGradient ShaderFactory
+          grep -rl 'ShaderFactory' /tmp/j/out/sources | head -n 40 >> /tmp/j/hits.txt || true
+          grep -rl 'LinearGradient' /tmp/j/out/sources | head -n 40 >> /tmp/j/hits.txt || true
           for c in si hm1 cz wr1 eu lf2 r70 zx; do
             f="$(find /tmp/j/out/sources -type f -name "$c.java" | head -n1)"
             [ -n "$f" ] && echo "$f" >> /tmp/j/hits.txt || true
