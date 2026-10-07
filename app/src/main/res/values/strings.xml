@@ -870,11 +870,7 @@
   <string name="pref_forget_dubs">Forget remembered dubs</string>
   <string name="pref_forget_dubs_done">Forgotten</string>
   <string name="pref_forget_dubs_summary">A series continues in the dub you watched it in; a new one starts in the dub you usually pick</string>
-  <string name="pref_framerate_correction">Correct the frame rate</string>
-  <string name="pref_framerate_correction_summary">24 → 23.976, 30 → 29.97, 60 → 59.94</string>
-  <string name="pref_framerate_doubling">Double the refresh rate</string>
-  <string name="pref_framerate_doubling_summary">24 fps is shown at 48 Hz, 25 at 50, 30 at 60</string>
-  <string name="pref_header_art">Header</string>
+<string name="pref_header_art">Header</string>
   <string name="pref_header_art_logo">Logo</string>
   <string name="pref_header_art_poster">Picture and title</string>
   <string name="pref_header_art_text">Title only</string>
@@ -890,8 +886,7 @@
   <string name="pref_loading_screen_every">Before every video</string>
   <string name="pref_loading_screen_first">Only when playback starts</string>
   <string name="pref_loading_screen_off">Off</string>
-  <string name="pref_mode_switch_pause">Pause after a display mode change, s</string>
-  <string name="pref_resume_always">Always resume</string>
+<string name="pref_resume_always">Always resume</string>
   <string name="pref_resume_ask_every">Ask for every video</string>
   <string name="pref_resume_ask_open">Ask when opening</string>
   <string name="pref_resume_mode">Resume playback</string>
@@ -915,10 +910,7 @@
   <string name="pref_section_sound">Sound</string>
   <string name="pref_section_track">Track</string>
   <string name="pref_section_watching">Watching</string>
-  <string name="pref_still_watching">Ask if you are still watching</string>
-  <string name="pref_still_watching_off">Episodes keep playing one after another</string>
-  <string name="pref_still_watching_on">Pauses and asks after three episodes with no press</string>
-  <string name="preference_copied">\"%1$s\" copied to clipboard.</string>
+<string name="preference_copied">\"%1$s\" copied to clipboard.</string>
   <string name="repeat_row">Repeat</string>
   <string name="resume_ask_continue">Resume</string>
   <string name="resume_ask_message">You stopped at %1$s</string>
