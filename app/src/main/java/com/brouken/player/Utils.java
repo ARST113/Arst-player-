@@ -1468,6 +1468,17 @@ public class Utils {
             boolean switchingModes = false;
             activity.resolutionSwitchRequested = false;
 
+            // Official 2.1.3 correction is opt-in. Keep the ARX matcher identical when it is off.
+            if (activity.mPrefs != null && activity.mPrefs.frameRateCorrection) {
+                if (Math.abs(frameRate - 24f) < 0.02f) {
+                    frameRate = 24000f / 1001f;
+                } else if (Math.abs(frameRate - 30f) < 0.02f) {
+                    frameRate = 30000f / 1001f;
+                } else if (Math.abs(frameRate - 60f) < 0.02f) {
+                    frameRate = 60000f / 1001f;
+                }
+            }
+
             // A detached decor view answers null. Falling through to the settled path rather than returning:
             // the caller has already told the player a switch is pending, so bailing out here left the
             // file on its first frame with no spinner and no error. Unreachable until the rate started
@@ -1528,14 +1539,7 @@ public class Utils {
                         Display.Mode modeBest = null;
 
                         for (Display.Mode mode : modesHigh) {
-                            // A whole multiple of the content rate, judged on the *relative* error. The
-                            // centi-Hz remainder this replaces could not match 23.976 at all, since
-                            // normRate truncates it to 2397, which divides neither 4795 (47.952 Hz) nor
-                            // 11988 (119.88 Hz). But the tolerance has to stay under the 1/1001 that
-                            // separates an NTSC rate from its integer neighbour, or 120 Hz also "matches"
-                            // 23.976 content and, being the higher rate, beats the 119.88 mode that is the
-                            // exact one. 2e-4 sits between the float noise on these values (~5e-6) and
-                            // that 1e-3 gap.
+                            // A whole multiple of the content rate, judged on the relative error.
                             final float ratio = mode.getRefreshRate() / frameRate;
                             final int multiple = Math.round(ratio);
                             if (multiple >= 1 && Math.abs(ratio - multiple) < multiple * 0.0002f) {
@@ -1543,6 +1547,23 @@ public class Utils {
                                     modeBest = mode;
                                 }
                             }
+                        }
+
+                        if (activity.mPrefs != null && activity.mPrefs.frameRateDoubling) {
+                            Display.Mode doubledBest = null;
+                            for (Display.Mode mode : modesHigh) {
+                                final float ratio = mode.getRefreshRate() / frameRate;
+                                final int multiple = Math.round(ratio);
+                                if (multiple == 2 && Math.abs(ratio - 2f) < 0.0004f
+                                        && (doubledBest == null
+                                        || normRate(mode.getRefreshRate()) > normRate(doubledBest.getRefreshRate()))) {
+                                    doubledBest = mode;
+                                }
+                            }
+                            if (doubledBest != null) {
+                                modeBest = doubledBest;
+                            }
+                        }
                         }
 
                         Window window = activity.getWindow();
