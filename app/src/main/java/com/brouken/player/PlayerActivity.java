@@ -810,7 +810,12 @@ public class PlayerActivity extends Activity {
     private ImageView posterView;
     private TextView posterPlaceholderView;
     private TextView posterBadgeView;
+    // Official 2.1.3 header: nested playlists default to the supplied transparent series logo.
+    // The public master removed this mode and always rendered a poster card, which is why our first
+    // 2.1.3 port did not match the release APK.
+    private ImageView logoView;
     private TextView titleView;
+    private TextView episodeInfoView;
     private TextView videoInfoView;
     private TextView audioInfoView;
     private TextView endsAtView;
@@ -1141,6 +1146,8 @@ public class PlayerActivity extends Activity {
     final List<Integer> apiPlaylistSeasons = new ArrayList<>();
     final List<Integer> apiPlaylistEpisodes = new ArrayList<>();
     final List<String> apiPlaylistNames = new ArrayList<>();
+    // Official nested playlist contract carries a transparent logo independently from thumbnail/poster.
+    final List<Uri> apiPlaylistLogos = new ArrayList<>();
     final List<String> apiPlaylistImdbIds = new ArrayList<>();
     final List<String> apiPlaylistTmdbIds = new ArrayList<>();
     // The title picked by hand in the subtitle search, overriding whatever the launcher sent. Session
@@ -1949,6 +1956,16 @@ public class PlayerActivity extends Activity {
         infoColumnParams.setMarginEnd(Utils.dpToPx(16));
         infoColumn.setLayoutParams(infoColumnParams);
 
+        logoView = new ImageView(this);
+        logoView.setAdjustViewBounds(true);
+        logoView.setScaleType(ImageView.ScaleType.FIT_START);
+        logoView.setMaxWidth(ui.dpS(280));
+        logoView.setMaxHeight(ui.dpS(56));
+        logoView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        logoView.setVisibility(View.GONE);
+        infoColumn.addView(logoView);
+
         titleView = new TextView(this);
         titleView.setTextColor(Color.WHITE);
         titleView.setTypeface(Typeface.DEFAULT_BOLD);
@@ -1960,10 +1977,12 @@ public class PlayerActivity extends Activity {
         titleView.setTextDirection(View.TEXT_DIRECTION_LOCALE);
         infoColumn.addView(titleView);
 
+        // Official release puts "Season · Episode · episode title" below the series logo/title.
+        episodeInfoView = createInfoLine(ui.dpS(2));
+        infoColumn.addView(episodeInfoView);
+
         // Two meta lines: video (resolution · codec · HDR) and the audio track (label / codec / language).
-        // The gaps are the design's, and they are what makes the text column as tall as the poster beside it,
-        // so the two header columns end on the same line.
-        videoInfoView = createInfoLine(ui.dpS(7));
+        videoInfoView = createInfoLine(ui.dpS(5));
         infoColumn.addView(videoInfoView);
         audioInfoView = createInfoLine(ui.dpS(3));
         infoColumn.addView(audioInfoView);
@@ -4239,6 +4258,7 @@ public class PlayerActivity extends Activity {
         apiPlaylistSeasons.clear();
         apiPlaylistEpisodes.clear();
         apiPlaylistNames.clear();
+        apiPlaylistLogos.clear();
         apiPlaylistImdbIds.clear();
         apiPlaylistTmdbIds.clear();
         apiPlaylistQuality.clear();
@@ -5525,6 +5545,7 @@ public class PlayerActivity extends Activity {
         apiPlaylistSeasons.clear();
         apiPlaylistEpisodes.clear();
         apiPlaylistNames.clear();
+        apiPlaylistLogos.clear();
         apiPlaylistImdbIds.clear();
         apiPlaylistTmdbIds.clear();
         apiPlaylistQuality.clear();
@@ -5591,6 +5612,7 @@ public class PlayerActivity extends Activity {
             apiPlaylistSeasons.add(item.season >= 0 ? item.season : null);
             apiPlaylistEpisodes.add(item.episode >= 0 ? item.episode : null);
             apiPlaylistNames.add(item.episodeTitle);
+            apiPlaylistLogos.add(item.logo);
             apiPlaylistImdbIds.add(item.imdbId);
             apiPlaylistTmdbIds.add(item.tmdbId);
             apiPlaylistQuality.add(qualityMap(item.activeQualities()));
@@ -6278,6 +6300,7 @@ public class PlayerActivity extends Activity {
         }
         final MediaItem item = player.getCurrentMediaItem();
         final MediaMetadata metadata = item != null ? item.mediaMetadata : null;
+        final int itemIndex = player.getCurrentMediaItemIndex();
 
         CharSequence title = metadata != null ? metadata.title : null;
         if (title == null || title.length() == 0) {
@@ -6285,12 +6308,35 @@ public class PlayerActivity extends Activity {
         }
         titleView.setText(title);
 
-        Uri artworkUri = metadata != null ? metadata.artworkUri : null;
-        if (artworkUri == null) {
-            artworkUri = playingArtwork;
+        // The release APK defaults header artwork to "logo". A nested playlist supplies that logo
+        // separately from thumbnail; when present it replaces the title, while an absent logo falls
+        // back to text. It does NOT silently turn into the poster mode.
+        final Uri logo = nestedPlaylistSession && itemIndex >= 0 && itemIndex < apiPlaylistLogos.size()
+                ? apiPlaylistLogos.get(itemIndex) : null;
+        if (nestedPlaylistSession) {
+            posterSlot.setVisibility(View.GONE);
+            Glide.with(this).clear(posterView);
+            if (logo != null) {
+                logoView.setVisibility(View.VISIBLE);
+                titleView.setVisibility(View.GONE);
+                Glide.with(this).load(logo).into(logoView);
+            } else {
+                Glide.with(this).clear(logoView);
+                logoView.setVisibility(View.GONE);
+                titleView.setVisibility(View.VISIBLE);
+            }
+            setInfoLine(episodeInfoView, nestedEpisodeInfo(itemIndex));
+        } else {
+            Glide.with(this).clear(logoView);
+            logoView.setVisibility(View.GONE);
+            titleView.setVisibility(View.VISIBLE);
+            setInfoLine(episodeInfoView, null);
+            Uri artworkUri = metadata != null ? metadata.artworkUri : null;
+            if (artworkUri == null) {
+                artworkUri = playingArtwork;
+            }
+            updatePoster(artworkUri, currentPlayingUri(), itemIndex, player.getMediaItemCount());
         }
-        updatePoster(artworkUri, currentPlayingUri(), player.getCurrentMediaItemIndex(),
-                player.getMediaItemCount());
 
         final boolean hasPlaylist = player.getMediaItemCount() > 1;
         if (buttonPlaylist != null) {
@@ -6305,6 +6351,26 @@ public class PlayerActivity extends Activity {
         topInfoPanel.setVisibility(View.VISIBLE);
         updateMediaInfo();
         updateEndsAt();
+    }
+
+    private String nestedEpisodeInfo(final int index) {
+        if (!nestedPlaylistSession || index < 0) {
+            return null;
+        }
+        final ArrayList<String> parts = new ArrayList<>();
+        final Integer season = index < apiPlaylistSeasons.size() ? apiPlaylistSeasons.get(index) : null;
+        final Integer episode = index < apiPlaylistEpisodes.size() ? apiPlaylistEpisodes.get(index) : null;
+        final String name = index < apiPlaylistNames.size() ? apiPlaylistNames.get(index) : null;
+        if (season != null && season >= 0) {
+            parts.add(getString(R.string.subtitle_search_season, season));
+        }
+        if (episode != null && episode >= 0) {
+            parts.add(getString(R.string.subtitle_search_episode, episode));
+        }
+        if (name != null && !name.trim().isEmpty()) {
+            parts.add(Utils.unescapeHtml(name.trim()));
+        }
+        return parts.isEmpty() ? null : TextUtils.join(" · ", parts);
     }
 
     private TextView createInfoLine(int topMargin) {
