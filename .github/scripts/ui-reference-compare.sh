@@ -88,23 +88,16 @@ PY
   adb shell dumpsys activity activities > "$OUT/$name-activity.txt" || true
 }
 
-# A fixture whose picture never changes. Two captures of the same app on it differ by nothing but
-# chrome, so what is left between the published APK and ARX can be measured instead of eyeballed;
-# the field stream above still proves the app plays what it is pointed at. The grid is cyan and the
-# ground is slate on purpose: neither is a near-neutral bright wash, so the plate detector cannot
-# mistake the picture for chrome.
+# A fixture whose picture never changes: two captures of the same app on it differ by nothing but
+# chrome, so what is left between the published APK and ARX can be measured instead of eyeballed. The
+# clip is committed (ffmpeg is not on every runner image), 45s of one slate frame crossed by a cyan
+# grid, and it is served to the emulator over `adb reverse`. The grid is cyan and the ground is slate
+# on purpose: neither is a near-neutral bright wash, so the plate detector cannot mistake the picture
+# for chrome.
+STATIC_DIR=".github/fixtures"
 prepare_static_fixture() {
-  command -v ffmpeg >/dev/null 2>&1 || { echo "static fixture: ffmpeg missing"; return 1; }
-  if ! ffmpeg -hide_banner -loglevel error -y \
-    -f lavfi -i "color=c=0x303840:s=1280x720:r=24:d=45" \
-    -vf "drawgrid=w=160:h=160:t=2:c=0x00E5FF@0.9" \
-    -c:v libx264 -preset veryfast -pix_fmt yuv420p -profile:v high -level 4.0 -g 48 \
-    -movflags +faststart /tmp/chrome-fixture.mp4; then
-    echo "static fixture: ffmpeg could not build the clip"
-    return 1
-  fi
-  ls -la /tmp/chrome-fixture.mp4
-  ( cd /tmp && nohup python3 -m http.server "$STATIC_PORT" --bind 127.0.0.1 >/tmp/static-http.log 2>&1 & )
+  test -f "$STATIC_DIR/chrome-fixture.mp4" || { echo "static fixture: clip missing from the checkout"; return 1; }
+  ( cd . && nohup python3 -m http.server "$STATIC_PORT" --bind 127.0.0.1 --directory "$STATIC_DIR" >/tmp/static-http.log 2>&1 & )
   local served=1
   for _ in 1 2 3 4 5 6; do
     sleep 1

@@ -99,6 +99,25 @@ if a.shape == b.shape:
         "plate": (790, 1030, 0, 2400),
     }.items():
         say(f"  {label}: {int(diff[y0:y1, x0:x1].sum())} px")
+
+    # The clock, the position readout and the scrubber carry the moment the capture was taken, not the
+    # chrome; masking them leaves what a layout port actually owns.
+    mask = np.ones(diff.shape, bool)
+    for y0, y1, x0, x1 in ((90, 215, 1880, 2270), (805, 875, 190, 430),
+                           (805, 875, 2040, 2270), (795, 885, 280, 520)):
+        mask[y0:y1, x0:x1] = False
+    static_only = diff & mask
+    say(f"  outside clock/position/scrubber: {int(static_only.sum())} px")
+    blocks = []
+    size = 60
+    for y in range(0, diff.shape[0], size):
+        for x in range(0, diff.shape[1], size):
+            n = int(static_only[y:y + size, x:x + size].sum())
+            if n > 400:
+                blocks.append((n, y, x))
+    for n, y, x in sorted(blocks, reverse=True)[:12]:
+        say(f"    block y{y}-{y+size} x{x}-{x+size}: {n} px")
+
     Image.fromarray(np.clip(d * 3, 0, 255).astype(np.uint8)).save(out / "chrome-diff.png")
 
 text = "\n".join(lines)
