@@ -62,7 +62,7 @@ android {
         }
     }
     base {
-        archivesName = "JustPlus.Player.v${defaultConfig.versionName}"
+        archivesName = "ARX.TPlayer.v${defaultConfig.versionName}"
     }
     buildTypes {
         release {
@@ -145,7 +145,7 @@ android {
 }
 
 dependencies {
-    def media3_version = '1.11.0'
+    def media3_version = '1.11.1'
     implementation "androidx.media3:media3-session:$media3_version"
     implementation "androidx.media3:media3-datasource:$media3_version"
     // Media reads go through OkHttp rather than HttpURLConnection, for the connection pool (see
@@ -161,7 +161,7 @@ dependencies {
     // Video software fallback for HEVC profiles that Android MediaCodec reports as beyond device
     // capabilities (for example HEVC RExt). Keep the local patched media3-exoplayer AAR as the API
     // provider instead of pulling Google's stock module beside it.
-    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.0-0.15.0") {
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.11.1-0.16.0") {
         exclude group: "androidx.media3", module: "media3-exoplayer"
     }
     implementation("androidx.media3:media3-exoplayer-dash:$media3_version") {
