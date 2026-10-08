@@ -692,11 +692,16 @@
                     app:key="checkUpdateNow"
                     app:persistent="false"
                     app:title="@string/pref_check_update"/>
+                <Preference
+                    app:key="allVersions"
+                    app:persistent="false"
+                    app:summary="@string/pref_all_versions_summary"
+                    app:title="@string/pref_all_versions"/>
             </PreferenceCategory>
             <PreferenceCategory>
                 <Preference
-                    app:key="aboutStand"
-                    app:layout="@layout/preference_stand_with_ukraine"
+                    app:key="aboutDeco"
+                    app:layout="@layout/preference_about_deco"
                     app:persistent="false"
                     app:selectable="false"/>
             </PreferenceCategory>
