@@ -13580,6 +13580,10 @@ public class PlayerActivity extends Activity {
                         MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
                         Math.min(4, Runtime.getRuntime().availableProcessors()),
                         /* numInputBuffers= */ 4, /* numOutputBuffers= */ 4));
+                // Official Just+ 2.2.2 native FFmpeg video renderer. Keep the verified
+                // NextLib path above as the first software recovery while both are tested.
+                // Neither decoder replaces the separate FFmpeg *audio* extension.
+                out.add(new FfmpegVideoRenderer(eventHandler, eventListener));
                 // The same dav1d renderer the base class just built, with its pipeline opened up. The
                 // base class can only reach the four-argument constructor by reflection, and that one
                 // takes DEFAULT_MAX_FRAME_DELAY = 2: two frames in flight, whatever the device has.
