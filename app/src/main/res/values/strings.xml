@@ -646,4 +646,7 @@
     <string name="pref_section_reports">Reports</string>
     <string name="video_orientation_landscape">Landscape</string>
 
+    <string name="playlist_resume_prompt">Resume playback from the saved position?</string>
+    <string name="playlist_resume_action">Resume</string>
+    <string name="playlist_start_over_action">Start over</string>
 </resources>
