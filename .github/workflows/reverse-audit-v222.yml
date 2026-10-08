@@ -1,0 +1,94 @@
+name: Audit official Just+ 2.2.2 APK
+
+on:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths:
+      - '.github/workflows/reverse-audit-v222.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decompile-and-compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Fetch the published upstream release and verify immutable bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-all-errors \
+            "https://github.com/just-plus-player/just-plus-player/releases/download/v2.2.2/JustPlus.Player.v2.2.2.apk" \
+            --output upstream-2.2.2.apk
+          echo "1e69816c14cedc30929e9e59657a6a8ac766fcd22b584774fc85aa9ec79bd916  upstream-2.2.2.apk" | sha256sum --check
+          ls -lh upstream-2.2.2.apk
+      - name: Install JADX (source-only reverse engineering, no modified APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-all-errors \
+            https://api.github.com/repos/skylot/jadx/releases/latest -o jadx-release.json
+          url="$(jq -r '[.assets[] | select(.name | test("^jadx-[0-9].*\\.zip$"))][0].browser_download_url // empty' jadx-release.json)"
+          test -n "$url"
+          curl --fail --location --retry 4 --retry-all-errors "$url" -o jadx-release.zip
+          mkdir -p jadx-tool
+          unzip -q jadx-release.zip -d jadx-tool
+          test -f jadx-tool/bin/jadx
+          chmod +x jadx-tool/bin/jadx
+      - name: Decompile DEX and resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-output
+          jadx-tool/bin/jadx --threads-count 4 --output-dir decompiled upstream-2.2.2.apk \
+            > audit-output/jadx-stdout.txt 2> audit-output/jadx-stderr.txt || true
+          test -f decompiled/sources/com/brouken/player/FfmpegVideoDecoder.java
+          test -f decompiled/sources/com/brouken/player/PlayerActivity.java
+          cp decompiled/sources/com/brouken/player/FfmpegVideoDecoder.java audit-output/FfmpegVideoDecoder.java
+          grep -R -n --include='*.java' -E 'ffvideoJNI|FfmpegVideoDecoder|ask_resume|resume_mode|createFfmpegVideoDecoder' \
+            decompiled/sources/com/brouken/player \
+            > audit-output/relevant-symbols.txt || true
+      - name: Compare decompiled upstream vs reconstructed ARX Java
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, hashlib, json
+          old=pathlib.Path('app/src/main/java/com/brouken/player')
+          new=pathlib.Path('decompiled/sources/com/brouken/player')
+          a={str(p.relative_to(old)):p for p in old.rglob('*.java')}
+          b={str(p.relative_to(new)):p for p in new.rglob('*.java')}
+          def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
+          rep={'arx_java_count':len(a),'apk_decompiled_java_count':len(b),
+               'only_in_arx':sorted(set(a)-set(b)),
+               'only_in_official':sorted(set(b)-set(a)),
+               'shared_filenames':len(set(a)&set(b)),
+               'byte_differing_shared':sorted(k for k in a.keys()&b.keys() if sha(a[k]) != sha(b[k]))}
+          pathlib.Path('audit-output/file-map.json').write_text(json.dumps(rep,indent=2),encoding='utf-8')
+          print(json.dumps({k:(v if not isinstance(v,list) else len(v)) for k,v in rep.items()},indent=2))
+          PY
+          for f in PlayerActivity Prefs SettingsActivity BrowserActivity; do
+            diff -u "app/src/main/java/com/brouken/player/$f.java" \
+              "decompiled/sources/com/brouken/player/$f.java" \
+              > "audit-output/$f.diff" || true
+          done
+      - name: Upload source evidence (not an installable APK)
+        uses: actions/upload-artifact@v4
+        with:
+          name: justplus-2.2.2-jadx-audit
+          path: |
+            audit-output/
+            decompiled/sources/com/brouken/player/
+            decompiled/sources/androidx/media3/decoder/ffmpeg/
+            decompiled/resources/res/values/strings.xml
+            decompiled/resources/res/layout/
+          retention-days: 14
+          if-no-files-found: error
