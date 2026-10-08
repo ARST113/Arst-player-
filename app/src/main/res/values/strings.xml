@@ -61,7 +61,7 @@
     <!-- The button on the confirmation, where the question has already said what and where. -->
     <string name="browse_torrent_delete">Delete</string>
     <string name="browse_torrent_remove_confirm">Delete %1$s from the server?</string>
-    <string name="loading_speed">%1$.1f MB/s</string>
+    <string name="loading_speed">%1$.1f Mbps</string>
     <string name="error_link_invalid">Enter a link starting with http:// or rtsp://</string>
     <string name="open_subtitles">Load subtitles</string>
     <string name="error_details">Details</string>
@@ -157,6 +157,8 @@
     <string name="pref_allow_system_framerate_on">The system picks the rate. The screen may blink</string>
     <string name="pref_allow_system_framerate_off">Nothing moves the refresh rate while you watch</string>
     <string name="pref_tunneling">Tunneled playback</string>
+    <string name="pref_capture_visible">Video visible to screen capture</string>
+    <string name="pref_capture_visible_summary">For Ambilight-style backlights and screen recording. Turns off HDR and tunneling</string>
     <string name="pref_tunneling_summary">Improves 4K and HDR. On some boxes the picture freezes, and the app turns it off itself</string>
     <string name="notice_tunneling_disabled">Tunneled playback disabled — it freezes the picture on this device</string>
     <string name="notice_quality_lowered">Switched to %1$s — the original needs a hardware decoder this device does not have</string>
@@ -580,4 +582,78 @@
     <string name="pref_mask_reports">Hide links in reports</string>
     <string name="pref_mask_reports_on">Video links are cut to the server and path, local files to their type</string>
     <string name="pref_mask_reports_off">Reports carry whole video links, tokens included. An uploaded report is public</string>
+
+    <string name="pref_section_player">Player</string>
+    <string name="pref_header_art">Header artwork</string>
+    <string name="pref_header_art_logo">Logo</string>
+    <string name="pref_header_art_poster">Picture and title</string>
+    <string name="pref_header_art_text">Title only</string>
+    <string name="pref_header_info">Media information</string>
+    <string name="pref_header_info_brief">Brief</string>
+    <string name="pref_header_info_detailed">Detailed</string>
+
+    <!-- Official Just+ Player 2.1.3 settings restored by the ARX port. -->
+    <string name="pref_round_values">Compact value buttons</string>
+    <string name="pref_round_values_on">Use compact rounded value buttons</string>
+    <string name="pref_round_values_off">Show values on player buttons</string>
+    <string name="pref_loading_screen">Loading screen</string>
+    <string name="pref_loading_screen_first">First item</string>
+    <string name="pref_loading_screen_every">Every item</string>
+    <string name="pref_loading_screen_off">Off</string>
+    <string name="pref_section_watching">Watching</string>
+    <string name="pref_resume_mode">Resume playback</string>
+    <string name="pref_resume_ask_open">Ask when opening</string>
+    <string name="pref_resume_ask_every">Ask every time</string>
+    <string name="pref_resume_always">Always resume</string>
+    <string name="pref_resume_never">Always start over</string>
+    <string name="pref_keep_awake_off">Off</string>
+    <string name="pref_keep_awake_15">15 minutes</string>
+    <string name="pref_keep_awake_30">30 minutes</string>
+    <string name="pref_keep_awake_60">1 hour</string>
+    <string name="pref_keep_awake_120">2 hours</string>
+    <string name="pref_still_watching">Are you still watching?</string>
+    <string name="pref_still_watching_on">Ask after three episodes without interaction</string>
+    <string name="pref_still_watching_off">Keep playing consecutive episodes</string>
+    <string name="pref_framerate_correction">Correct common frame rates</string>
+    <string name="pref_framerate_correction_summary">Treat 24/30/60 fps as 23.976/29.97/59.94 where appropriate</string>
+    <string name="pref_framerate_doubling">Prefer doubled refresh rate</string>
+    <string name="pref_framerate_doubling_summary">Prefer 48/50/60 Hz for 24/25/30 fps video when available</string>
+    <string name="pref_mode_switch_pause">Pause after display mode switch</string>
+    <string name="pref_section_buffer">Buffer</string>
+    <string name="pref_buffer_mode">Buffer mode</string>
+    <string name="pref_buffer_mode_time">Time</string>
+    <string name="pref_buffer_mode_memory">Memory</string>
+    <string name="pref_buffer_resume">Resume threshold</string>
+    <string name="pref_buffer_resume_summary">Buffered percentage required before playback resumes</string>
+    <string name="pref_section_track">Track selection</string>
+    <string name="pref_ask_prefer_audio">Remember preferred dub</string>
+    <string name="pref_ask_prefer_audio_on">Offer to remember a deliberately selected dub</string>
+    <string name="pref_ask_prefer_audio_off">Do not ask to remember dubs</string>
+    <string name="pref_forget_dubs">Forget remembered dubs</string>
+    <string name="pref_forget_dubs_summary">Clear per-title and habitual dub choices</string>
+    <string name="pref_section_sound">Sound</string>
+    <string name="pref_section_passthrough">Passthrough</string>
+    <string name="pref_section_search">Search</string>
+    <string name="pref_section_segments">Segments</string>
+    <string name="pref_section_skip_how">How to skip</string>
+    <string name="pref_section_skip_button">Skip button</string>
+    <string name="pref_section_device">Device</string>
+    <string name="pref_section_server">Server</string>
+    <string name="pref_section_decoder">Decoder</string>
+    <string name="pref_section_dolby_vision">Dolby Vision</string>
+    <string name="pref_diagnostics_header_summary">On-screen diagnostics and reports</string>
+    <string name="pref_section_on_screen">On screen</string>
+    <string name="pref_section_reports">Reports</string>
+    <string name="video_orientation_landscape">Landscape</string>
+
+    <string name="playlist_resume_prompt">Resume playback from the saved position?</string>
+    <string name="playlist_resume_action">Resume</string>
+    <string name="playlist_start_over_action">Start over</string>
+    <string name="pref_all_versions">All versions</string>
+    <string name="pref_all_versions_summary">Release notes of every version</string>
+    <string name="deco_line_1" translatable="false">STAND WITH</string>
+    <string name="deco_line_2" translatable="false">UKRAINE</string>
+    <string name="update_versions_loading">Loading release history…</string>
+    <string name="update_versions_empty">Release history is unavailable. Try again later.</string>
+    <string name="update_versions_close">Close</string>
 </resources>

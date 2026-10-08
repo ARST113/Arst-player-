@@ -97,6 +97,23 @@ final class UiMetrics {
         }
     }
 
+    /**
+     * Height of the header's scrim, before the status bar inset the released build adds to it.
+     *
+     * <p>This is {@code ss2.p()} from the published APK: the band the gradient covers is a device token,
+     * not the header's own height — a phone carries 150dp of it, a tablet 190dp and a television 170dp
+     * (the television number is smaller because the header there is shorter, not because its scrim is).
+     * Raw dp, not {@link #dpS}: the released build reads it through {@code a()}.
+     */
+    int headerScrimHeight() {
+        switch (deviceClass) {
+            case TV:            return dp(170);
+            case TABLET_LARGE:
+            case TABLET_MEDIUM: return dp(190);
+            default:            return dp(150);
+        }
+    }
+
     int rowMinHeight() {
         switch (deviceClass) {
             case TV:            return dp(56);

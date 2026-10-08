@@ -159,6 +159,54 @@ public final class UpdateUi {
         forward.requestFocus();
     }
 
+    /**
+     * Reconstruct the official Just+ 2.2.2 "All versions" flow: an in-app list
+     * of upstream releases, followed by each version's complete release notes.
+     * No download/install action is attached to historical entries.
+     */
+    public static void showVersionHistory(final Activity activity,
+                                          final java.util.List<Updater.VersionHistoryEntry> versions) {
+        if (activity.isFinishing() || activity.isDestroyed() || versions == null || versions.isEmpty()) {
+            return;
+        }
+        final String[] labels = new String[versions.size()];
+        for (int i = 0; i < versions.size(); i++) {
+            final Updater.VersionHistoryEntry entry = versions.get(i);
+            final String date = releaseDate(activity, entry.publishedAt);
+            labels[i] = entry.title + (date == null ? "" : "  ·  " + date);
+        }
+        new MaterialAlertDialogBuilder(activity)
+                .setTitle(R.string.pref_all_versions)
+                .setItems(labels, (dialog, which) -> showVersionNotes(activity, versions.get(which)))
+                .setNegativeButton(R.string.update_versions_close, null)
+                .show();
+    }
+
+    private static void showVersionNotes(final Activity activity,
+                                         final Updater.VersionHistoryEntry entry) {
+        if (activity.isFinishing() || activity.isDestroyed()) {
+            return;
+        }
+        final int ink = MaterialColors.getColor(activity,
+                com.google.android.material.R.attr.colorOnSurface, 0);
+        final TextView notes = new TextView(activity);
+        notes.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        notes.setTextColor(ink);
+        final String body = entry.changelog == null || entry.changelog.trim().isEmpty()
+                ? entry.tag : entry.changelog;
+        notes.setText(MarkdownRenderer.render(body));
+        notes.setMovementMethod(LinkMovementMethod.getInstance());
+        notes.setPadding(dp(activity, 24), dp(activity, 16),
+                dp(activity, 24), dp(activity, 16));
+        final ScrollView scroller = new ScrollView(activity);
+        scroller.addView(notes);
+        new MaterialAlertDialogBuilder(activity)
+                .setTitle(entry.title)
+                .setView(scroller)
+                .setPositiveButton(R.string.update_versions_close, null)
+                .show();
+    }
+
     /** One line of the release table: what it is on the left, what it says on the right. */
     private static void addRow(final LinearLayout table, final String label, final String value,
                                final int labelInk, final int valueInk) {

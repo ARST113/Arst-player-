@@ -1,0 +1,88 @@
+name: Publish ARX TPlayer 2.2.2-arx3 startup-splash pre-release
+
+on:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths: ['.github/workflows/publish-arx-2.2.2-arx3.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.ARX_RELEASE_TOKEN || github.token }}
+      TAG: arx-v2.2.2-arx3
+      VERIFIED_COMMIT: 275838e0f06ca4dd7e835c5311f1ef31bf8af70a
+      VERIFIED_RUN: '37798888202'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for and validate exact signed ARX 2.2.2-arx3 build
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 100); do
+            gh run view "$VERIFIED_RUN" --repo "$GITHUB_REPOSITORY" \
+              --json status,conclusion,headSha \
+              --jq '{status:.status,conclusion:.conclusion,headSha:.headSha}' > /tmp/build.json
+            test "$(jq -r .headSha /tmp/build.json)" = "$VERIFIED_COMMIT"
+            if test "$(jq -r .status /tmp/build.json)" = completed; then
+              test "$(jq -r .conclusion /tmp/build.json)" = success || {
+                cat /tmp/build.json
+                echo "Validated Android build did not pass; refusing release." >&2
+                exit 1
+              }
+              break
+            fi
+            if test "$i" = 100; then
+              echo "Timed out waiting for the exact Android build." >&2
+              exit 1
+            fi
+            sleep 12
+          done
+          mkdir -p downloaded
+          gh run download "$VERIFIED_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name arx-2.2.2-reconstruction-candidate-apks --dir downloaded
+          apk="$(find downloaded -type f -name 'ARX.TPlayer.v2.2.2-arx3.apk' | head -n1)"
+          test -n "$apk" && test -s "$apk"
+          cp "$apk" ARX.TPlayer.v2.2.2-arx3-release.apk
+          sha256sum ARX.TPlayer.v2.2.2-arx3-release.apk | tee /tmp/arx3.sha256
+      - name: Publish a separate testing release without replacing arx2
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "arx3 already exists, preserving original release bytes."
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets
+            exit 0
+          fi
+          {
+            echo 'ARX TPlayer 2.2.2-arx3 — TESTING pre-release.'
+            echo
+            echo 'Changes relative to arx2:'
+            echo '- Cinematic poster/background splash on startup, with supplied nested-playlist logo and red title fallback.'
+            echo '- Uses Lampa playlist.background first, then thumbnail, with no separate media fetching or decoder changes.'
+            echo '- Splash is removed upon first rendered video frame; audio-only READY, playback errors, and terminal states are handled.'
+            echo '- New episode shows new background; seek and routine rebuffer never re-show the opening artwork.'
+            echo '- Entire lower controller including delayed seekbar residue hides after regular 250ms fade, with stock 3500ms timeout.'
+            echo '- Android versionName 2.2.2-arx3; versionCode 2002005; shared ARX signing certificate supports updating installed arx2.'
+            echo '- No change to official FFmpeg video/audio JNI, Lampa playlist API, resume or HDR pipelines.'
+            echo
+            echo 'This is a hardware field-test release: verify Lampa startup poster/logo and controller auto-hide on a real device.'
+            echo "Verified build: GitHub Actions #$VERIFIED_RUN; source commit $VERIFIED_COMMIT."
+            echo
+            echo 'Signed APK SHA-256:'
+            cat /tmp/arx3.sha256
+          } > release-notes.md
+          gh release create "$TAG" \
+            'ARX.TPlayer.v2.2.2-arx3-release.apk#ARX.TPlayer.v2.2.2-arx3-release.apk' \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'ARX TPlayer 2.2.2-arx3 (startup splash field test)' \
+            --notes-file release-notes.md \
+            --prerelease
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets

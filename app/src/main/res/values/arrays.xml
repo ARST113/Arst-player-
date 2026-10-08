@@ -57,11 +57,15 @@
   <string-array name="screen_orientation_entries">
     <item>@string/video_orientation_video</item>
     <item>@string/video_orientation_system</item>
+    <item>@string/video_orientation_sensor</item>
+    <item>@string/video_orientation_landscape</item>
   </string-array>
 
   <string-array name="screen_orientation_values">
     <item>0</item>
     <item>1</item>
+    <item>2</item>
+    <item>3</item>
   </string-array>
 
   <string-array name="subtitle_secondary_mode_entries">
@@ -252,4 +256,80 @@
     <item>1250</item>
     <item>1500</item>
   </string-array>
+
+  <string-array name="header_art_entries">
+    <item>@string/pref_header_art_logo</item>
+    <item>@string/pref_header_art_poster</item>
+    <item>@string/pref_header_art_text</item>
+  </string-array>
+  <string-array name="header_art_values" translatable="false">
+    <item>logo</item>
+    <item>poster</item>
+    <item>text</item>
+  </string-array>
+  <string-array name="header_info_entries">
+    <item>@string/pref_header_info_brief</item>
+    <item>@string/pref_header_info_detailed</item>
+  </string-array>
+  <string-array name="header_info_values" translatable="false">
+    <item>brief</item>
+    <item>detailed</item>
+  </string-array>
+
+  <string-array name="resume_mode_entries">
+    <item>@string/pref_resume_ask_open</item>
+    <item>@string/pref_resume_ask_every</item>
+    <item>@string/pref_resume_always</item>
+    <item>@string/pref_resume_never</item>
+  </string-array>
+  <string-array name="resume_mode_values" translatable="false">
+    <item>askOpen</item><item>askEvery</item><item>always</item><item>never</item>
+  </string-array>
+
+  <string-array name="keep_awake_entries">
+    <item>@string/pref_keep_awake_off</item>
+    <item>@string/pref_keep_awake_15</item>
+    <item>@string/pref_keep_awake_30</item>
+    <item>@string/pref_keep_awake_60</item>
+    <item>@string/pref_keep_awake_120</item>
+  </string-array>
+  <string-array name="keep_awake_values" translatable="false">
+    <item>0</item><item>15</item><item>30</item><item>60</item><item>120</item>
+  </string-array>
+
+  <string-array name="loading_screen_entries">
+    <item>@string/pref_loading_screen_first</item>
+    <item>@string/pref_loading_screen_every</item>
+    <item>@string/pref_loading_screen_off</item>
+  </string-array>
+  <string-array name="loading_screen_values" translatable="false">
+    <item>first</item><item>every</item><item>off</item>
+  </string-array>
+
+  <string-array name="mode_switch_pause_entries">
+    <item>0</item><item>0.5</item><item>1</item><item>2</item><item>3</item><item>5</item>
+  </string-array>
+  <string-array name="mode_switch_pause_values" translatable="false">
+    <item>0</item><item>500</item><item>1000</item><item>2000</item><item>3000</item><item>5000</item>
+  </string-array>
+
+  <string-array name="buffer_mode_entries">
+    <item>@string/pref_buffer_mode_time</item>
+    <item>@string/pref_buffer_mode_memory</item>
+  </string-array>
+  <string-array name="buffer_mode_values" translatable="false">
+    <item>time</item><item>memory</item>
+  </string-array>
+  <string-array name="buffer_resume_entries">
+    <item>30 %</item><item>50 %</item><item>70 %</item><item>90 %</item>
+  </string-array>
+  <string-array name="buffer_resume_values" translatable="false">
+    <item>30</item><item>50</item><item>70</item><item>90</item>
+  </string-array>
+
+  <string-array name="exo_controls_playback_speeds">
+    <item>0.25x</item><item>0.5x</item><item>0.75x</item><item>Normal</item>
+    <item>1.25x</item><item>1.5x</item><item>1.75x</item><item>2x</item>
+  </string-array>
+
 </resources>

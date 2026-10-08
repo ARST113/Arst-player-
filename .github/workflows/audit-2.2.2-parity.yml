@@ -1,0 +1,326 @@
+name: Audit original 2.2.2 capture and UI delta
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths: ['.github/workflows/audit-2.2.2-parity.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify original official APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-all-errors \
+            'https://github.com/just-plus-player/just-plus-player/releases/download/v2.2.2/JustPlus.Player.v2.2.2.apk' \
+            -o /tmp/official-v222.apk
+          echo '1e69816c14cedc30929e9e59657a6a8ac766fcd22b584774fc85aa9ec79bd916  /tmp/official-v222.apk' | sha256sum -c -
+      - name: Install JADX
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://api.github.com/repos/skylot/jadx/releases/latest -o /tmp/jadx.json
+          url="$(jq -r '[.assets[] | select(.name | test("^jadx-[0-9].*\\.zip$"))][0].browser_download_url // empty' /tmp/jadx.json)"
+          test -n "$url"
+          curl -fsSL --retry 3 "$url" -o /tmp/jadx.zip
+          mkdir -p /tmp/jadx
+          unzip -q /tmp/jadx.zip -d /tmp/jadx
+          chmod +x /tmp/jadx/bin/jadx
+      - name: Decompile original code and resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/jadx/bin/jadx -j 4 -d /tmp/official-decompiled /tmp/official-v222.apk \
+            >/tmp/jadx.stdout 2>/tmp/jadx.stderr || true
+          test -f /tmp/official-decompiled/sources/com/brouken/player/PlayerActivity.java
+          mkdir -p parity-evidence
+          for cls in PlayerActivity Prefs SettingsActivity; do
+            f="/tmp/official-decompiled/sources/com/brouken/player/$cls.java"
+            if test -f "$f"; then
+              cp "$f" "parity-evidence/$cls.java"
+            else
+              echo "Upstream has no standalone source file $cls.java"
+            fi
+          done
+          find /tmp/official-decompiled/sources/com/brouken/player -maxdepth 1 -name '*.java' \
+            -printf '%f\n' | sort > parity-evidence/upstream-class-names.txt
+          cp -r /tmp/official-decompiled/resources/res/values parity-evidence/official-values || true
+      - name: Print precise new screen-capture implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, collections
+          files=[Path('parity-evidence')/f'{name}.java' for name in ('PlayerActivity','Prefs','SettingsActivity')]
+          pats=[r'capture',r'screen.?record',r'screen.?shot',r'tone.?map',r'hdr.?to.?sdr',r'SDR',r'TextureView',r'tunneling']
+          for f in files:
+              if not f.exists():
+                  print(f'No standalone upstream source for {f.name}; likely obfuscated/merged')
+                  continue
+              lines=f.read_text(errors='replace').splitlines()
+              print(f'=== UPSTREAM {f.name}, {len(lines)} lines ===')
+              selected=[]
+              for i,s in enumerate(lines):
+                  if any(re.search(p,s,re.I) for p in pats):
+                      selected.append(i)
+              for i in selected[:45]:
+                  print(f'--- {f.name}:{i+1} ---')
+                  for j in range(max(0,i-5), min(len(lines),i+8)):
+                      print(f'{j+1}: {lines[j][:230]}')
+          PY
+      - name: Compare named resources with original APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, json
+          from pathlib import Path
+          root=Path('parity-evidence')
+          official=root/'official-values'
+          ours=Path('app/src/main/res/values')
+          out={}
+          for name in ('strings.xml','arrays.xml','colors.xml','dimens.xml','styles.xml'):
+              o=official/name;a=ours/name
+              if not o.exists() or not a.exists(): continue
+              pattern=r'<(?:string|color|dimen|string-array|integer-array|style)\s+name="([^"]+)"'
+              oo=set(re.findall(pattern,o.read_text(errors='replace')))
+              aa=set(re.findall(pattern,a.read_text(errors='replace')))
+              out[name]={'official_only':sorted(oo-aa),'arx_only':sorted(aa-oo),'common':len(oo&aa)}
+          (root/'resource-delta.json').write_text(json.dumps(out,indent=2))
+          for filename,stats in out.items():
+              print('=== resource',filename,'=== official_only',len(stats['official_only']),'arx_only',len(stats['arx_only']))
+              print('new official names:',stats['official_only'][:120])
+          PY
+      - name: Recover official capture and preference implementation (obfuscated fields)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          base=Path('/tmp/official-decompiled/sources')
+          file=Path('parity-evidence/PlayerActivity.java')
+          lines=file.read_text(errors='replace').splitlines()
+          for name,pattern in [('official capture layout',r'hu1Var2\.y|hu1Var2\.x'),
+                                ('all capture preference reads',r'\.H\.y|\.H\.x'),
+                                ('view output setup',r'activity_player_textureview')]:
+              hits=[i for i,s in enumerate(lines) if re.search(pattern,s)]
+              print(f'CAPTURE AUDIT [{name}] matches={len(hits)}')
+              for i in hits[:18]:
+                  print('  CONTEXT AT',i+1)
+                  for k in range(max(0,i-12),min(len(lines),i+13)):
+                      print(f'  {k+1}: {lines[k][:220]}')
+          class_files=[p for p in base.rglob('hu1.java')]
+          if not class_files:
+              class_files=[p for p in base.rglob('*.java')
+                           if p.stat().st_size < 500000 and re.search(r'\bclass hu1\b',
+                                        p.read_text(errors='replace')[:4000])]
+          print('OBFUSCATED PREFS FILES', [str(p) for p in class_files[:6]])
+          for p in class_files[:1]:
+              target=Path('parity-evidence/obfuscated-hu1.java')
+              target.write_bytes(p.read_bytes())
+              src=p.read_text(errors='replace').splitlines()
+              for i,l in enumerate(src):
+                  if any(t in l for t in ('captureVisible','tunneling','screenCapture','videoCapture')):
+                      print('PREF KEY AT',i+1)
+                      for k in range(max(0,i-6),min(len(src),i+7)):
+                          print(f'  {k+1}: {src[k][:220]}')
+          xml=Path('parity-evidence/official-values/strings.xml')
+          if xml.exists():
+              for line in xml.read_text(errors='replace').splitlines():
+                  if re.search('capture|ambilight|screen.?record|hdr|decoder',line,re.I) and '<string ' in line:
+                      print('OFFICIAL STRING:',line[:280])
+          PY
+      - name: Inspect authoritative preference XML and all capture setting call sites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          base=Path('/tmp/official-decompiled')
+          src=base/'sources'
+          preferences=base/'resources/res/xml/root_preferences.xml'
+          if preferences.exists():
+              lines=preferences.read_text(errors='replace').splitlines()
+              for i,line in enumerate(lines):
+                  if 'captureVisible' in line or 'tunneling' in line or 'pref_capture_visible' in line:
+                      print('UPSTREAM XML PREF',i+1,'\n'+'\n'.join(lines[max(0,i-6):min(len(lines),i+7)]))
+              Path('parity-evidence/root_preferences.xml').write_bytes(preferences.read_bytes())
+          hits=[]
+          for p in src.rglob('*.java'):
+              if p.stat().st_size>2000000: continue
+              text=p.read_text(errors='replace')
+              for i,line in enumerate(text.splitlines()):
+                  if 'captureVisible' in line or 'pref_capture_visible' in line:
+                      hits.append((str(p.relative_to(src)),i+1,line.strip()[:180]))
+          for item in hits[:40]:
+              print('UPSTREAM CAPTURE REFERENCE',item)
+          print('TOTAL UPSTREAM CAPTURE REFERENCES',len(hits))
+          PY
+      - name: Compare full settings hierarchy against official 2.2.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          import json
+          from pathlib import Path
+          appns='{http://schemas.android.com/apk/res-auto}'
+          paths={'official':Path('parity-evidence/root_preferences.xml'),
+                 'arx':Path('app/src/main/res/xml/root_preferences.xml')}
+          def scan(path):
+              data={}
+              root=ET.parse(path).getroot()
+              def walk(node,container):
+                  key=node.attrib.get(appns+'key')
+                  if key:
+                      attrs={x.split('}')[-1]:v for x,v in node.attrib.items()
+                             if x.split('}')[-1] in ('key','title','summary','defaultValue',
+                             'dependency','disableDependentsState','summaryOff','summaryOn',
+                             'entries','entryValues','icon')}
+                      data[key]={'screen':container,'tag':node.tag.split('}')[-1],'attrs':attrs}
+                  for sub in node:
+                      walk(sub, key if node.tag.endswith('PreferenceScreen') and key else container)
+              walk(root,'root')
+              return data
+          a,b=scan(paths['official']),scan(paths['arx'])
+          delta={'only_official':sorted(set(a)-set(b)), 'only_arx':sorted(set(b)-set(a)),
+                 'different':{key:{'official':a[key], 'arx':b[key]}
+                              for key in sorted(set(a)&set(b)) if a[key]!=b[key]}}
+          Path('parity-evidence/settings-semantic-delta.json').write_text(json.dumps(delta,indent=2))
+          print('OFFICIAL ONLY SETTINGS',delta['only_official'])
+          print('ARX ONLY SETTINGS',delta['only_arx'])
+          print('ATTRIBUTE/HIERARCHY DIFF COUNT',len(delta['different']))
+          for k,v in list(delta['different'].items())[:100]:
+              print('SETTING DIFF',k,json.dumps(v,ensure_ascii=False)[:600])
+          assert not delta['only_official'], 'Missing official preference keys: '+str(delta['only_official'])
+          assert not delta['only_arx'], 'Unexpected non-upstream preference keys: '+str(delta['only_arx'])
+          assert not delta['different'], 'Settings hierarchy differs from official: '+str(list(delta['different']))
+          print('PASS: All named preference keys and visible attributes match official 2.2.2')
+          PY
+      - name: Inspect 2.2.2 About and changed settings icon resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('/tmp/official-decompiled')
+          root=Path('parity-evidence/root_preferences.xml')
+          lines=root.read_text(errors='replace').splitlines()
+          for i,line in enumerate(lines):
+              if any(k in line for k in ('aboutDeco','allVersions','aboutStand','diagnosticsScreen','skipScreen','videoScreen')):
+                  print('UPSTREAM SETTING',i+1)
+                  for j in range(max(0,i-6),min(len(lines),i+9)):
+                      print(f'{j+1}: {lines[j][:200]}')
+          strings=Path('parity-evidence/official-values/strings.xml')
+          for line in strings.read_text(errors='replace').splitlines():
+              if any(k in line for k in ('name="pref_all', 'name="all_versions', 'name="pref_about', 'name="about_', 'name="deco_')):
+                  print('UPSTREAM ABOUT TEXT',line[:260])
+          for pattern in ['allVersions','aboutDeco']:
+              hits=[]
+              for p in (src/'sources').rglob('*.java'):
+                  if p.stat().st_size > 1300000: continue
+                  for i,line in enumerate(p.read_text(errors='replace').splitlines()):
+                      if pattern in line:
+                          hits.append((str(p.relative_to(src)),i+1,line.strip()[:200]))
+              print('UPSTREAM ABOUT CALLS',pattern,hits[:30])
+          for name in ('ic_bug_report_24dp.xml','ic_double_arrow_24dp.xml'):
+              matches=list((src/'resources/res').rglob(name))
+              print('UPSTREAM VECTOR ICON',name,[(str(p),p.stat().st_size) for p in matches[:4]])
+          PY
+      - name: Decode original All versions and About decorative actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          f=Path('parity-evidence/SettingsActivity.java')
+          x=f.read_text(errors='replace').splitlines()
+          for a,b in [(560,615)]:
+              print('ORIGINAL ABOUT HANDLERS',a,b)
+              for i in range(a-1,min(b,len(x))):
+                  print(f'{i+1}: {x[i][:240]}')
+          src=Path('/tmp/official-decompiled/resources/res/layout/preference_about_deco.xml')
+          print('ABOUT DECO XML EXISTS',src.exists())
+          if src.exists():
+              print(src.read_text(errors='replace')[:6500])
+          PY
+      - name: Decode About All versions click callback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          candidates=list(Path('/tmp/official-decompiled/sources').rglob('rb2.java'))
+          print('UPSTREAM LISTENER CLASSES', [str(c) for c in candidates])
+          for path in candidates[:1]:
+              ls=path.read_text(errors='replace').splitlines()
+              print('RB2 LISTENER CLASS',str(path),'TOTAL LINES',len(ls))
+              for i,line in enumerate(ls):
+                  if 'case 6:' in line or 'case 7:' in line or 'getReleases' in line or 'releases' in line or 'version' in line.lower():
+                      print('RB2 MATCH',i+1)
+                      for j in range(max(0,i-8),min(len(ls),i+19)):
+                          print(f'{j+1}: {ls[j][:240]}')
+          PY
+      - name: Inspect upstream buffering poster and controller dismissal
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          root=Path('/tmp/official-decompiled')
+          src=root/'sources'
+          player=src/'com/brouken/player/PlayerActivity.java'
+          ours=Path('app/src/main/java/com/brouken/player/PlayerActivity.java')
+          keys=re.compile(r'poster|splash|loading|preload|thumbnail|artwork|buffering|hideController|hideControllerImmediately|controllerShowTimeout|showTimeout|showController|setAnimationEnabled|setControllerAutoShow|loadingSpeed|STATE_BUFFERING', re.I)
+          for tag,f in [('UPSTREAM PlayerActivity',player),('ARX PlayerActivity',ours)]:
+            print('AUDIT FILE', tag, 'exists=',f.exists())
+            if not f.exists():continue
+            lines=f.read_text(errors='replace').splitlines()
+            hits=[i for i,l in enumerate(lines) if keys.search(l)]
+            print('MATCH_COUNT',len(hits),'FILE_LINES',len(lines))
+            for i in hits[:100]:
+              print(f'[{tag}:{i+1}] {lines[i][:250]}')
+              for j in range(max(0,i-2),min(len(lines),i+3)):
+                if j!=i:print('   ',j+1,lines[j][:210])
+          for target in ('CustomPlayerView.java','PlayerView.java','PlayerControlView.java','StyledPlayerControlView.java'):
+            candidates=list(src.rglob(target))
+            for f in candidates[:2]:
+              lines=f.read_text(errors='replace').splitlines()
+              hits=[i for i,l in enumerate(lines) if re.search(r'hideController|showTimeout|hideImmediately|setAnimationEnabled|animationEnabled',l,re.I)]
+              print('CONTROLLER UPSTREAM',str(f.relative_to(src)),'lines',len(lines),'hits',len(hits))
+              for i in hits[:35]:
+                print(' ',i+1,lines[i][:250])
+          for dir in ('layout','layout-land','drawable'):
+            folder=root/'resources/res'/dir
+            if not folder.exists():continue
+            for f in folder.glob('*.xml'):
+              text=f.read_text(errors='replace')
+              if re.search(r'poster|preload|splash|loading|buffer',f.name,re.I) or (
+                  re.search(r'PlayerActivity|player_control_view|player_view',f.name,re.I) and re.search(r'poster|loading',text,re.I)):
+                print('UPSTREAM RESOURCE',f.name,text[:1200].replace('\n',' '))
+          print('ORIGINAL AUDIT COMPLETE')
+          PY
+      - name: Publish reference evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-2.2.2-parity-evidence
+          path: parity-evidence/
+          retention-days: 7
+          if-no-files-found: warn

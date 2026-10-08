@@ -1,0 +1,101 @@
+name: Apply supplied neon app icon
+
+on:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths:
+      - '.github/workflows/apply-neon-icon-v222.yml'
+      - 'app/src/main/res/drawable-nodpi/arx_launcher_source.webp'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-android-icons:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: reconstruct-2.2.2
+          fetch-depth: 0
+      - name: Install image processing tools
+        run: python3 -m pip install --user Pillow
+      - name: Render density-specific icons and TV banners from supplied artwork
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          from pathlib import Path
+
+          src = Path('app/src/main/res/drawable-nodpi/arx_launcher_source.webp')
+          source = Image.open(src).convert('RGBA')
+          assert source.width >= 64 and source.height >= 64, 'Invalid source icon'
+
+          root = Path('app/src/main/res')
+          for qualifier, size in (('mdpi',48),('hdpi',72),('xhdpi',96),
+                                  ('xxhdpi',144),('xxxhdpi',192)):
+              # The legacy launcher icon is the user's complete, transparent symbol.
+              target = root / ('mipmap-' + qualifier) / 'ic_launcher.png'
+              target.parent.mkdir(parents=True, exist_ok=True)
+              source.resize((size,size),Image.Resampling.LANCZOS).save(target)
+
+          # The adaptive launcher foreground must fit completely within the
+          # circular, squircle, and other launcher masks (72dp safe region).
+          # Transparent padding prevents the blue outer ring from clipping.
+          foreground = Image.new('RGBA', (432,432), (0,0,0,0))
+          logo = source.resize((268,268), Image.Resampling.LANCZOS)
+          foreground.alpha_composite(logo, ((432-268)//2,(432-268)//2))
+          foreground.save(root / 'drawable-nodpi/neon_launcher_foreground.png')
+
+          # Android themed icons use an intentionally monochrome alpha mask.
+          gray = Image.new('RGBA',(432,432),(255,255,255,0))
+          alpha = foreground.getchannel('A')
+          gray.putalpha(alpha)
+          gray.save(root / 'drawable-nodpi/neon_launcher_monochrome.png')
+
+          # The TV launcher is a wide Android banner and should use the same identity.
+          for qualifier, dimensions in (('xhdpi',(640,360)),
+                                         ('xxhdpi',(960,540)),
+                                         ('xxxhdpi',(1280,720))):
+              width,height=dimensions
+              bg = Image.new('RGBA',(width,height),(4,13,40,255))
+              strip=ImageDraw.Draw(bg)
+              for y in range(height):
+                  t=y/height
+                  strip.line([(0,y),(width,y)],
+                       fill=(int(3+8*t),int(12+10*t),int(40+18*t),255),width=1)
+              icon_size=int(height*0.76)
+              image=source.resize((icon_size,icon_size),Image.Resampling.LANCZOS)
+              bg.alpha_composite(image,(int(width*0.12), (height-icon_size)//2))
+              try:
+                  font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',int(height*0.12))
+              except OSError:
+                  font=ImageFont.load_default()
+              ImageDraw.Draw(bg).text((int(width*0.50),int(height*0.44)),'ARX TPlayer',
+                          font=font,fill=(227,243,255,255))
+              target=root/('mipmap-'+qualifier)/'banner.png'
+              bg.convert('RGB').save(target)
+
+          # Store screenshot-independent Play listing icon with consistent branding.
+          store = Path('fastlane/metadata/android/en-US/images/icon.png')
+          store.parent.mkdir(parents=True,exist_ok=True)
+          source.resize((512,512),Image.Resampling.LANCZOS).save(store)
+          print('Generated all Android launcher and TV icon resources.')
+          PY
+      - name: Commit generated bitmap resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/res/mipmap-*/ic_launcher.png \
+            app/src/main/res/mipmap-*/banner.png \
+            app/src/main/res/drawable-nodpi/neon_launcher_*.png \
+            fastlane/metadata/android/en-US/images/icon.png
+          if ! git diff --cached --quiet; then
+            git commit -m 'design: apply supplied neon ARX logo to adaptive, legacy and TV launchers'
+            git push origin HEAD:reconstruct-2.2.2
+          fi

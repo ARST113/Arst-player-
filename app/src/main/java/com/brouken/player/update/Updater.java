@@ -15,6 +15,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.Locale;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -116,6 +119,69 @@ public final class Updater {
             return null;
         }
         return null;
+    }
+
+    /** One published GitHub release, including its original changelog for the About dialog. */
+    public static final class VersionHistoryEntry {
+        public final String title;
+        public final String tag;
+        public final String changelog;
+        public final String publishedAt;
+
+        VersionHistoryEntry(String title, String tag, String changelog, String publishedAt) {
+            this.title = title;
+            this.tag = tag;
+            this.changelog = changelog;
+            this.publishedAt = publishedAt;
+        }
+    }
+
+    public interface VersionHistoryCallback {
+        /** Called on a worker thread; an empty list also represents network errors. */
+        void onResult(List<VersionHistoryEntry> versions);
+    }
+
+    /** Fetch every published upstream release, not just versions newer than the installed APK. */
+    public static Thread findVersions(final VersionHistoryCallback callback) {
+        final Thread thread = new Thread(() -> {
+            final List<VersionHistoryEntry> versions = readVersionHistory();
+            if (!Thread.currentThread().isInterrupted()) {
+                callback.onResult(versions);
+            }
+        }, "Updater-list");
+        thread.setDaemon(true);
+        thread.start();
+        return thread;
+    }
+
+    private static List<VersionHistoryEntry> readVersionHistory() {
+        final String body = get(RELEASES_URL + "?per_page=100");
+        if (body == null) {
+            return Collections.emptyList();
+        }
+        final ArrayList<VersionHistoryEntry> entries = new ArrayList<>();
+        try {
+            final JSONArray releases = new JSONArray(body);
+            for (int i = 0; i < releases.length(); i++) {
+                final JSONObject release = releases.optJSONObject(i);
+                if (release == null || release.optBoolean("draft")) {
+                    continue;
+                }
+                final String tag = release.optString("tag_name", "").trim();
+                if (tag.isEmpty()) {
+                    continue;
+                }
+                String title = release.optString("name", "").trim();
+                if (title.isEmpty()) {
+                    title = tag;
+                }
+                entries.add(new VersionHistoryEntry(title, tag,
+                        release.optString("body", ""), release.optString("published_at", "")));
+            }
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+        return entries;
     }
 
     private static JSONObject firstApkAsset(JSONArray assets) {

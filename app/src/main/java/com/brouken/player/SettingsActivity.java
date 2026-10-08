@@ -469,6 +469,16 @@ public class SettingsActivity extends AppCompatActivity
             if (preferenceAutoPiP != null) {
                 preferenceAutoPiP.setEnabled(Utils.isPiPSupported(this.getContext()));
             }
+            if (Utils.isTvBox(requireContext())) {
+                final Preference orientation = findPreference("screenOrientation");
+                if (orientation != null) {
+                    orientation.setVisible(false);
+                }
+                final Preference roundValues = findPreference("roundValueButtons");
+                if (roundValues != null) {
+                    roundValues.setVisible(false);
+                }
+            }
             Preference preferenceFrameRateMatching = findPreference("frameRateMatching");
             if (preferenceFrameRateMatching != null) {
                 preferenceFrameRateMatching.setEnabled(Build.VERSION.SDK_INT >= 23);
@@ -705,7 +715,7 @@ public class SettingsActivity extends AppCompatActivity
                 crashReporting.setVisible(false);
             }
 
-            final Preference stand = findPreference("aboutStand");
+            final Preference stand = findPreference("aboutDeco");
             if (stand != null && Utils.isTvBox(requireContext())) {
                 // The badge is the last thing on the screen and does nothing, so a remote would stop at
                 // the row above it and never scroll far enough to show it. Selectable on a television
@@ -717,7 +727,15 @@ public class SettingsActivity extends AppCompatActivity
             if (sendAppLog != null) {
                 sendAppLog.setOnPreferenceClickListener(preference -> {
                     ErrorActivity.showReport(requireContext(), getString(R.string.pref_send_app_log),
-                            getString(R.string.pref_send_app_log_summary), Utils.recentLog());
+                            getString(R.string.pref_send_app_log_summary), Utils.settingsReportLog());
+                    return true;
+                });
+            }
+
+            Preference allVersions = findPreference("allVersions");
+            if (allVersions != null) {
+                allVersions.setOnPreferenceClickListener(preference -> {
+                    showVersionHistory();
                     return true;
                 });
             }
@@ -1075,6 +1093,25 @@ public class SettingsActivity extends AppCompatActivity
             if (Build.VERSION.SDK_INT < 33) {
                 say(activity, R.string.error_copied, R.drawable.ic_content_copy_24dp);
             }
+        }
+
+        /** Displays original GitHub release history inside the app, as in upstream 2.2.2. */
+        private void showVersionHistory() {
+            final Activity activity = getActivity();
+            if (activity == null) {
+                return;
+            }
+            say(activity, R.string.update_versions_loading, R.drawable.ic_update_24dp);
+            Updater.findVersions(versions -> activity.runOnUiThread(() -> {
+                if (!isAdded() || activity.isFinishing() || activity.isDestroyed()) {
+                    return;
+                }
+                if (versions.isEmpty()) {
+                    say(activity, R.string.update_versions_empty, R.drawable.ic_update_24dp);
+                } else {
+                    UpdateUi.showVersionHistory(activity, versions);
+                }
+            }));
         }
 
         /** Asks GitHub, and says so either way: silence reads as a row that did nothing. */

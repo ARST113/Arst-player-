@@ -1,0 +1,114 @@
+name: UI compare official 2.2.2 vs ARX
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths:
+      - '.github/workflows/ui-v222-compare.yml'
+      - 'app/src/main/res/**'
+
+
+permissions:
+  contents: read
+
+jobs:
+  visual-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: reconstruct-2.2.2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Build debug ARX 2.2.2
+        run: ./gradlew :app:assembleLatestUniversalDebug --no-daemon
+      - name: Download official reference APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-all-errors \
+            'https://github.com/just-plus-player/just-plus-player/releases/download/v2.2.2/JustPlus.Player.v2.2.2.apk' \
+            -o /tmp/JustPlus.Player.v2.2.2.apk
+          echo '1e69816c14cedc30929e9e59657a6a8ac766fcd22b584774fc85aa9ec79bd916  /tmp/JustPlus.Player.v2.2.2.apk' | sha256sum -c -
+      - name: Install image comparison packages
+        run: python3 -m pip install --quiet pillow numpy
+      - name: Prepare UI comparison script for offline deterministic static fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .github/scripts/ui-reference-compare.sh /tmp/ui-v222-compare.sh
+          sed -i 's|/tmp/JustPlus.Player.v2.1.3.apk|/tmp/JustPlus.Player.v2.2.2.apk|g' /tmp/ui-v222-compare.sh
+          # The first two old smoke captures require a private TorrServer and can
+          # block on a network timeout. Keep all offline, static video/UI captures.
+          sed -i -E '/^open_and_capture official \/tmp\/JustPlus.Player.v2.2.2.apk$/d' /tmp/ui-v222-compare.sh
+          sed -i -E '/^open_and_capture arx "\$ARX_APK"$/d' /tmp/ui-v222-compare.sh
+          bash -n /tmp/ui-v222-compare.sh
+      - name: Enable Android emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+      - name: 'Capture official vs ARX: controls, playlist, quality, dark and settings'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 900
+          script: |
+            # android-emulator-runner invokes this script with /bin/sh (dash on Ubuntu).
+            # pipefail is not a POSIX sh option; the Bash comparison script sets it itself.
+            set -eu
+            timeout 2100 bash /tmp/ui-v222-compare.sh
+            mkdir -p ui-reference
+            for build in official arx; do
+              if [ "$build" = official ]; then
+                apk=/tmp/JustPlus.Player.v2.2.2.apk
+              else
+                apk="$(find app/build/outputs/apk/latestUniversal/debug -type f -name '*.apk' | head -n1)"
+              fi
+              adb uninstall com.justplus.player >/dev/null 2>&1 || true
+              adb install "$apk"
+              adb shell cmd uimode night no >/dev/null 2>&1 || true
+              adb shell am start -W -n com.justplus.player/com.brouken.player.SettingsActivity \
+                > "ui-reference/$build-settings-am-start.txt" || true
+              sleep 3
+              adb exec-out screencap -p > "ui-reference/$build-settings-root.png"
+              adb shell input swipe 560 1250 560 360 350 || true
+              sleep 1
+              adb exec-out screencap -p > "ui-reference/$build-settings-scroll.png"
+              adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+              adb pull /sdcard/window.xml "ui-reference/$build-settings-tree.xml" >/dev/null 2>&1 || true
+            done
+            python3 - <<'PY'
+            from PIL import Image, ImageChops, ImageStat
+            from pathlib import Path
+            folder=Path('ui-reference')
+            for suffix in ('static','playlist','quality','dark','settings-root','settings-scroll'):
+                a=folder/f'official-{suffix}.png';b=folder/f'arx-{suffix}.png'
+                if not a.exists() or not b.exists(): continue
+                ia=Image.open(a).convert('RGB');ib=Image.open(b).convert('RGB')
+                if ia.size!=ib.size:
+                    print('UI SIZE DELTA',suffix,ia.size,ib.size)
+                    continue
+                diff=ImageChops.difference(ia,ib)
+                stat=ImageStat.Stat(diff)
+                print('UI MEAN ABS DIFF',suffix,round(sum(stat.mean)/3,3))
+                diff.save(folder/f'diff-{suffix}.png')
+            PY
+      - name: Upload unmodified official/reference screenshots and UI difference report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-2.2.2-vs-arx-2.2.2-ui
+          path: ui-reference/
+          retention-days: 14
+          if-no-files-found: warn

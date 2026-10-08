@@ -26,12 +26,16 @@ import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.Outline;
 import android.graphics.Rect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.shapes.RectShape;
+import android.graphics.drawable.ShapeDrawable;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.database.Cursor;
@@ -53,6 +57,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
+import android.os.Parcel;
 import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.provider.DocumentsContract;
@@ -76,6 +81,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceView;
+import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.ViewGroup;
@@ -420,9 +426,8 @@ public class PlayerActivity extends Activity {
     // Read by the codec selector on the playback thread.
     private volatile boolean forceHevcForDolbyVision;
     private boolean pendingStuckRecovery;
-    // Generic HEVC recovery, kept separate from the upstream Dolby Vision path so external-player
-    // behaviour (including playlists) remains untouched. 0 = normal, 1 = c2.android software,
-    // 2 = legacy OMX.google software alias, 3 = NextLib FFmpeg/libavcodec renderer.
+    // Generic HEVC recovery for devices that accept a stream in MediaCodec and then fail on the
+    // first buffers. 0 = normal, 1 = c2.android software, 2 = OMX.google, 3 = official native FFmpeg.
     private volatile int forceHevcSoftwareStage;
     private boolean pendingHevcSoftwareRecovery;
     // Installed for this player build when Dolby Vision profile 7 is being rewritten as profile 8.1;
@@ -460,10 +465,8 @@ public class PlayerActivity extends Activity {
     // recovery rebuilds the player, and a screen restart must not hand the track back to the decoder that
     // has already been proven unable to carry it.
     private static final Set<String> sessionFfmpegAudioFormats = new HashSet<>();
-    // Video formats that all MediaCodec attempts have proven unable to decode in this process.
-    // The custom MediaCodecVideoRenderer reports these as unsupported so track selection moves to
-    // the NextLib FFmpeg renderer appended behind it. Keyed by the same stable format key used by
-    // the hardware capability/recovery code; no mime-wide blacklist.
+    // Video formats whose platform decoder has failed through the MediaCodec fallback ladder.
+    // The platform renderer then refuses only this exact format so Media3 can select FFmpeg.
     private static final Set<String> sessionFfmpegVideoFormats = new HashSet<>();
 
     // Video formats a decoder refused with ERROR_INSUFFICIENT_RESOURCE even though the device's own
@@ -753,6 +756,17 @@ public class PlayerActivity extends Activity {
     // controls have just appeared, or they have just stopped being fully visible, which is the first frame
     // of their fade — with the states in between keeping whatever the last edge decided.
     private boolean controllerChromeVisible;
+    // Media3's animated hide keeps the time bar visible for another ~2 seconds after
+    // the other controls have faded. The released chrome should disappear as one panel:
+    // complete Media3's hide as soon as its 250 ms fade has finished.
+    private boolean controllerHideCompleting;
+    private final Runnable completeControllerHideAction = () -> {
+        if (controllerHideCompleting && playerView != null && controllerVisible
+                && !playerView.isControllerFullyVisible() && !this.isScrubbing && !this.pickerDialogOpen) {
+            playerView.hideControllerImmediately();
+        }
+        controllerHideCompleting = false;
+    };
     public static Snackbar snackbar;
     // The TV dialog of a held load stall, closed when playback resumes on its own.
     private AlertDialog stallDialog;
@@ -807,14 +821,31 @@ public class PlayerActivity extends Activity {
 
     CoordinatorLayout coordinatorLayout;
     private LinearLayout topInfoPanel;
+    private FrameLayout headerRoot;
+    private View headerScrim;
     private LinearLayout headerButtons;
     private FrameLayout posterSlot;
     private ImageView posterView;
+    // First-open cinematic card. This is deliberately outside Media3's controller:
+    // a slow torrent gets its supplied poster/logo before its first decoded frame.
+    // Seeking and subsequent rebuffering keep the actual video frame visible.
+    private FrameLayout startupSplash;
+    private ImageView startupArtwork;
+    private ImageView startupLogo;
+    private TextView startupTitle;
+    private boolean startupSplashPending;
     private TextView posterPlaceholderView;
     private TextView posterBadgeView;
+    // Official 2.1.3 header: nested playlists default to the supplied transparent series logo.
+    // The public master removed this mode and always rendered a poster card, which is why our first
+    // 2.1.3 port did not match the release APK.
+    private ImageView logoView;
     private TextView titleView;
+    private TextView episodeInfoView;
     private TextView videoInfoView;
     private TextView audioInfoView;
+    private LinearLayout mediaInfoRow;
+    private ImageView metaDivider;
     private TextView endsAtView;
     /**
      * When the broadcast now playing was joined, for the "watching for" reading in the bottom bar.
@@ -831,8 +862,9 @@ public class PlayerActivity extends Activity {
     private OutlineTextClock overlayClock;
     private OutlineTextClock headerClock;
     private ImageButton buttonPlaylist;
-    private ImageButton buttonQuality;
-    private ImageButton buttonAudio;
+    private TextView buttonQuality;
+    private TextView buttonAudio;
+    private TextView buttonSubtitle;
     private ImageButton buttonMore;
     private ImageButton buttonUpdate;
     private android.app.Dialog qualityDialog;
@@ -888,7 +920,7 @@ public class PlayerActivity extends Activity {
     // with a black sheet faded over everything once the pause has stood a minute, and is given up
     // altogether once it has stood two hours: whoever fell asleep does not need the television on.
     private static final long DIM_DELAY_MS = 60_000L;
-    private static final long KEEP_AWAKE_MAX_MS = 2 * 60 * 60 * 1000L;
+    // The timeout itself is user-configurable in 2.1.3 (0/15/30/60/120 minutes).
     private static final float DIM_ALPHA = 0.85f;
     private static final int DIM_IN_MS = 800;
     private static final int DIM_OUT_MS = 300;
@@ -911,7 +943,7 @@ public class PlayerActivity extends Activity {
     // arriving, so once the wait gets noticeable the rate answers it: 0,0 MB/s reads as "nothing is
     // coming", anything else as "alive, just slow". Delayed so the short reloads after a seek stay clean.
     private TextView loadingSpeedView;
-    private static final long LOADING_SPEED_DELAY_MS = 2_500L;
+    private static final long LOADING_SPEED_DELAY_MS = 2_000L;
     private static final long LOADING_SPEED_TICK_MS = 1_000L;
     private long loadingSpeedBytes;
     private boolean loadingSpeedScheduled;
@@ -919,16 +951,20 @@ public class PlayerActivity extends Activity {
         @Override
         public void run() {
             final long total = TrackNameParsingDataSource.bytesRead.get();
-            final double mbPerSec = Math.max(0, total - loadingSpeedBytes)
-                    * 1000d / LOADING_SPEED_TICK_MS / (1024 * 1024);
+            final double mbps = Math.max(0, total - loadingSpeedBytes)
+                    * 1000d / LOADING_SPEED_TICK_MS * 8d / 1_000_000d;
             loadingSpeedBytes = total;
-            loadingSpeedView.setText(getString(R.string.loading_speed, mbPerSec));
+            loadingSpeedView.setText(getString(R.string.loading_speed, mbps));
             loadingSpeedView.setVisibility(View.VISIBLE);
             playerView.postDelayed(this, LOADING_SPEED_TICK_MS);
         }
     };
     private PlayerControlView controlView;
     private CustomDefaultTimeBar timeBar;
+    // Official 2.1.3 keeps the legacy navigation-bar inset stable while bars hide/show.
+    // ARX still applies its symmetric cutout handling and TV overscan after this source inset.
+    private int legacyBottomInsetMax;
+    private int legacyBottomInsetOrientation = Configuration.ORIENTATION_UNDEFINED;
 
     private boolean restoreOrientationLock;
     private boolean restorePlayState;
@@ -1046,6 +1082,9 @@ public class PlayerActivity extends Activity {
     // Utils.handleFrameRate, read once by the caller that arms the give-up timer: the two waits differ by
     // an HDMI renegotiation. Written from that probe's background thread as well as the UI one.
     volatile boolean resolutionSwitchRequested;
+    // True only when the mode selector actually requested a different display mode.
+    // Used to apply the optional official 2.1.3 post-switch pause without delaying no-op matches.
+    volatile boolean displayModeSwitchRequested;
 
     public static boolean restoreControllerTimeout = false;
     public static boolean shortControllerTimeout = false;
@@ -1095,11 +1134,36 @@ public class PlayerActivity extends Activity {
     Uri apiThumbnailUri;
     String apiSegments;
     String[] apiHeaders;
-    // Native Just+ 2.1.1 playlist session. The official APK reads one nested "playlist" Bundle
+    // Native Just+ 2.1.2 playlist session. The official APK reads one nested "playlist" Bundle
     // directly instead of rewriting it into the legacy video_list contract.
     boolean nestedPlaylistSession;
     PendingIntent nestedResultCallback;
-    int nestedReportIntervalSec;
+    long nestedReportIntervalMs;
+    String nestedResumeMode;
+    // Pending initial question requested by playlist.ask_resume; replayed once after prepare.
+    long pendingNestedResumePositionMs;
+    @Nullable AlertDialog activeNestedResumeDialog;
+    PlaylistApi.Playlist nestedPlaylistModel;
+    String nestedPlaylistError;
+    String nestedViewerVoiceLabel;
+    PlaylistTrackMatcher nestedTrackMatcher;
+    boolean[] nestedAudioChoiceDone;
+    boolean[] nestedSubtitleChoiceDone;
+    String[] nestedAudioChosenBy;
+    String[] nestedSubtitleChosenBy;
+    TrackResult[] nestedAudioResults;
+    TrackResult[] nestedSubtitleResults;
+    String nestedViewerAudioLabel;
+    String nestedViewerAudioLanguage;
+    int nestedViewerAudioOrdinal = -1;
+    int nestedViewerAudioCount = -1;
+    String nestedViewerSubtitleLabel;
+    String nestedViewerSubtitleLanguage;
+    int nestedViewerSubtitleOrdinal = -1;
+    int nestedViewerSubtitleCount = -1;
+    boolean nestedViewerSubtitleOff;
+    final PlaylistSessionJournal nestedJournal = new PlaylistSessionJournal();
+    byte[] nestedLastCallbackPayload;
     final List<MediaItem> apiMediaItems = new ArrayList<>();
     final List<String> apiPlaylistSegments = new ArrayList<>();
     int apiPlaylistStartIndex;
@@ -1121,6 +1185,8 @@ public class PlayerActivity extends Activity {
     final List<Integer> apiPlaylistSeasons = new ArrayList<>();
     final List<Integer> apiPlaylistEpisodes = new ArrayList<>();
     final List<String> apiPlaylistNames = new ArrayList<>();
+    // Official nested playlist contract carries a transparent logo independently from thumbnail/poster.
+    final List<Uri> apiPlaylistLogos = new ArrayList<>();
     final List<String> apiPlaylistImdbIds = new ArrayList<>();
     final List<String> apiPlaylistTmdbIds = new ArrayList<>();
     // The title picked by hand in the subtitle search, overriding whatever the launcher sent. Session
@@ -1540,6 +1606,19 @@ public class PlayerActivity extends Activity {
         }
     };
 
+    /**
+     * Official 2.2.2 uses a TextureView for screen capture only when tunneling
+     * is off. Surface selection is an Activity layout decision, so changing the
+     * preference requires recreating the Activity, not just the ExoPlayer.
+     */
+    private boolean shouldUseTextureView() {
+        return (mPrefs.captureVisible && !mPrefs.tunneling)
+                || (Build.VERSION.SDK_INT == 28
+                    && Build.MANUFACTURER.equalsIgnoreCase("xiaomi")
+                    && (Build.DEVICE.equalsIgnoreCase("oneday")
+                        || Build.DEVICE.equalsIgnoreCase("once")));
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1570,12 +1649,8 @@ public class PlayerActivity extends Activity {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         }
         super.onCreate(savedInstanceState);
-        if (Build.VERSION.SDK_INT == 28 && Build.MANUFACTURER.equalsIgnoreCase("xiaomi") &&
-                (Build.DEVICE.equalsIgnoreCase("oneday") || Build.DEVICE.equalsIgnoreCase("once"))) {
-            setContentView(R.layout.activity_player_textureview);
-        } else {
-            setContentView(R.layout.activity_player);
-        }
+        setContentView(shouldUseTextureView()
+                ? R.layout.activity_player_textureview : R.layout.activity_player);
 
         if (Build.VERSION.SDK_INT >= 31) {
             Window window = getWindow();
@@ -1637,6 +1712,7 @@ public class PlayerActivity extends Activity {
         dimOverlay = findViewById(R.id.dim_overlay);
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         playerView = findViewById(R.id.video_view);
+        createStartupSplash();
         // Built with the view rather than with the player: it paints from a file and asks for the
         // position lazily, so a rebuild of the player leaves it alone.
         final View secondaryHint = playerView.findViewById(R.id.subtitle_secondary);
@@ -1660,7 +1736,8 @@ public class PlayerActivity extends Activity {
         // wears, and carries the brand in its glyph — the biggest plate on screen with the only coral on it.
         // Coral is ink here, never a fill: a fill's own edge against a bright frame is 1.31:1, while the
         // plate is the glyph's keyline and holds it at 4.6:1 on the brightest frame.
-        exoPlayPause.setBackground(new InsetDrawable((Drawable) Utils.plate(this, Utils.CIRCLE),
+        exoPlayPause.setBackground(new InsetDrawable(
+                (Drawable) Utils.shape(officialControlBaseColor(), Utils.CIRCLE),
                 ui.heroInset()));
         // Hero size scales per device class (phone = 90dp, unchanged; larger on tablet/TV). Overrides the
         // Media3 style's exo_icon_size so the transport isn't tiny on a 10-foot screen.
@@ -1668,7 +1745,7 @@ public class PlayerActivity extends Activity {
         heroLp.width = ui.heroBox();
         heroLp.height = ui.heroBox();
         exoPlayPause.setLayoutParams(heroLp);
-        exoPlayPause.setImageTintList(ColorStateList.valueOf(brandColor()));
+        exoPlayPause.setImageTintList(ColorStateList.valueOf(officialControlActiveColor()));
         // With the colour gone from the disc, presence has to come from the glyph. Media3 hands the button a
         // drawable whose canvas is exo_icon_size with the ink about a third of it; fitting that canvas to the
         // whole box instead of leaving it at its intrinsic size takes the ink to roughly half the disc, the
@@ -1768,20 +1845,23 @@ public class PlayerActivity extends Activity {
         buttonPlaylist.setVisibility(View.GONE);
         buttonPlaylist.setOnClickListener(view -> showPlaylistDialog());
 
-        buttonQuality = new ImageButton(this, null, 0, R.style.ExoStyledControls_Button_Bottom);
-        buttonQuality.setImageResource(R.drawable.ic_high_quality_24dp);
-        buttonQuality.setImageTintList(ContextCompat.getColorStateList(this, R.color.control_icon_tint));
-        buttonQuality.setId(View.generateViewId());
-        buttonQuality.setContentDescription(getString(R.string.button_quality));
-        buttonQuality.setVisibility(View.GONE);
+        // Released 2.1.3 does not use icon-only buttons for the three value selectors.
+        // JADX I1(...) builds compact rounded TextViews carrying the current value: quality,
+        // dub/audio and subtitle language. Keep that shape here so the controller matches the APK.
+        buttonQuality = createOfficialValueChip(0, getString(R.string.button_quality));
         buttonQuality.setOnClickListener(view -> showQualityDialog());
 
-        buttonAudio = new ImageButton(this, null, 0, R.style.ExoStyledControls_Button_Bottom);
-        buttonAudio.setImageResource(R.drawable.ic_audiotrack_24dp);
-        buttonAudio.setId(View.generateViewId());
-        buttonAudio.setContentDescription(getString(R.string.button_audio_track));
-        buttonAudio.setVisibility(View.GONE);
+        buttonAudio = createOfficialValueChip(
+                R.drawable.ic_audiotrack_plate_24dp, getString(R.string.button_audio_track));
         buttonAudio.setOnClickListener(view -> showAudioDialog());
+
+        buttonSubtitle = createOfficialValueChip(
+                R.drawable.ic_subtitles_24dp, getString(R.string.subtitle_title));
+        buttonSubtitle.setOnClickListener(view -> showSubtitleDialog());
+        buttonSubtitle.setOnLongClickListener(view -> {
+            openSettings("subtitlesScreen");
+            return true;
+        });
 
         buttonMore = new ImageButton(this, null, 0, R.style.ExoStyledControls_Button_Bottom);
         // The overflow glyph, not a gear. A gear here meant three things at once: press it for this
@@ -1869,14 +1949,39 @@ public class PlayerActivity extends Activity {
         final int titleViewPaddingVertical = getResources().getDimensionPixelOffset(R.dimen.exo_styled_bottom_bar_time_padding);
         FrameLayout centerView = playerView.findViewById(R.id.exo_controls_background);
 
+        // The released build hangs the header on a scrim of its own: a RectShape behind the row, as tall
+        // as the poster column rather than as tall as the text, carrying the same three-stop gradient
+        // (70% black, 35% at half way, clear) so the picture breathes out from under it. The row itself is
+        // transparent and rides on top.
+        headerRoot = new FrameLayout(this);
+        headerRoot.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        headerRoot.setVisibility(View.GONE);
+
+        headerScrim = new View(this);
+        final ShapeDrawable scrimDrawable = new ShapeDrawable(new RectShape());
+        scrimDrawable.setShaderFactory(new ShapeDrawable.ShaderFactory() {
+            @Override
+            public Shader resize(int width, int height) {
+                return new LinearGradient(0f, 0f, 0f, height,
+                        new int[]{0xB3000000, 0x59000000, 0x00000000},
+                        new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP);
+            }
+        });
+        headerScrim.setBackground(scrimDrawable);
+        final FrameLayout.LayoutParams scrimParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ui.headerScrimHeight());
+        scrimParams.gravity = Gravity.TOP;
+        headerScrim.setLayoutParams(scrimParams);
+        headerRoot.addView(headerScrim);
+
         topInfoPanel = new LinearLayout(this);
         topInfoPanel.setOrientation(LinearLayout.HORIZONTAL);
         topInfoPanel.setGravity(Gravity.TOP);
-        // Soft top scrim (dark → transparent) instead of a flat opaque band, so the video breathes under the header.
-        topInfoPanel.setBackgroundResource(R.drawable.scrim_top);
-        topInfoPanel.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        topInfoPanel.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         topInfoPanel.setPadding(titleViewPaddingHorizontal, titleViewPaddingVertical, titleViewPaddingHorizontal, titleViewPaddingVertical);
-        topInfoPanel.setVisibility(View.GONE);
+        headerRoot.addView(topInfoPanel);
 
         posterSlot = new FrameLayout(this);
         // Poster anchors the left column and is sized to roughly match the right column's two rows (time +
@@ -1929,24 +2034,76 @@ public class PlayerActivity extends Activity {
         infoColumnParams.setMarginEnd(Utils.dpToPx(16));
         infoColumn.setLayoutParams(infoColumnParams);
 
+        logoView = new ImageView(this);
+        logoView.setAdjustViewBounds(true);
+        logoView.setScaleType(ImageView.ScaleType.FIT_START);
+        logoView.setMaxWidth(ui.dpS(280));
+        logoView.setMaxHeight(ui.dpS(56));
+        logoView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        logoView.setVisibility(View.GONE);
+        infoColumn.addView(logoView);
+
         titleView = new TextView(this);
-        titleView.setTextColor(Color.WHITE);
-        titleView.setTypeface(Typeface.DEFAULT_BOLD);
+        // Released 2.1.3 draws the title in the same medium weight as the clock (sans-serif-medium),
+        // at 90% white, with the font's own padding off so its ascent — not the font box top — is what
+        // the header's top padding measures from.
+        titleView.setTextColor(ContextCompat.getColor(this, R.color.ink_high));
+        titleView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         titleView.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textHeaderTitle());
         titleView.setMaxLines(1);
         titleView.setEllipsize(TextUtils.TruncateAt.END);
         titleView.setTextDirection(View.TEXT_DIRECTION_LOCALE);
+        titleView.setIncludeFontPadding(false);
         infoColumn.addView(titleView);
 
-        // Two meta lines: video (resolution · codec · HDR) and the audio track (label / codec / language).
-        // The gaps are the design's, and they are what makes the text column as tall as the poster beside it,
-        // so the two header columns end on the same line.
-        videoInfoView = createInfoLine(ui.dpS(7));
-        infoColumn.addView(videoInfoView);
-        audioInfoView = createInfoLine(ui.dpS(3));
-        infoColumn.addView(audioInfoView);
+        // Official release puts "Season · Episode · episode title" below the series logo/title.
+        episodeInfoView = createInfoLine(ui.dpS(2));
+        infoColumn.addView(episodeInfoView);
+
+        // Released 2.1.3 uses one compact media row:
+        // [video icon] resolution · codec · fps  |  [audio icon] language / codec.
+        mediaInfoRow = new LinearLayout(this);
+        mediaInfoRow.setOrientation(LinearLayout.HORIZONTAL);
+        mediaInfoRow.setGravity(Gravity.CENTER_VERTICAL);
+        final LinearLayout.LayoutParams mediaRowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mediaRowLp.topMargin = ui.dpS(6);
+        mediaInfoRow.setLayoutParams(mediaRowLp);
+
+        videoInfoView = createInfoLine(0);
+        videoInfoView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // Released 2.1.3 (Y0): 14dp canvas, the vector's own 4/24 inset taken off the left bound, and the
+        // gap to the label derived from the same 24-unit grid. The glyph is tinted with the line's own text
+        // colour (60% white), not a control tint — over the picture the metadata row is one weight of ink.
+        applyHeaderIcon(videoInfoView, R.drawable.ic_theaters_24dp, 4, 20);
+        mediaInfoRow.addView(videoInfoView);
+
+        // Released 2.1.3: a 1dp rule as tall as 0.72 of the 12sp caption line, centred in the row, with
+        // 12dp of air on either side. It separates the two metadata groups without becoming a column.
+        final GradientDrawable dividerDrawable = new GradientDrawable();
+        dividerDrawable.setColor(0x59FFFFFF);
+        dividerDrawable.setSize(Math.max(1, ui.dpS(1)),
+                Math.round(ui.textInfo() * getResources().getDisplayMetrics().scaledDensity * 0.72f));
+        metaDivider = new ImageView(this);
+        metaDivider.setScaleType(ImageView.ScaleType.CENTER);
+        metaDivider.setImageDrawable(dividerDrawable);
+        final LinearLayout.LayoutParams dividerLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        dividerLp.setMarginStart(ui.dpS(12));
+        dividerLp.setMarginEnd(ui.dpS(12));
+        metaDivider.setLayoutParams(dividerLp);
+        mediaInfoRow.addView(metaDivider);
+
+        audioInfoView = createInfoLine(0);
+        audioInfoView.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        applyHeaderIcon(audioInfoView, R.drawable.ic_audiotrack_plate_24dp, 3, 21);
+        mediaInfoRow.addView(audioInfoView);
+        infoColumn.addView(mediaInfoRow);
 
         topInfoPanel.addView(infoColumn);
 
@@ -1956,96 +2113,56 @@ public class PlayerActivity extends Activity {
         final LinearLayout headerClockColumn = new LinearLayout(this);
         headerClockColumn.setOrientation(LinearLayout.VERTICAL);
         headerClockColumn.setGravity(Gravity.END);
-        // Full height, so the icon row below can be pushed to the header's bottom line rather than trailing
-        // the clock: the left column (poster, or the last meta line) is what sets that line.
+        // The released build wraps this column (-2) and aligns its top to the title's, so the clock and
+        // the title start on one line instead of each trailing its own font box.
         final LinearLayout.LayoutParams headerClockColumnParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         headerClockColumnParams.gravity = Gravity.TOP;
         headerClockColumn.setLayoutParams(headerClockColumnParams);
 
-        // Time row (row 1): "until …" then the clock on one line. The clock is the bold, right-pinned anchor,
-        // so it never jumps sideways when the dynamically-computed end time appears/updates while loading.
-        // No vertical gravity: that lets LinearLayout's baseline alignment sit the smaller end time on the
-        // clock's baseline, instead of centring two different text sizes against each other.
-        final LinearLayout timeRow = new LinearLayout(this);
-        timeRow.setOrientation(LinearLayout.HORIZONTAL);
-        final LinearLayout.LayoutParams timeRowLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        timeRowLp.gravity = Gravity.END;
-        timeRow.setLayoutParams(timeRowLp);
-
-        endsAtView = new TextView(this);
-        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_medium));
-        // A step below the clock: the clock is the anchor, the end time is the qualifier next to it.
-        endsAtView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textEndsAt());
-        endsAtView.setVisibility(View.GONE);
-        timeRow.addView(endsAtView);
-
+        // Released 2.1.3: clock at the top-right, "Ends at …" on its own line below.
         headerClock = new OutlineTextClock(this);
         headerClock.setFormat12Hour("h:mm a");
         headerClock.setFormat24Hour("HH:mm");
-        // A step above the "until …" text but short of pure white, which read as too harsh; the black outline
-        // and bold weight carry the rest of the legibility. The overlay clock must use the same value.
         headerClock.setTextColor(ContextCompat.getColor(this, R.color.ink_clock));
-        headerClock.setTypeface(Typeface.DEFAULT_BOLD);
+        headerClock.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         headerClock.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textClock());
+        headerClock.setIncludeFontPadding(false);
         final LinearLayout.LayoutParams headerClockLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        headerClockLp.setMarginStart(Utils.dpToPx(6));
+        headerClockLp.gravity = Gravity.END;
         headerClock.setLayoutParams(headerClockLp);
-        timeRow.addView(headerClock);
+        headerClockColumn.addView(headerClock);
 
-        headerClockColumn.addView(timeRow);
+        endsAtView = new TextView(this);
+        // Same 12sp caption as the metadata line and the same 60% ink the released build gives it — the
+        // end time is a note beside the clock, not a second heading.
+        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
+        endsAtView.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textCaption());
+        endsAtView.setVisibility(View.GONE);
+        final LinearLayout.LayoutParams endsLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        endsLp.gravity = Gravity.END;
+        endsLp.topMargin = ui.dp(2);
+        endsAtView.setLayoutParams(endsLp);
+        headerClockColumn.addView(endsAtView);
 
-        // All the slack goes between the two rows, so the icons ride the header's bottom line whatever the
-        // left column's height turns out to be, instead of trailing the clock with a fixed gap.
-        final View headerSpacer = new View(this);
-        headerSpacer.setLayoutParams(new LinearLayout.LayoutParams(0, 0, 1f));
-        headerClockColumn.addView(headerSpacer);
-
-        // Display icons (row 2): aspect / PiP / rotation, right-aligned under the clock, bare — no pill behind
-        // them. The nudge that lands their glyphs on the header's right and bottom grid lines is applied in the
-        // controls assembly, where the button padding is known.
-        // Populated in the controls assembly; empty on TV (those controls live in the bottom bar there).
+        // Kept as an empty holder because a few adaptive paths still reference the field; the
+        // released phone UI no longer places display controls in the header.
         headerButtons = new LinearLayout(this);
         headerButtons.setOrientation(LinearLayout.HORIZONTAL);
-        final LinearLayout.LayoutParams headerButtonsParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        headerButtonsParams.gravity = Gravity.END;
-        headerButtonsParams.topMargin = Utils.dpToPx(4);
-        headerButtons.setLayoutParams(headerButtonsParams);
-        headerClockColumn.addView(headerButtons);
 
-        // Both header columns are top-aligned, and the title's ascent is taller than the time row's, so equal
-        // tops leave the clock's baseline above the title's — the design has the two on one line. Push the
-        // column down by the difference between the two first-baseline offsets, read from the paints so it
-        // holds at any font scale.
+        // Align the clock's ascent to the title's, not its font-box top: with includeFontPadding off the
+        // two are drawn from the ascent line, and the difference between them is what puts the 20sp clock
+        // on the 22sp title's first baseline.
         headerClockColumnParams.topMargin = Math.max(0,
-                headerClock.getPaint().getFontMetricsInt().top
-                        - titleView.getPaint().getFontMetricsInt().top);
+                headerClock.getPaint().getFontMetricsInt().ascent
+                        - titleView.getPaint().getFontMetricsInt().ascent);
         headerClockColumn.setLayoutParams(headerClockColumnParams);
-
-        // This column asks for MATCH_PARENT height so the spacer can push the icon row onto the header's
-        // bottom line. A LinearLayout ignores such a child when it works out how tall it has to be — a
-        // MATCH_PARENT child contributes only its margins — so the header's height is decided by the text
-        // column alone, and the column is then re-measured to exactly that. With no poster and one meta line
-        // missing (a file with no audio track drops the audio line) that came out shorter than the clock plus
-        // the icons, and the icon row was clipped to a 35px sliver of its 120px.
-        //
-        // So the floor goes on the text column, which is what the header measures: it may not end above the
-        // line the icons need. It only ever grows the header where the text alone would not reach; with a
-        // poster, or a full set of meta lines, the column is already taller and nothing changes.
-        if (!isTvBox) {
-            infoColumn.setMinimumHeight(headerClockColumnParams.topMargin
-                    + headerClock.getLineHeight()          // the clock row this column sits beside
-                    + headerButtonsParams.topMargin
-                    + ui.clusterBox()                      // the icon row itself
-                    + ui.clusterPad());                    // and the nudge that lands it on the grid line
-        }
 
         topInfoPanel.addView(headerClockColumn);
 
-        centerView.addView(topInfoPanel);
+        centerView.addView(headerRoot);
 
         // Skip button — a solid dark pill floating over the video (bottom-end), independent of the
         // controller. TV focus is the white contour every chrome control wears (no wash, no scale), with the
@@ -2392,70 +2509,85 @@ public class PlayerActivity extends Activity {
 
                 int insetLeft = windowInsets.getSystemWindowInsetLeft();
                 int insetRight = windowInsets.getSystemWindowInsetRight();
-
-                // Balance the horizontal insets: offset BOTH sides by the larger of the two so the header and
-                // bottom-bar content stay symmetric even when only one side carries the status bar or a display
-                // cutout (in landscape that side would otherwise get a much bigger margin — the lopsided look).
-                // Applied as padding with no margin, so the scrim backgrounds still span the full width.
-                // On TV all system insets are 0, so synthesize overscan-safe insets here — every edge-anchored
-                // element (header, bottom bar, seek bar, Skip pill) keys off these, so the whole content grid
-                // moves inward as a unit and stays aligned. overscanH/V are 0 on phone/tablet (no visual change).
-                final int overscanV = ui.overscanV();
-                final int insetH = Math.max(Math.max(insetLeft, insetRight), ui.overscanH());
-                int paddingLeft = insetH;
-                int marginLeft = 0;
-                int paddingRight = insetH;
-                int marginRight = 0;
-
-                final int bottomBarPaddingBottom = windowInsets.getSystemWindowInsetBottom() + overscanV;
-                final int progressBarMarginBottom = bottomBarPaddingBottom;
-
-                // Don't use exo_top (the built-in top scrim): it is a sibling of exo_controls_background and Media3
-                // animates it on a different schedule, so it appears before / lingers after the header. Instead the
-                // header panel's own background is extended up over the status-bar area (see topInfoPanel below) —
-                // being the header itself, it can never desync from it. Keep exo_top collapsed.
-                findViewById(R.id.exo_top).getLayoutParams().height = 0;
-
-                // Take the bottom inset by growing the bar, never by padding the control view itself: padding
-                // pulls every child up off the screen edge, the two scrims included (the full-screen dim and
-                // the bar's own gradient), and what shows through underneath is a bright strip of raw video.
-                // On TV that inset is pure overscan, so the strip appeared with nothing drawn over it at all.
-                final BottomBarLayout exoBottomBar = findViewById(R.id.exo_bottom_bar);
-                final int barHeight = getResources().getDimensionPixelSize(R.dimen.exo_styled_bottom_bar_height);
-                final ViewGroup.LayoutParams params = exoBottomBar.getLayoutParams();
-                params.height = barHeight + bottomBarPaddingBottom;
-                exoBottomBar.setLayoutParams(params);
-                // Media3 parks the bar by that unchanged resource height, so tell it how much taller the bar
-                // now is -- without this the park stops the inset short and the button row's top stays over
-                // the picture for as long as the seek bar is up on its own.
-                exoBottomBar.setTravelScale((float) params.height / barHeight);
-
-                if (Build.VERSION.SDK_INT >= 35) {
-                    findViewById(R.id.exo_left).getLayoutParams().width = windowInsets.getInsets(WindowInsets.Type.navigationBars()).left;
-                    findViewById(R.id.exo_right).getLayoutParams().width = windowInsets.getInsets(WindowInsets.Type.navigationBars()).right;
+                if (Build.VERSION.SDK_INT < 30) {
+                    insetLeft = Math.max(insetLeft, windowInsets.getStableInsetLeft());
+                    insetRight = Math.max(insetRight, windowInsets.getStableInsetRight());
                 }
 
-                // Extend the header's background up over the status-bar area (top margin -> 0, top inset moved into
-                // the top padding). The content position is unchanged (padding pushes it down by the same amount the
-                // margin used to), but the panel now paints the status-bar strip, in perfect sync with the header.
-                // Reserve that strip whether or not the status bar happens to be showing: the controls hide together
-                // with the system bars, so a top padding that tracked the live inset moved the header's clock every
-                // time they toggled, and the floating clock mirrors that position while remaining visible — which is
-                // how it crept upwards when a picker panel hid the controls. Landscape is where it showed, the top
-                // inset there really does fall to 0; in portrait a display cutout keeps it non-zero.
+                final int orientationNow = getResources().getConfiguration().orientation;
+                if (orientationNow != legacyBottomInsetOrientation) {
+                    legacyBottomInsetOrientation = orientationNow;
+                    legacyBottomInsetMax = 0;
+                }
+                final int rawBottomInset = Build.VERSION.SDK_INT >= 30
+                        ? windowInsets.getInsets(WindowInsets.Type.navigationBars()).bottom
+                        : windowInsets.getSystemWindowInsetBottom();
+                if (Build.VERSION.SDK_INT < 30) {
+                    legacyBottomInsetMax = Math.max(legacyBottomInsetMax, rawBottomInset);
+                }
+                final int stableBottomInset = Build.VERSION.SDK_INT < 30
+                        ? legacyBottomInsetMax : rawBottomInset;
+
+                // Published 2.1.3 uses a detached bottom plate: system/cutout insets become
+                // OUTER margins, while the plate keeps its own small internal padding.
+                final int overscanV = ui.overscanV();
+                final int insetH = Math.max(Math.max(insetLeft, insetRight), ui.overscanH());
+                final int bottomPlateMarginH = isTvBox ? ui.dp(32) : insetH + ui.dpS(16);
+                final int bottomPlateMarginBottom = isTvBox
+                        ? ui.dp(12)
+                        : Math.max(ui.dpS(12), stableBottomInset + overscanV);
+
+                findViewById(R.id.exo_top).getLayoutParams().height = 0;
+
+                final BottomBarLayout exoBottomBar = findViewById(R.id.exo_bottom_bar);
+                final ViewGroup.LayoutParams barParams = exoBottomBar.getLayoutParams();
+                barParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+                exoBottomBar.setLayoutParams(barParams);
+                exoBottomBar.setTravelScale(1f);
+                exoBottomBar.setPadding(
+                        isTvBox ? ui.dp(20) : ui.dpS(16),
+                        isTvBox ? ui.dp(12) : ui.dpS(10),
+                        isTvBox ? ui.dp(20) : ui.dpS(16),
+                        isTvBox ? ui.dp(10) : ui.dpS(4));
+                Utils.setViewMargins(exoBottomBar,
+                        bottomPlateMarginH, 0, bottomPlateMarginH, bottomPlateMarginBottom);
+
+                if (Build.VERSION.SDK_INT >= 35) {
+                    findViewById(R.id.exo_left).getLayoutParams().width =
+                            windowInsets.getInsets(WindowInsets.Type.navigationBars()).left;
+                    findViewById(R.id.exo_right).getLayoutParams().width =
+                            windowInsets.getInsets(WindowInsets.Type.navigationBars()).right;
+                }
+
                 final int insetTop = Build.VERSION.SDK_INT >= 30
                         ? Math.max(windowInsets.getSystemWindowInsetTop(),
                                 windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top)
-                        : windowInsets.getSystemWindowInsetTop();
-                Utils.setViewParams(topInfoPanel, paddingLeft + titleViewPaddingHorizontal, insetTop + overscanV + Utils.dpToPx(4), paddingRight + titleViewPaddingHorizontal, titleViewPaddingVertical,
-                        marginLeft, 0, marginRight, 0);
-
-
-                Utils.setViewParams(findViewById(R.id.exo_bottom_bar), paddingLeft, 0, paddingRight, bottomBarPaddingBottom,
-                        marginLeft, 0, marginRight, 0);
-
-                Utils.setViewParams(findViewById(R.id.exo_progress), insetH, 0, insetH, 0,
-                        0, 0, 0, getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom) + progressBarMarginBottom);
+                        : Math.max(windowInsets.getSystemWindowInsetTop(), windowInsets.getStableInsetTop());
+                // Released 2.1.3 builds the header edge as iD = T6 ? Z1.d() : iA + Z1.j(): the plate's own
+                // margin (inset + 16dp) plus that plate's inner grid (16dp), so the title, the clock and the
+                // floating pills all land on the plate's content line rather than a token of our own. On a
+                // television the safe band alone is the edge and the insets are not added on top of it.
+                final int headerPadH = isTvBox ? ui.overscanH() : insetH + ui.dpS(32);
+                Utils.setViewParams(topInfoPanel,
+                        headerPadH,
+                        // ui.dp() rounds, the way the released ss2.a() does. Utils.dpToPx truncates, and at
+                        // this density 12dp is 31.5px: the whole header sat one pixel above the published
+                        // one because of the half pixel it threw away.
+                        insetTop + overscanV + (isTvBox ? 0 : ui.dp(12)),
+                        headerPadH,
+                        titleViewPaddingVertical,
+                        0, 0, 0, 0);
+                if (headerScrim != null) {
+                    // The released scrim is the device token plus whatever the status bar takes: the
+                    // gradient is measured from the real top of the window, so the band it covers does not
+                    // shrink when the status bar is drawn over it.
+                    final ViewGroup.LayoutParams scrimLp = headerScrim.getLayoutParams();
+                    final int scrimHeight = ui.headerScrimHeight() + insetTop;
+                    if (scrimLp.height != scrimHeight) {
+                        scrimLp.height = scrimHeight;
+                        headerScrim.setLayoutParams(scrimLp);
+                    }
+                }
 
                 // Keep the Skip pill above the seek bar and clear of the nav-bar inset. It floats on the
                 // full-screen coordinator (not the controller), so a fixed bottom offset overlapped the
@@ -2466,14 +2598,14 @@ public class PlayerActivity extends Activity {
                     // Clear of the seek bar's touch band, not just of its line: the band is the progress
                     // view's own height and the pill was measured 9.2dp inside it, where the rule asks for
                     // 8dp between targets. Its height plus that gap is the offset.
-                    skipLp.bottomMargin = windowInsets.getSystemWindowInsetBottom() + overscanV
+                    skipLp.bottomMargin = stableBottomInset + overscanV
                             + getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom)
                             + getResources().getDimensionPixelSize(
                                     androidx.media3.ui.R.dimen.exo_styled_progress_layout_height)
                             + ui.dpS(8);
                     // Align the floating Skip button's right edge to the shared content grid (same as the pills
                     // and the progress bar), instead of a fixed 24dp + insetRight that overshoots in landscape.
-                    skipLp.rightMargin = insetH + ui.gridH();
+                    skipLp.rightMargin = headerPadH;
                     buttonSkip.setLayoutParams(skipLp);
                 }
 
@@ -2483,10 +2615,10 @@ public class PlayerActivity extends Activity {
                 if (roomPill != null) {
                     final CoordinatorLayout.LayoutParams pillLp =
                             (CoordinatorLayout.LayoutParams) roomPill.getLayoutParams();
-                    pillLp.bottomMargin = windowInsets.getSystemWindowInsetBottom() + overscanV
+                    pillLp.bottomMargin = stableBottomInset + overscanV
                             + getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom)
                             + ui.dpS(24);
-                    pillLp.leftMargin = insetH + ui.gridH();
+                    pillLp.leftMargin = headerPadH;
                     roomPill.setLayoutParams(pillLp);
                 }
 
@@ -2495,11 +2627,11 @@ public class PlayerActivity extends Activity {
                 if (transferView != null) {
                     final CoordinatorLayout.LayoutParams transferParams =
                             (CoordinatorLayout.LayoutParams) transferView.getLayoutParams();
-                    transferParams.bottomMargin = windowInsets.getSystemWindowInsetBottom() + overscanV
+                    transferParams.bottomMargin = stableBottomInset + overscanV
                             + getResources().getDimensionPixelSize(R.dimen.exo_styled_progress_margin_bottom)
                             + ui.dpS(24);
-                    transferParams.leftMargin = insetH + ui.gridH();
-                    transferParams.rightMargin = insetH + ui.gridH();
+                    transferParams.leftMargin = headerPadH;
+                    transferParams.rightMargin = headerPadH;
                     transferView.setLayoutParams(transferParams);
                 }
 
@@ -2509,7 +2641,7 @@ public class PlayerActivity extends Activity {
                 if (statsView != null) {
                     final CoordinatorLayout.LayoutParams statsParams =
                             (CoordinatorLayout.LayoutParams) statsView.getLayoutParams();
-                    statsParams.leftMargin = insetH + ui.gridH();
+                    statsParams.leftMargin = headerPadH;
                     // The panel is centred vertically, which is where the play/pause cluster lives, so its
                     // width has to stop short of it: half the window, less half that cluster (hero disc plus
                     // an episode arrow beside it) and the panel's own offset. A decoder name longer than
@@ -2519,7 +2651,7 @@ public class PlayerActivity extends Activity {
                     statsView.setLayoutParams(statsParams);
                 }
 
-                Utils.setViewMargins(findViewById(R.id.exo_error_message), 0, windowInsets.getSystemWindowInsetTop() / 2, 0, getResources().getDimensionPixelSize(R.dimen.exo_error_message_margin_bottom) + windowInsets.getSystemWindowInsetBottom() / 2);
+                Utils.setViewMargins(findViewById(R.id.exo_error_message), 0, insetTop / 2, 0, getResources().getDimensionPixelSize(R.dimen.exo_error_message_margin_bottom) + stableBottomInset / 2);
 
                 windowInsets.consumeSystemWindowInsets();
             }
@@ -2530,10 +2662,11 @@ public class PlayerActivity extends Activity {
         // Brand the timeline: the played portion and the scrubber (the surfaces the user actually touches)
         // share the accent ink of the Play glyph above, over a solid dark rail instead of Media3's wash
         // of the frame behind.
-        final int timeBarPlayed = brandColor();
+        final int timeBarPlayed = officialControlActiveColor();
         timeBar.setPlayedColor(timeBarPlayed);
         timeBar.setScrubberColor(timeBarPlayed);
-        timeBar.setUnplayedColor(ContextCompat.getColor(this, R.color.timebar_track));
+        timeBar.setUnplayedColor(officialControlUnplayedColor());
+        timeBar.setBufferedColor(officialControlBufferedColor(true));
 
         try {
             trackNameProvider = new CustomDefaultTrackNameProvider(getResources());
@@ -2573,130 +2706,112 @@ public class PlayerActivity extends Activity {
 
         final LinearLayout exoBasicControls = playerView.findViewById(R.id.exo_basic_controls);
         exoSubtitle = exoBasicControls.findViewById(R.id.exo_subtitle);
-        exoBasicControls.removeView(exoSubtitle);
-        // Managed like the audio/quality buttons: hidden until the media actually has subtitle tracks,
-        // so it never shows greyed-out while loading. Re-asserted after Media3's own updates (see onEvents).
-        exoSubtitle.setVisibility(View.GONE);
-        exoSubtitle.setImageTintList(ContextCompat.getColorStateList(this, R.color.control_icon_tint));
-
-        exoSettings = exoBasicControls.findViewById(R.id.exo_settings);
-        exoBasicControls.removeView(exoSettings);
         final ImageButton exoRepeat = exoBasicControls.findViewById(R.id.exo_repeat_toggle);
-        exoBasicControls.removeView(exoRepeat);
-        //exoBasicControls.setVisibility(View.GONE);
-
-        // Open our native subtitle panel instead of Media3's built-in track popup.
-        exoSubtitle.setOnClickListener(v -> showSubtitleDialog());
-
-        exoSubtitle.setOnLongClickListener(v -> {
-            openSettings("subtitlesScreen");
-            return true;
-        });
+        if (exoSubtitle != null) {
+            exoSubtitle.setVisibility(View.GONE);
+            exoSubtitle.setOnClickListener(v -> showSubtitleDialog());
+            exoSubtitle.setOnLongClickListener(v -> {
+                openSettings("subtitlesScreen");
+                return true;
+            });
+        }
+        // The published 2.1.3 APK clears Media3's stock bottom controls and rebuilds the
+        // two-row plate itself. There is no exo_settings view in that APK layout.
+        exoBasicControls.removeAllViews();
+        exoSettings = null;
 
         updateButtons(false);
 
-        final HorizontalScrollView horizontalScrollView = (HorizontalScrollView) getLayoutInflater().inflate(R.layout.controls, null);
+        final BottomBarLayout bottomBarLayout = findViewById(R.id.exo_bottom_bar);
+        bottomBarLayout.setBackground(Utils.shape(officialControlBaseColor(), ui.dp(28)));
+        bottomBarLayout.setClipChildren(false);
+        bottomBarLayout.setClipToPadding(false);
+
+        final View plateTimeRow = findViewById(R.id.plate_time_row);
+        final LinearLayout.LayoutParams timeRowLp =
+                (LinearLayout.LayoutParams) plateTimeRow.getLayoutParams();
+        final int naturalTimeRow = isTvBox ? ui.dp(28) : ui.dpS(24);
+        timeRowLp.height = isTvBox ? naturalTimeRow : ui.dpS(48);
+        if (!isTvBox) {
+            final int overlap = (ui.dpS(48) - naturalTimeRow) / 2;
+            timeRowLp.topMargin = -overlap;
+            timeRowLp.bottomMargin = -overlap;
+        } else {
+            timeRowLp.topMargin = 0;
+            timeRowLp.bottomMargin = 0;
+        }
+        plateTimeRow.setLayoutParams(timeRowLp);
+
+        final View plateRow = findViewById(R.id.plate_row);
+        final LinearLayout.LayoutParams plateRowLp =
+                (LinearLayout.LayoutParams) plateRow.getLayoutParams();
+        plateRowLp.height = isTvBox ? ui.dp(48) : officialControlBox();
+        plateRowLp.topMargin = isTvBox ? ui.dp(8) : ui.dpS(4);
+        plateRow.setLayoutParams(plateRowLp);
+
+        final TextView positionText = findViewById(R.id.exo_position);
+        final TextView durationText = findViewById(R.id.exo_duration);
+        positionText.setTextColor(officialControlInkColor());
+        durationText.setTextColor(officialControlSecondaryInkColor());
+        positionText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        durationText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        positionText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+
+        final LinearLayout.LayoutParams timeBarLp =
+                (LinearLayout.LayoutParams) timeBar.getLayoutParams();
+        timeBarLp.setMarginStart(ui.dpS(8));
+        timeBarLp.setMarginEnd(ui.dpS(8));
+        timeBar.setLayoutParams(timeBarLp);
+
+        final HorizontalScrollView horizontalScrollView =
+                (HorizontalScrollView) getLayoutInflater().inflate(R.layout.controls, null);
         final LinearLayout controls = horizontalScrollView.findViewById(R.id.controls);
+        controls.setClipChildren(false);
+        horizontalScrollView.setClipChildren(false);
 
-        // Multimedia pickers, each shown when relevant, live in the bottom bar on every device. Order per
-        // the design: quality, audio, subtitles, playlist.
-        controls.addView(buttonQuality);
-        controls.addView(buttonAudio);
-        controls.addView(exoSubtitle);
-        controls.addView(buttonPlaylist);
-        if (mPrefs.repeatToggle) {
-            controls.addView(exoRepeat);
-        }
-
-        // Display / screen controls: beside the header clock on touch; in the bottom bar on TV so the remote
-        // keeps a single left/right focus zone.
-        final LinearLayout displayParent = isTvBox ? controls : headerButtons;
-        displayParent.addView(buttonAspectRatio);
-        if (Utils.isPiPSupported(this) && buttonPiP != null) {
-            displayParent.addView(buttonPiP);
-        }
-        if (!isTvBox) {
-            displayParent.addView(buttonRotation);
-        }
-        // "Update available" sits immediately before the gear — one insertion point that lands in the same
-        // place on a phone and on TV, because the gear ends the bottom bar on both.
-        controls.addView(buttonUpdate);
-        // "More" (overflow) always lives at the end of the bottom bar.
-        controls.addView(buttonMore);
-
-        // One uniform button box across both clusters so the header pill and the bottom pill match in height,
-        // size and inter-button gap.
-        styleClusterButton(exoSubtitle);
-        styleClusterButton(buttonAudio);
-        styleClusterButton(buttonQuality);
-        styleClusterButton(buttonPlaylist);
-        if (mPrefs.repeatToggle) {
-            styleClusterButton(exoRepeat);
-        }
-        styleClusterButton(buttonUpdate);
-        refreshUpdateButton();
-        styleClusterButton(buttonMore);
-        styleClusterButton(buttonAspectRatio);
-        if (buttonPiP != null) {
-            styleClusterButton(buttonPiP);
-        }
-        if (!isTvBox) {
-            styleClusterButton(buttonRotation);
-            // No chrome behind the header icons: the design keeps the top light, so the glyphs are the only
-            // thing there — and it is the glyph edge, not a pill edge, that has to sit on the header's grid
-            // lines. Nudge the row out by the button padding that used to hide inside the pill: its glyphs
-            // then finish on the clock's right-hand line and on the bottom line where the poster and the last
-            // meta line end. Translation, not margins: a negative end margin squeezes the last button instead
-            // of moving the row. The panel must stop clipping to its padding for the nudge to survive.
-            final boolean rtl = getResources().getConfiguration().getLayoutDirection()
-                    == View.LAYOUT_DIRECTION_RTL;
-            headerButtons.setTranslationX(rtl ? -ui.clusterPad() : ui.clusterPad());
-            headerButtons.setTranslationY(ui.clusterPad());
-            // The nudge moves the row outside its own layout box, so every ancestor that would clip it has to
-            // stop: the padding clip on the panel, and the child clip on both the panel and the column. Without
-            // the child clips off, the row is cut by exactly the nudge — a fifth of every glyph.
-            topInfoPanel.setClipToPadding(false);
-            topInfoPanel.setClipChildren(false);
-            if (headerButtons.getParent() instanceof ViewGroup) {
-                ((ViewGroup) headerButtons.getParent()).setClipChildren(false);
+        final View[] releasedControls =
+                new View[]{buttonQuality, buttonAudio, buttonSubtitle, buttonPlaylist, buttonUpdate, buttonMore};
+        for (View control : releasedControls) {
+            if (control instanceof ImageButton) {
+                styleOfficialRoundButton((ImageButton) control, controls.getChildCount() > 0);
+            } else if (controls.getChildCount() > 0 && isTvBox) {
+                final LinearLayout.LayoutParams lp =
+                        (LinearLayout.LayoutParams) control.getLayoutParams();
+                lp.setMarginStart(ui.dpS(8));
             }
+            controls.addView(control);
         }
-        // Group the bottom-right pickers (subtitle / audio / HD / playlist / settings) into a matching pill.
-        applyControlPill(controls);
+        if (mPrefs.repeatToggle && exoRepeat != null) {
+            styleOfficialRoundButton(exoRepeat, controls.getChildCount() > 0);
+            controls.addView(exoRepeat, Math.max(0, controls.getChildCount() - 2));
+        }
+        buttonUpdate.setSelected(true);
+        refreshUpdateButton();
+        exoBasicControls.addView(horizontalScrollView,
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // Inset the bottom pill to the shared 14dp content grid so its right edge lines up with the header
-        // pill / clock and stays inside the progress bar, instead of running to the screen edge.
-        final LinearLayout.LayoutParams horizontalScrollViewLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        horizontalScrollViewLp.gravity = Gravity.CENTER_VERTICAL;
-        horizontalScrollViewLp.setMarginEnd(ui.gridH());
-        exoBasicControls.addView(horizontalScrollView, horizontalScrollViewLp);
-
-        // Lock sits isolated at the far-left of the bottom bar — prepended into the time row, away from the
-        // display cluster (MX-style) so it is no longer adjacent to the rotation button. Touch only (the lock
-        // feature is not offered on TV).
+        final LinearLayout plateLeft = findViewById(R.id.plate_left);
+        plateLeft.setClipChildren(false);
         if (!isTvBox) {
-            final View exoTime = findViewById(R.id.exo_time);
-            if (exoTime instanceof LinearLayout) {
-                // Match the right-hand controls: same 40dp box + chrome pill, so the lock reads as part of the
-                // same control language instead of a lone heavy glyph. The time text stays bare, to its right.
-                styleClusterButton(buttonLock);
-                final GradientDrawable lockPill = new GradientDrawable();
-                lockPill.setColor(ContextCompat.getColor(this, R.color.ui_controls_background));
-                lockPill.setCornerRadius(ui.pillCorner());
-                buttonLock.setBackground(lockPill);
-                buttonLock.setClipToOutline(true);
-                final LinearLayout.LayoutParams lockLp = (LinearLayout.LayoutParams) buttonLock.getLayoutParams();
-                lockLp.setMarginEnd(ui.lockMarginEnd());
-                buttonLock.setLayoutParams(lockLp);
-                ((LinearLayout) exoTime).addView(buttonLock, 0);
-
-                // exo_basic_controls (the right-hand cluster, holding a full-width HorizontalScrollView) is
-                // laid out after exo_time, so it sits on top of it and its empty left area swallows taps on
-                // the lock (a scroll view consumes touches for its own drag detection). Bring exo_time to the
-                // front so the lock wins its taps. The cluster's buttons sit to the right, clear of exo_time
-                // (which is ~494px wide and non-clickable outside the lock), so they and scrolling still work.
-                exoTime.bringToFront();
+            final ArrayList<ImageButton> lowerLeft = new ArrayList<>();
+            lowerLeft.add(buttonLock);
+            lowerLeft.add(buttonRotation);
+            lowerLeft.add(buttonAspectRatio);
+            if (Utils.isPiPSupported(this) && buttonPiP != null) {
+                lowerLeft.add(buttonPiP);
+            }
+            for (ImageButton button : lowerLeft) {
+                styleOfficialRoundButton(button, plateLeft.getChildCount() > 0);
+                plateLeft.addView(button);
+            }
+        } else {
+            // Keep ARX's TV behavior stable while adopting the released plate geometry.
+            styleOfficialRoundButton(buttonAspectRatio, plateLeft.getChildCount() > 0);
+            plateLeft.addView(buttonAspectRatio);
+            if (buttonPiP != null) {
+                styleOfficialRoundButton(buttonPiP, true);
+                plateLeft.addView(buttonPiP);
             }
         }
 
@@ -2717,10 +2832,23 @@ public class PlayerActivity extends Activity {
                 // apart is where they came from: the show starts from hidden, the hide from fully visible.
                 if (!controllerVisible) {
                     controllerChromeVisible = false;
+                    controllerHideCompleting = false;
+                    playerView.removeCallbacks(completeControllerHideAction);
                 } else if (controllerVisibleFully || !wasVisible) {
                     controllerChromeVisible = true;
+                    // A re-show cancels the finishing hide, so a quick second tap cannot
+                    // dismiss controls the user has just brought back.
+                    if (controllerVisibleFully || !wasVisible) {
+                        controllerHideCompleting = false;
+                        playerView.removeCallbacks(completeControllerHideAction);
+                    }
                 } else if (wasVisibleFully) {
                     controllerChromeVisible = false;
+                    // Follow Media3's normal fade but skip its extra progress-only
+                    // interval. This also fixes auto-hide while playback is paused.
+                    controllerHideCompleting = true;
+                    playerView.removeCallbacks(completeControllerHideAction);
+                    playerView.postDelayed(completeControllerHideAction, CHROME_FADE_MS + 50L);
                 }
 
                 if (controllerVisible) {
@@ -2972,6 +3100,12 @@ public class PlayerActivity extends Activity {
         super.onStop();
         alive = false;
         Utils.log("onStop" + (isFinishing() ? ", finishing" : ""));
+        if (nestedPlaylistSession && !isChangingConfigurations()) {
+            touchNestedJournal();
+            sendNestedPlaylistCallback(buildNestedPlaylistResult(
+                    nestedPlaylistError != null ? "error" : (playbackFinished ? "completion" : "user")));
+        }
+        cancelNestedReportTimer();
         if (Build.VERSION.SDK_INT >= 31) {
             playerView.removeCallbacks(barsHider);
         }
@@ -3061,6 +3195,7 @@ public class PlayerActivity extends Activity {
      */
     @Override
     protected void onDestroy() {
+        cancelNestedReportTimer();
         if (!handedOver) {
             releasePlayer(false);
         }
@@ -3354,6 +3489,12 @@ public class PlayerActivity extends Activity {
                 intent.setDataAndType(uri, type);
             } else {
                 Utils.log("playlist refused: invalid nested playlist");
+                if (nestedPlaylistSession && nestedPlaylistError != null) {
+                    // A malformed 2.1.2 request is a completed API session, not a legacy launch.
+                    // finish() builds the documented error snapshot and sends the callback.
+                    finish();
+                    return;
+                }
             }
         }
 
@@ -3422,8 +3563,17 @@ public class PlayerActivity extends Activity {
             }
 
             if (nestedPlaylistSession) {
-                final long startPosition = savedPlaylistPosition(apiPlaylistStartIndex);
+                long startPosition = savedPlaylistPosition(apiPlaylistStartIndex);
+                if ("never".equals(nestedResumeMode)
+                        && (apiPlaylistPositions == null
+                        || apiPlaylistStartIndex < 0
+                        || apiPlaylistStartIndex >= apiPlaylistPositions.length
+                        || apiPlaylistPositions[apiPlaylistStartIndex] == C.TIME_UNSET)) {
+                    startPosition = 0L;
+                }
                 mPrefs.updatePosition(startPosition == C.TIME_UNSET ? 0L : startPosition);
+                pendingNestedResumePositionMs = "ask_every".equals(nestedResumeMode)
+                        && startPosition > 0 ? startPosition : 0L;
             } else if (bundle != null) {
                 intentReturnResult = bundle.getBoolean(API_RETURN_RESULT);
                 if (bundle.containsKey(API_POSITION)) {
@@ -4155,7 +4305,34 @@ public class PlayerActivity extends Activity {
         apiHeaders = null;
         nestedPlaylistSession = false;
         nestedResultCallback = null;
-        nestedReportIntervalSec = 0;
+        nestedReportIntervalMs = 0L;
+        nestedResumeMode = null;
+        pendingNestedResumePositionMs = 0L;
+        if (activeNestedResumeDialog != null) {
+            activeNestedResumeDialog.dismiss();
+            activeNestedResumeDialog = null;
+        }
+        nestedPlaylistModel = null;
+        nestedPlaylistError = null;
+        nestedViewerVoiceLabel = null;
+        nestedAudioChoiceDone = null;
+        nestedSubtitleChoiceDone = null;
+        nestedAudioChosenBy = null;
+        nestedSubtitleChosenBy = null;
+        nestedAudioResults = null;
+        nestedSubtitleResults = null;
+        nestedViewerAudioLabel = null;
+        nestedViewerAudioLanguage = null;
+        nestedViewerAudioOrdinal = -1;
+        nestedViewerAudioCount = -1;
+        nestedViewerSubtitleLabel = null;
+        nestedViewerSubtitleLanguage = null;
+        nestedViewerSubtitleOrdinal = -1;
+        nestedViewerSubtitleCount = -1;
+        nestedViewerSubtitleOff = false;
+        nestedJournal.clear();
+        nestedLastCallbackPayload = null;
+        cancelNestedReportTimer();
         apiMediaItems.clear();
         apiPlaylistSegments.clear();
         apiPlaylistStartIndex = 0;
@@ -4177,6 +4354,7 @@ public class PlayerActivity extends Activity {
         apiPlaylistSeasons.clear();
         apiPlaylistEpisodes.clear();
         apiPlaylistNames.clear();
+        apiPlaylistLogos.clear();
         apiPlaylistImdbIds.clear();
         apiPlaylistTmdbIds.clear();
         apiPlaylistQuality.clear();
@@ -5430,71 +5608,65 @@ public class PlayerActivity extends Activity {
      */
     @Nullable
     private Uri parseNestedPlaylist(final Bundle playlist) {
-        final Parcelable[] rawItems = getSmartParcelableArray(playlist, "items");
-        if (rawItems == null || rawItems.length == 0) {
-            Utils.log("playlist refused: playlist has no items");
+        final PlaylistApi.Parsed parsed = PlaylistApi.parse(playlist);
+        if (!parsed.ok()) {
+            // Official 2.1.2 treats a structurally bad playlist as a real API session that failed,
+            // rather than falling through to the legacy flat intent parser.
+            nestedPlaylistSession = true;
+            apiAccess = true;
+            mPrefs.setPersistent(false);
+            nestedPlaylistError = parsed.error;
+            final Object callback = playlist == null ? null : playlist.get("result_callback");
+            nestedResultCallback = callback instanceof PendingIntent ? (PendingIntent) callback : null;
+            Utils.log("playlist refused: " + nestedPlaylistError);
             return null;
         }
 
-        final Integer requestedStartValue = getNestedInt(playlist, "start_index");
-        final int requestedStart = requestedStartValue == null ? 0 : requestedStartValue;
-        if (requestedStart < 0 || requestedStart >= rawItems.length) {
-            Utils.log("playlist refused: start_index " + requestedStart
-                    + " is out of range 0.." + (rawItems.length - 1));
-            return null;
-        }
-
-        // Validate the item shape before changing live session state. Lampa sends uri on every item,
-        // while the documented contract also allows a quality-only item.
-        for (int i = 0; i < rawItems.length; i++) {
-            if (!(rawItems[i] instanceof Bundle)) {
-                Utils.log("playlist refused: items[" + i + "] is not a Bundle");
-                return null;
-            }
-            if (resolveNestedItemUri((Bundle) rawItems[i]) == null) {
-                Utils.log("playlist refused: items[" + i + "] has neither uri nor qualities");
-                return null;
-            }
-        }
-
+        final PlaylistApi.Playlist model = parsed.playlist;
         nestedPlaylistSession = true;
         apiAccess = true;
         mPrefs.setPersistent(false);
+        nestedPlaylistModel = model;
+        nestedPlaylistError = null;
 
-        apiTitle = Utils.unescapeHtml(getNestedString(playlist, "title"));
-        apiHeaders = getSmartStringArray(playlist, "headers");
-
-        final Object callback = playlist.get("result_callback");
-        nestedResultCallback = callback instanceof PendingIntent ? (PendingIntent) callback : null;
-        final Integer reportInterval = getNestedInt(playlist, "report_interval_sec");
-        nestedReportIntervalSec = reportInterval != null && reportInterval > 0
-                ? Math.max(30, reportInterval) : 0;
+        apiTitle = Utils.unescapeHtml(model.title);
+        apiHeaders = mergedHeaders(model.headers, model.items.get(model.startIndex).headers);
+        nestedResultCallback = model.resultCallback instanceof PendingIntent
+                ? (PendingIntent) model.resultCallback : null;
+        nestedReportIntervalMs = model.reportIntervalMs;
+        nestedResumeMode = model.resumeMode;
 
         apiMediaItems.clear();
         apiPlaylistSegments.clear();
         apiPlaylistSeasons.clear();
         apiPlaylistEpisodes.clear();
         apiPlaylistNames.clear();
+        apiPlaylistLogos.clear();
         apiPlaylistImdbIds.clear();
         apiPlaylistTmdbIds.clear();
         apiPlaylistQuality.clear();
-        apiPlaylistStartIndex = requestedStart;
-        apiExtrasIndex = requestedStart;
-        apiPlaylistPositions = new long[rawItems.length];
-        for (int i = 0; i < apiPlaylistPositions.length; i++) {
-            apiPlaylistPositions[i] = C.TIME_UNSET;
-        }
+
+        apiPlaylistStartIndex = model.startIndex;
+        apiExtrasIndex = model.startIndex;
+        apiPlaylistPositions = new long[model.items.size()];
+        Arrays.fill(apiPlaylistPositions, C.TIME_UNSET);
+        nestedAudioChoiceDone = new boolean[model.items.size()];
+        nestedSubtitleChoiceDone = new boolean[model.items.size()];
+        nestedAudioChosenBy = new String[model.items.size()];
+        nestedSubtitleChosenBy = new String[model.items.size()];
+        nestedAudioResults = new TrackResult[model.items.size()];
+        nestedSubtitleResults = new TrackResult[model.items.size()];
 
         Uri startUri = null;
         Uri startPoster = null;
 
-        for (int i = 0; i < rawItems.length; i++) {
-            final Bundle item = (Bundle) rawItems[i];
-            final Uri uri = resolveNestedItemUri(item);
+        for (int i = 0; i < model.items.size(); i++) {
+            final PlaylistApi.Item item = model.items.get(i);
+            final Uri uri = item.uri;
 
-            String title = getNestedString(item, "episode_title");
+            String title = item.episodeTitle;
             if (title == null) {
-                title = getNestedString(item, "title");
+                title = item.title;
             }
             if (title == null) {
                 title = apiTitle;
@@ -5504,64 +5676,127 @@ public class PlayerActivity extends Activity {
                 title = uri.getLastPathSegment();
             }
 
-            Uri poster = null;
-            final String thumbnail = getNestedString(item, "thumbnail");
-            if (thumbnail != null) {
-                poster = Uri.parse(thumbnail);
-            }
-
             final MediaMetadata.Builder metadataBuilder = new MediaMetadata.Builder()
                     .setTitle(title)
                     .setDisplayTitle(title);
-            if (poster != null) {
-                metadataBuilder.setArtworkUri(poster);
+            if (item.thumbnail != null) {
+                metadataBuilder.setArtworkUri(item.thumbnail);
             }
 
             final MediaItem.Builder itemBuilder = new MediaItem.Builder()
                     .setUri(uri)
                     .setMediaMetadata(metadataBuilder.build());
-            final List<MediaItem.SubtitleConfiguration> itemSubs = readNestedSubtitles(item);
+
+            final List<MediaItem.SubtitleConfiguration> itemSubs =
+                    buildNestedSubtitleConfigurations(item.activeSubtitles());
             if (!itemSubs.isEmpty()) {
                 itemBuilder.setSubtitleConfigurations(itemSubs);
             }
-            apiMediaItems.add(itemBuilder.build());
 
-            final String segments = getNestedString(item, "segments");
-            final Integer season = getNestedInt(item, "season");
-            final Integer episode = getNestedInt(item, "episode");
-            final String imdbId = getNestedString(item, "imdb_id");
-            final String tmdbId = getNestedString(item, "tmdb_id");
-
-            apiPlaylistSegments.add(segments);
-            apiPlaylistSeasons.add(season);
-            apiPlaylistEpisodes.add(episode);
-            apiPlaylistNames.add(getNestedString(item, "episode_title"));
-            apiPlaylistImdbIds.add(imdbId);
-            apiPlaylistTmdbIds.add(tmdbId);
-            apiPlaylistQuality.add(readNestedQualityMap(item));
-
-            final Integer positionSec = getNestedInt(item, "position_sec");
-            if (positionSec != null && positionSec >= 0) {
-                apiPlaylistPositions[i] = positionSec * 1000L;
+            if (item.clipStartMs > 0 || item.clipEndMs != Long.MIN_VALUE) {
+                final MediaItem.ClippingConfiguration.Builder clipping =
+                        new MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(Math.max(0L, item.clipStartMs));
+                if (item.clipEndMs != Long.MIN_VALUE) {
+                    clipping.setEndPositionMs(item.clipEndMs);
+                }
+                itemBuilder.setClippingConfiguration(clipping.build());
             }
 
-            if (i == requestedStart) {
+            apiMediaItems.add(itemBuilder.build());
+            apiPlaylistSegments.add(item.segments);
+            apiPlaylistSeasons.add(item.season >= 0 ? item.season : null);
+            apiPlaylistEpisodes.add(item.episode >= 0 ? item.episode : null);
+            apiPlaylistNames.add(item.episodeTitle);
+            apiPlaylistLogos.add(item.logo);
+            apiPlaylistImdbIds.add(item.imdbId);
+            apiPlaylistTmdbIds.add(item.tmdbId);
+            apiPlaylistQuality.add(qualityMap(item.activeQualities()));
+
+            if (item.positionMs != PlaylistApi.TIME_UNSET) {
+                apiPlaylistPositions[i] = item.positionMs;
+            }
+
+            if (i == model.startIndex) {
                 startUri = uri;
-                startPoster = poster;
-                apiSegments = segments;
-                apiSeason = season == null ? -1 : season;
-                apiEpisode = episode == null ? -1 : episode;
-                apiImdbId = imdbId;
-                apiTmdbId = tmdbId;
+                startPoster = item.thumbnail;
+                apiSegments = item.segments;
+                apiSeason = item.season;
+                apiEpisode = item.episode;
+                apiImdbId = item.imdbId;
+                apiTmdbId = item.tmdbId;
             }
         }
 
         apiThumbnailUri = startPoster;
+        for (String warning : model.warnings) {
+            Utils.log("playlist key dropped: " + warning);
+        }
         Utils.log("nested playlist parsed natively: " + apiMediaItems.size()
                 + " items, start=" + apiPlaylistStartIndex
                 + ", callback=" + (nestedResultCallback != null)
-                + ", report=" + nestedReportIntervalSec + "s");
+                + ", report=" + nestedReportIntervalMs + "ms"
+                + ", resume=" + nestedResumeMode);
         return startUri;
+    }
+
+    private List<MediaItem.SubtitleConfiguration> buildNestedSubtitleConfigurations(
+            final List<PlaylistApi.ExternalSubtitle> subtitles) {
+        final List<MediaItem.SubtitleConfiguration> result = new ArrayList<>();
+        if (subtitles == null) {
+            return result;
+        }
+        for (PlaylistApi.ExternalSubtitle subtitle : subtitles) {
+            result.add(SubtitleUtils.buildSubtitle(this, subtitle.uri, subtitle.mime,
+                    subtitle.language, subtitle.label, subtitle.selected));
+        }
+        return result;
+    }
+
+    private static LinkedHashMap<String, String> qualityMap(final List<PlaylistApi.Quality> qualities) {
+        final LinkedHashMap<String, String> result = new LinkedHashMap<>();
+        if (qualities == null) {
+            return result;
+        }
+        final ArrayList<PlaylistApi.Quality> sorted = new ArrayList<>(qualities);
+        Collections.sort(sorted, (a, b) ->
+                Integer.compare(qualityNumber(b.label), qualityNumber(a.label)));
+        for (PlaylistApi.Quality quality : sorted) {
+            result.put(quality.label, quality.uri.toString());
+        }
+        return result;
+    }
+
+    /**
+     * Playlist headers are inherited name-by-name, case-insensitively; item headers replace the
+     * playlist value while preserving the flat name/value array expected by the existing HTTP layer.
+     */
+    private static String[] mergedHeaders(@Nullable final String[] parent,
+                                          @Nullable final String[] child) {
+        final LinkedHashMap<String, String[]> values = new LinkedHashMap<>();
+        mergeHeaderPairs(values, parent);
+        mergeHeaderPairs(values, child);
+        final ArrayList<String> out = new ArrayList<>(values.size() * 2);
+        for (String[] pair : values.values()) {
+            out.add(pair[0]);
+            out.add(pair[1]);
+        }
+        return out.isEmpty() ? null : out.toArray(new String[0]);
+    }
+
+    private static void mergeHeaderPairs(final LinkedHashMap<String, String[]> values,
+                                         @Nullable final String[] headers) {
+        if (headers == null) {
+            return;
+        }
+        for (int i = 0; i + 1 < headers.length; i += 2) {
+            final String name = headers[i];
+            final String value = headers[i + 1];
+            if (name == null || value == null) {
+                continue;
+            }
+            values.put(name.toLowerCase(Locale.ROOT), new String[]{name, value});
+        }
     }
 
     @Nullable
@@ -5656,6 +5891,40 @@ public class PlayerActivity extends Activity {
     }
 
     @Nullable
+    private static Long getNestedTimeMs(final Bundle bundle, final String baseKey) {
+        if (bundle == null) {
+            return null;
+        }
+        final Double ms = getNestedNumber(bundle, baseKey + "_ms");
+        if (ms != null) {
+            return (long) Math.floor(ms);
+        }
+        final Double sec = getNestedNumber(bundle, baseKey + "_sec");
+        return sec == null ? null : (long) Math.floor(sec * 1000.0d);
+    }
+
+    @Nullable
+    private static Double getNestedNumber(final Bundle bundle, final String key) {
+        if (bundle == null || !bundle.containsKey(key)) {
+            return null;
+        }
+        final Object value = bundle.get(key);
+        if (value instanceof Number) {
+            final double number = ((Number) value).doubleValue();
+            return Double.isNaN(number) || Double.isInfinite(number) ? null : number;
+        }
+        if (value instanceof String) {
+            try {
+                final double number = Double.parseDouble(((String) value).trim());
+                return Double.isNaN(number) || Double.isInfinite(number) ? null : number;
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    @Nullable
     private static Integer getNestedInt(final Bundle bundle, final String key) {
         if (bundle == null || !bundle.containsKey(key)) {
             return null;
@@ -5686,6 +5955,22 @@ public class PlayerActivity extends Activity {
 
     private Bundle buildNestedPlaylistResult(final String endBy) {
         final Bundle result = new Bundle();
+
+        if (nestedPlaylistError != null) {
+            result.putString("uri", null);
+            result.putInt("index", -1);
+            result.putLong("position_ms", 0L);
+            result.putInt("position_sec", 0);
+            result.putLong("duration_ms", 0L);
+            result.putInt("duration_sec", 0);
+            result.putLongArray("positions_ms", new long[0]);
+            result.putIntArray("positions_sec", new int[0]);
+            result.putParcelableArray("history", new Bundle[0]);
+            result.putString("end_by", "error");
+            result.putString("error_message", nestedPlaylistError);
+            return result;
+        }
+
         int index = player != null ? player.getCurrentMediaItemIndex() : apiPlaylistStartIndex;
         if (index < 0 || index >= apiMediaItems.size()) {
             index = apiPlaylistStartIndex >= 0 && apiPlaylistStartIndex < apiMediaItems.size()
@@ -5703,6 +5988,9 @@ public class PlayerActivity extends Activity {
             if (duration != C.TIME_UNSET && duration > 0) {
                 durationMs = duration;
             }
+            nestedJournal.touch(index,
+                    positionMs == C.TIME_UNSET ? 0L : positionMs,
+                    durationMs == C.TIME_UNSET ? -1L : durationMs);
         } else if (index >= 0 && apiPlaylistPositions != null
                 && index < apiPlaylistPositions.length) {
             positionMs = apiPlaylistPositions[index];
@@ -5711,36 +5999,138 @@ public class PlayerActivity extends Activity {
         final Uri uri = index >= 0 ? playlistUri(index) : null;
         result.putString("uri", uri == null ? null : uri.toString());
         result.putInt("index", index);
-        result.putInt("position_sec", positionMs == C.TIME_UNSET
-                ? 0 : (int) Math.min(Integer.MAX_VALUE, Math.max(0L, positionMs / 1000L)));
-        result.putInt("duration_sec", durationMs == C.TIME_UNSET
-                ? 0 : (int) Math.min(Integer.MAX_VALUE, durationMs / 1000L));
+        final long safePositionMs = positionMs == C.TIME_UNSET ? 0L : Math.max(0L, positionMs);
+        final long safeDurationMs = durationMs == C.TIME_UNSET ? 0L : Math.max(0L, durationMs);
+        result.putLong("position_ms", safePositionMs);
+        result.putInt("position_sec", (int) Math.min(Integer.MAX_VALUE, safePositionMs / 1000L));
+        result.putLong("duration_ms", safeDurationMs);
+        result.putInt("duration_sec", (int) Math.min(Integer.MAX_VALUE, safeDurationMs / 1000L));
 
+        final long[] positionsMs = new long[apiMediaItems.size()];
         final int[] positions = new int[apiMediaItems.size()];
         for (int i = 0; i < positions.length; i++) {
             final long saved = apiPlaylistPositions != null && i < apiPlaylistPositions.length
                     ? apiPlaylistPositions[i] : C.TIME_UNSET;
-            positions[i] = saved == C.TIME_UNSET ? -1
-                    : (int) Math.min(Integer.MAX_VALUE, Math.max(0L, saved / 1000L));
+            positionsMs[i] = saved == C.TIME_UNSET ? -1L : Math.max(0L, saved);
+            positions[i] = positionsMs[i] < 0 ? -1
+                    : (int) Math.min(Integer.MAX_VALUE, positionsMs[i] / 1000L);
         }
         if (index >= 0 && index < positions.length && positionMs != C.TIME_UNSET) {
-            positions[index] = (int) Math.min(Integer.MAX_VALUE, Math.max(0L, positionMs / 1000L));
+            positionsMs[index] = Math.max(0L, positionMs);
+            positions[index] = (int) Math.min(Integer.MAX_VALUE, positionsMs[index] / 1000L);
         }
         if ("completion".equals(endBy) && index >= 0 && index < positions.length
                 && durationMs != C.TIME_UNSET) {
-            final int durationSec = (int) Math.min(Integer.MAX_VALUE, durationMs / 1000L);
+            final long completedMs = Math.max(0L, durationMs);
+            final int durationSec = (int) Math.min(Integer.MAX_VALUE, completedMs / 1000L);
+            positionsMs[index] = completedMs;
             positions[index] = durationSec;
+            result.putLong("position_ms", completedMs);
             result.putInt("position_sec", durationSec);
         }
+        result.putLongArray("positions_ms", positionsMs);
         result.putIntArray("positions_sec", positions);
+        result.putParcelableArray("history", nestedJournal.bundles());
         result.putString("end_by", endBy);
+
+        if (index >= 0) {
+            putNestedTrackResult(result, "audio",
+                    nestedAudioResults != null && index < nestedAudioResults.length
+                            ? nestedAudioResults[index] : null,
+                    nestedAudioChosenBy != null && index < nestedAudioChosenBy.length
+                            ? nestedAudioChosenBy[index] : null);
+            putNestedTrackResult(result, "subtitle",
+                    nestedSubtitleResults != null && index < nestedSubtitleResults.length
+                            ? nestedSubtitleResults[index] : null,
+                    nestedSubtitleChosenBy != null && index < nestedSubtitleChosenBy.length
+                            ? nestedSubtitleChosenBy[index] : null);
+        }
+
+        if (nestedPlaylistModel != null && index >= 0 && index < nestedPlaylistModel.items.size()) {
+            final String voice = nestedPlaylistModel.items.get(index).voiceLabel();
+            if (voice != null) {
+                result.putString("voice_label", voice);
+            }
+            final List<String> warnings = nestedPlaylistModel.warnings;
+            if (warnings != null && !warnings.isEmpty()) {
+                final int count = Math.min(20, warnings.size());
+                final String[] out = new String[count];
+                for (int i = 0; i < count; i++) {
+                    out[i] = warnings.get(i);
+                }
+                if (warnings.size() > 20) {
+                    out[19] = "… " + (warnings.size() - 19) + " more";
+                }
+                result.putStringArray("warnings", out);
+            }
+        }
         return result;
+    }
+
+    private static void putNestedTrackResult(final Bundle result, final String prefix,
+                                             @Nullable final TrackResult track,
+                                             @Nullable final String chosenBy) {
+        if (chosenBy != null) {
+            result.putString(prefix + "_chosen_by", chosenBy);
+        }
+        if (track == null) {
+            return;
+        }
+        result.putString(prefix + "_language", track.language);
+        result.putString(prefix + "_label", track.label);
+        result.putInt(prefix + "_index", track.index);
+        if (track.language != null && track.ordinal >= 0 && track.count >= 0) {
+            result.putInt(prefix + "_language_ordinal", track.ordinal);
+            result.putInt(prefix + "_language_count", track.count);
+        }
+    }
+
+    private void touchNestedJournal() {
+        if (!nestedPlaylistSession || nestedPlaylistError != null || player == null) {
+            return;
+        }
+        final int index = player.getCurrentMediaItemIndex();
+        if (index < 0 || index >= apiMediaItems.size()) {
+            return;
+        }
+        final long position = player.isCurrentMediaItemSeekable()
+                ? Math.max(0L, player.getCurrentPosition()) : 0L;
+        final long duration = player.getDuration();
+        nestedJournal.touch(index, position,
+                duration == C.TIME_UNSET || duration <= 0 ? -1L : duration);
+    }
+
+    // Just+ 2.2.2 no longer emits periodic playback progress to Lampa.
+    // Playback position and watched state are still sent by the final callback
+    // on leaving the player. Keep the methods for existing lifecycle call sites.
+    private void armNestedReportTimer() {
+        // Intentionally disabled.
+    }
+
+    private void cancelNestedReportTimer() {
+        // No periodic task is scheduled in 2.2.2.
     }
 
     private void sendNestedPlaylistCallback(final Bundle result) {
         if (nestedResultCallback == null || result == null) {
             return;
         }
+
+        // 2.1.2 suppresses identical snapshots. Parcel bytes are deterministic for this Bundle shape
+        // (primitive values, arrays and nested Bundles), and preserve distinctions such as -1 vs 0.
+        final Parcel parcel = Parcel.obtain();
+        final byte[] payload;
+        try {
+            parcel.writeBundle(result);
+            payload = parcel.marshall();
+        } finally {
+            parcel.recycle();
+        }
+        if (Arrays.equals(nestedLastCallbackPayload, payload)) {
+            return;
+        }
+        nestedLastCallbackPayload = payload;
+
         final Intent fillIn = new Intent();
         fillIn.putExtras(new Bundle(result));
         try {
@@ -5990,6 +6380,7 @@ public class PlayerActivity extends Activity {
         }
         final MediaItem item = player.getCurrentMediaItem();
         final MediaMetadata metadata = item != null ? item.mediaMetadata : null;
+        final int itemIndex = player.getCurrentMediaItemIndex();
 
         CharSequence title = metadata != null ? metadata.title : null;
         if (title == null || title.length() == 0) {
@@ -5997,12 +6388,32 @@ public class PlayerActivity extends Activity {
         }
         titleView.setText(title);
 
+        final String headerArt = mPrefs != null && mPrefs.headerArt != null ? mPrefs.headerArt : "logo";
+        final Uri logo = nestedPlaylistSession && itemIndex >= 0 && itemIndex < apiPlaylistLogos.size()
+                ? apiPlaylistLogos.get(itemIndex) : null;
         Uri artworkUri = metadata != null ? metadata.artworkUri : null;
         if (artworkUri == null) {
             artworkUri = playingArtwork;
         }
-        updatePoster(artworkUri, currentPlayingUri(), player.getCurrentMediaItemIndex(),
-                player.getMediaItemCount());
+
+        if ("logo".equals(headerArt) && logo != null) {
+            posterSlot.setVisibility(View.GONE);
+            Glide.with(this).clear(posterView);
+            logoView.setVisibility(View.VISIBLE);
+            titleView.setVisibility(View.GONE);
+            Glide.with(this).load(logo).into(logoView);
+        } else {
+            Glide.with(this).clear(logoView);
+            logoView.setVisibility(View.GONE);
+            titleView.setVisibility(View.VISIBLE);
+            if ("poster".equals(headerArt)) {
+                updatePoster(artworkUri, currentPlayingUri(), itemIndex, player.getMediaItemCount());
+            } else {
+                Glide.with(this).clear(posterView);
+                posterSlot.setVisibility(View.GONE);
+            }
+        }
+        setInfoLine(episodeInfoView, nestedPlaylistSession ? nestedEpisodeInfo(itemIndex) : null);
 
         final boolean hasPlaylist = player.getMediaItemCount() > 1;
         if (buttonPlaylist != null) {
@@ -6014,9 +6425,53 @@ public class PlayerActivity extends Activity {
         playerView.setShowNextButton(hasPlaylist);
         playerView.setShowPreviousButton(hasPlaylist);
 
-        topInfoPanel.setVisibility(View.VISIBLE);
+        headerRoot.setVisibility(View.VISIBLE);
         updateMediaInfo();
         updateEndsAt();
+    }
+
+    private String nestedEpisodeInfo(final int index) {
+        if (!nestedPlaylistSession || index < 0) {
+            return null;
+        }
+        final ArrayList<String> parts = new ArrayList<>();
+        final Integer season = index < apiPlaylistSeasons.size() ? apiPlaylistSeasons.get(index) : null;
+        final Integer episode = index < apiPlaylistEpisodes.size() ? apiPlaylistEpisodes.get(index) : null;
+        final String name = index < apiPlaylistNames.size() ? apiPlaylistNames.get(index) : null;
+        if (season != null && season >= 0) {
+            parts.add(getString(R.string.subtitle_search_season, season));
+        }
+        if (episode != null && episode >= 0) {
+            parts.add(getString(R.string.subtitle_search_episode, episode));
+        }
+        if (name != null && !name.trim().isEmpty()) {
+            parts.add(Utils.unescapeHtml(name.trim()));
+        }
+        return parts.isEmpty() ? null : TextUtils.join(" · ", parts);
+    }
+
+    /**
+     * Released 2.1.3 (JADX {@code Y0}): attach a metadata glyph to an info line.
+     *
+     * <p>The canvas is 14dp (16dp on a television, the same value the released build reaches by scaling
+     * 12.307693 through the device factor). The drawable's own 24-unit inset — {@code insetStart} units on
+     * the left, {@code padEnd} units of advance to the label — is what sets both its left bound and the gap:
+     * the vector is drawn shifted so its ink starts at the line's edge, and the padding is the difference
+     * between the full 24-unit advance and the canvas. The tint is the line's own text colour, so the glyph
+     * reads at exactly the weight of the caption beside it.
+     */
+    private void applyHeaderIcon(TextView view, int drawableRes, int insetStart, int padEnd) {
+        final Drawable drawable = ContextCompat.getDrawable(this, drawableRes);
+        if (drawable == null) {
+            return;
+        }
+        final int canvas = ui.dpS(isTvBox ? 12.307693f : 14.0f);
+        final int shift = Math.round((canvas * insetStart) / 24.0f);
+        drawable.setBounds(-shift, 0, canvas - shift, canvas);
+        view.setCompoundDrawablesRelative(drawable, null, null, null);
+        view.setCompoundDrawableTintList(view.getTextColors());
+        view.setCompoundDrawablePadding(
+                (ui.dpS(8.0f) + Math.round(((padEnd - insetStart) * canvas) / 24.0f)) - canvas);
     }
 
     private TextView createInfoLine(int topMargin) {
@@ -6038,8 +6493,31 @@ public class PlayerActivity extends Activity {
             return;
         }
         final Format video = player.getVideoFormat();
-        setInfoLine(videoInfoView, buildVideoInfo(video, videoFrameRate()));
-        setInfoLine(audioInfoView, buildAudioInfo(getSelectedAudioFormat()));
+        final boolean detailed = mPrefs == null || "detailed".equals(mPrefs.headerInfo);
+        final boolean qualityChipHidden =
+                buttonQuality == null || buttonQuality.getVisibility() != View.VISIBLE;
+        final boolean audioChipHidden =
+                buttonAudio == null || buttonAudio.getVisibility() != View.VISIBLE;
+        setInfoLine(videoInfoView,
+                buildVideoInfo(video, videoFrameRate(), detailed, qualityChipHidden));
+        setInfoLine(audioInfoView,
+                buildAudioInfo(getSelectedAudioFormat(), detailed, audioChipHidden));
+        if (mediaInfoRow != null) {
+            mediaInfoRow.setVisibility(
+                    (videoInfoView.getVisibility() == View.VISIBLE
+                            || audioInfoView.getVisibility() == View.VISIBLE)
+                            ? View.VISIBLE : View.GONE);
+        }
+        // Released 2.1.3 rule (JADX t4): the rule between the two groups is drawn only while both of
+        // them are — a file with no audio track left ours hanging after the video group with nothing
+        // to separate. Measured on the static fixture: three columns of #59FFFFFF the published build
+        // does not draw.
+        if (metaDivider != null) {
+            metaDivider.setVisibility(
+                    (videoInfoView.getVisibility() == View.VISIBLE
+                            && audioInfoView.getVisibility() == View.VISIBLE)
+                            ? View.VISIBLE : View.GONE);
+        }
     }
 
     private static void setInfoLine(TextView view, String text) {
@@ -6054,18 +6532,20 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    private static String buildVideoInfo(Format video, float frameRate) {
+    private static String buildVideoInfo(
+            Format video, float frameRate, boolean detailed, boolean qualityChipHidden) {
         if (video == null) {
             return null;
         }
         final StringBuilder b = new StringBuilder();
-        appendField(b, resolutionClass(video.width, video.height));
-        appendField(b, codecName(video));
+        if (qualityChipHidden) {
+            appendField(b, resolutionClass(video.width, video.height));
+        }
+        if (detailed) {
+            appendField(b, codecName(video));
+        }
         appendField(b, hdrName(video.colorInfo));
-        // Alongside its neighbours rather than in the stats panel: like them it is a property of the file
-        // and does not move during playback, and it is the one the frame-rate matching setting is about —
-        // which made it the only reason to open a panel over the picture.
-        if (frameRate > 0) {
+        if (detailed && frameRate > 0) {
             appendField(b, String.format(Locale.US, "%.2f fps", frameRate));
         }
         return b.toString();
@@ -6118,29 +6598,33 @@ public class PlayerActivity extends Activity {
         return new String[]{headline, detail.length() == 0 ? null : detail.toString()};
     }
 
-    private String buildAudioInfo(Format audio) {
+    private String buildAudioInfo(Format audio, boolean detailed, boolean audioChipHidden) {
         if (audio == null) {
             return null;
         }
-        // Same shape as the track list: <label or container name or language> [<codec> <channels> <bitrate>k] (<lang>)
+        // Published 2.1.3 avoids repeating the value already visible in the audio chip.
+        // If the chip is hidden, include the track/container name. If the chip is visible
+        // and already carries that name (or the language when there is no name), the header
+        // keeps only the complementary language plus technical details.
         final String language = languageDisplayName(audio.language);
-        // Rich release label: Media3's Format.label first, then the name read from the container.
         final String metaName = trackName(audio);
-        final String title = (metaName != null && !metaName.isEmpty()) ? metaName : language;
         final StringBuilder b = new StringBuilder();
-        if (title != null && !title.isEmpty()) {
-            b.append(title);
+
+        if (audioChipHidden && metaName != null && !metaName.isEmpty()) {
+            appendField(b, metaName);
         }
-        final String tech = CustomDefaultTrackNameProvider.techInfo(audio);
-        if (!tech.isEmpty()) {
-            if (b.length() > 0) b.append(' ');
-            b.append('[').append(tech).append(']');
+
+        final boolean chipShowsLanguage =
+                !audioChipHidden && (metaName == null || metaName.isEmpty());
+        if (!chipShowsLanguage && language != null && !language.isEmpty()
+                && !language.equals(metaName)) {
+            appendField(b, language);
         }
-        // If we led with a rich name, still surface the language after it.
-        if (metaName != null && !metaName.isEmpty() && language != null) {
-            if (b.length() > 0) b.append(' ');
-            b.append('(').append(language).append(')');
-        }
+
+        final String tech = detailed
+                ? CustomDefaultTrackNameProvider.techInfo(audio)
+                : (audio.channelCount > 2 ? Utils.formatChannels(audio.channelCount) : "");
+        appendField(b, tech);
         return b.toString();
     }
 
@@ -6446,7 +6930,7 @@ public class PlayerActivity extends Activity {
             endsAtView.setVisibility(View.VISIBLE);
             return;
         }
-        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_medium));
+        endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
         final long duration = player.getDuration();
         if (duration == C.TIME_UNSET || duration <= 0) {
             endsAtView.setVisibility(View.GONE);
@@ -6459,18 +6943,15 @@ public class PlayerActivity extends Activity {
         }
         final long endMs = System.currentTimeMillis() + (long) (remaining / speed);
         final String time = DateFormat.getTimeFormat(this).format(new Date(endMs));
-        endsAtView.setText(getString(R.string.time_ends_at_inline, time));
+        endsAtView.setText(getString(R.string.time_ends_at, time));
         endsAtView.setVisibility(View.VISIBLE);
     }
 
-    /** The bottom bar's total and the dot in front of it; the elapsed slot beside them always shows. */
+    /** The released 2.1.3 plate has only elapsed and duration slots; no separator view. */
     private void setDurationVisible(boolean visible) {
-        final int visibility = visible ? View.VISIBLE : View.GONE;
-        for (int id : new int[]{R.id.exo_time_separator, R.id.exo_duration}) {
-            final View view = playerView.findViewById(id);
-            if (view != null) {
-                view.setVisibility(visibility);
-            }
+        final View duration = playerView.findViewById(R.id.exo_duration);
+        if (duration != null) {
+            duration.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
     }
 
@@ -7432,9 +7913,21 @@ public class PlayerActivity extends Activity {
         if (buttonQuality == null) {
             return;
         }
-        final boolean show = player != null && buildQualityChoices().size() >= 2;
+        final ArrayList<VideoQualityChoice> choices = buildQualityChoices();
+        final boolean show = player != null && choices.size() >= 2;
         buttonQuality.setVisibility(show ? View.VISIBLE : View.GONE);
-        // Light the HD icon coral when a specific quality is pinned (anything other than Auto).
+        if (!show) {
+            return;
+        }
+        final int selected = selectedQualityIndex(choices);
+        String label = selected >= 0 && selected < choices.size()
+                ? qualityChoiceTitle(choices.get(selected)) : null;
+        if (label == null || label.isEmpty()) {
+            final Format video = player.getVideoFormat();
+            label = video != null ? resolutionClass(video.width, video.height)
+                    : getString(R.string.quality_auto);
+        }
+        buttonQuality.setText(mPrefs != null && mPrefs.roundValueButtons ? null : label);
         buttonQuality.setSelected(selectedVideoQualityMode != VideoQualityChoice.MODE_AUTO);
     }
 
@@ -7643,6 +8136,482 @@ public class PlayerActivity extends Activity {
 
 
 
+    private static final class TrackCandidate {
+        final TrackGroup group;
+        final int trackIndex;
+        final int menuIndex;
+        final Format format;
+        final String label;
+        final String language;
+        final boolean supported;
+        final boolean selected;
+
+        TrackCandidate(TrackGroup group, int trackIndex, int menuIndex, Format format,
+                       String label, String language, boolean supported, boolean selected) {
+            this.group = group;
+            this.trackIndex = trackIndex;
+            this.menuIndex = menuIndex;
+            this.format = format;
+            this.label = label;
+            this.language = language;
+            this.supported = supported;
+            this.selected = selected;
+        }
+    }
+
+    private static final class TrackResult {
+        final String language;
+        final String label;
+        final int ordinal;
+        final int count;
+        final int index;
+
+        TrackResult(String language, String label, int ordinal, int count, int index) {
+            this.language = language;
+            this.label = label;
+            this.ordinal = ordinal;
+            this.count = count;
+            this.index = index;
+        }
+
+        static TrackResult off() {
+            return new TrackResult(null, null, -1, -1, -1);
+        }
+    }
+
+    private List<TrackCandidate> nestedTrackCandidates(final Tracks tracks, final int type) {
+        final ArrayList<TrackCandidate> out = new ArrayList<>();
+        if (tracks == null) {
+            return out;
+        }
+        int menuIndex = 0;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != type) {
+                continue;
+            }
+            final TrackGroup mediaGroup = group.getMediaTrackGroup();
+            for (int i = 0; i < group.length; i++) {
+                final Format format = mediaGroup.getFormat(i);
+                if (type == C.TRACK_TYPE_TEXT && isPhantomClosedCaption(format)) {
+                    continue;
+                }
+                final String rawLabel = trackName(format);
+                String language = Utils.toIso3Language(format.language);
+                if (language == null && rawLabel != null) {
+                    language = Utils.languageInName(rawLabel,
+                            Arrays.asList("eng", "rus", "ukr", "deu", "fra", "spa", "ita", "por",
+                                    "jpn", "kor", "zho", "pol", "ces", "tur", "ara", "hin"));
+                }
+                final boolean supported = type == C.TRACK_TYPE_AUDIO
+                        ? group.isTrackSupported(i, true) : group.isTrackSupported(i);
+                out.add(new TrackCandidate(mediaGroup, i, menuIndex++, format, rawLabel,
+                        language, supported, group.isTrackSelected(i)));
+            }
+        }
+        return out;
+    }
+
+    private void applyNestedTrackRequests(final Tracks tracks) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null
+                || nestedPlaylistError != null) {
+            return;
+        }
+        final int itemIndex = player.getCurrentMediaItemIndex();
+        if (itemIndex < 0 || itemIndex >= nestedPlaylistModel.items.size()) {
+            return;
+        }
+
+        if (nestedAudioChoiceDone != null && !nestedAudioChoiceDone[itemIndex]) {
+            final List<TrackCandidate> audio = nestedTrackCandidates(tracks, C.TRACK_TYPE_AUDIO);
+            if (!audio.isEmpty()) {
+                applyNestedTrackRequest(itemIndex, false, audio);
+            }
+        }
+
+        if (nestedSubtitleChoiceDone != null && !nestedSubtitleChoiceDone[itemIndex]) {
+            final List<TrackCandidate> text = nestedTrackCandidates(tracks, C.TRACK_TYPE_TEXT);
+            if (!text.isEmpty()) {
+                applyNestedTrackRequest(itemIndex, true, text);
+            } else {
+                // A file with no playable subtitle tracks has made its one 2.1.2 choice: nothing.
+                nestedSubtitleChoiceDone[itemIndex] = true;
+            }
+        }
+    }
+
+    private void applyNestedTrackRequest(final int itemIndex, final boolean subtitle,
+                                         final List<TrackCandidate> candidates) {
+        final PlaylistApi.Item item = nestedPlaylistModel.items.get(itemIndex);
+        final PlaylistApi.TrackRequest itemRequest = subtitle ? item.subtitle : item.audio;
+        final PlaylistApi.TrackRequest playlistRequest =
+                subtitle ? nestedPlaylistModel.subtitle : nestedPlaylistModel.audio;
+
+        TrackCandidate chosen = null;
+        String chosenBy = null;
+        boolean off = false;
+
+        // Step 1: a viewer choice from an earlier item in this launch.
+        if (subtitle && nestedViewerSubtitleOff) {
+            off = true;
+            chosenBy = "viewer";
+        } else {
+            final String viewerLabel = subtitle ? nestedViewerSubtitleLabel : nestedViewerAudioLabel;
+            final String viewerLanguage = subtitle ? nestedViewerSubtitleLanguage : nestedViewerAudioLanguage;
+            final int viewerOrdinal = subtitle ? nestedViewerSubtitleOrdinal : nestedViewerAudioOrdinal;
+            final int viewerCount = subtitle ? nestedViewerSubtitleCount : nestedViewerAudioCount;
+            chosen = chooseByViewerMemory(candidates, viewerLabel, viewerLanguage,
+                    viewerOrdinal, viewerCount);
+            if (chosen != null) {
+                chosenBy = "viewer";
+            }
+        }
+
+        // Steps 2/4/5 on the item, then step 6 on the playlist.
+        if (chosen == null && !off) {
+            final TrackDecision itemDecision = chooseByRequest(candidates, itemRequest, subtitle);
+            if (itemDecision.off) {
+                off = true;
+                chosenBy = itemDecision.chosenBy;
+            } else if (itemDecision.candidate != null) {
+                chosen = itemDecision.candidate;
+                chosenBy = itemDecision.chosenBy;
+            }
+        }
+
+        // Step 3 for subtitles: selected external subtitle. It comes after item index and before label.
+        // chooseByRequest deliberately does index first and leaves label/ordinal for the second pass below.
+        if (subtitle && chosen == null && !off) {
+            final TrackCandidate selectedExternal = selectedExternalSubtitleCandidate(item, candidates);
+            if (selectedExternal != null) {
+                chosen = selectedExternal;
+                chosenBy = "selected";
+            }
+        }
+
+        // Item label/ordinal after selected subtitle.
+        if (chosen == null && !off) {
+            final TrackDecision itemNamed = chooseNamedByRequest(candidates, itemRequest);
+            if (itemNamed.candidate != null) {
+                chosen = itemNamed.candidate;
+                chosenBy = itemNamed.chosenBy;
+            }
+        }
+
+        // Playlist index, label, ordinal.
+        if (chosen == null && !off) {
+            final TrackDecision playlistIndex = chooseIndexByRequest(candidates, playlistRequest, subtitle);
+            if (playlistIndex.off) {
+                off = true;
+                chosenBy = playlistIndex.chosenBy;
+            } else if (playlistIndex.candidate != null) {
+                chosen = playlistIndex.candidate;
+                chosenBy = playlistIndex.chosenBy;
+            }
+        }
+        if (chosen == null && !off) {
+            final TrackDecision playlistNamed = chooseNamedByRequest(candidates, playlistRequest);
+            if (playlistNamed.candidate != null) {
+                chosen = playlistNamed.candidate;
+                chosenBy = playlistNamed.chosenBy;
+            }
+        }
+
+        // Step 8: effective item languages, else playlist languages.
+        if (chosen == null && !off) {
+            final String[] languages = itemRequest != null && itemRequest.languages != null
+                    ? itemRequest.languages
+                    : (playlistRequest == null ? null : playlistRequest.languages);
+            if (subtitle && languages != null && languages.length == 0) {
+                off = true;
+                chosenBy = "languages";
+            } else if (languages != null && languages.length > 0) {
+                chosen = chooseByLanguages(candidates, languages, subtitle);
+                if (chosen != null) {
+                    chosenBy = "languages";
+                }
+            }
+        }
+
+        // Step 9: keep what Media3/player settings already selected. Do not invent track zero.
+        if (chosen == null && !off) {
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && candidate.selected) {
+                    chosen = candidate;
+                    chosenBy = "player";
+                    break;
+                }
+            }
+        }
+
+        if (subtitle) {
+            nestedSubtitleChoiceDone[itemIndex] = true;
+        } else {
+            nestedAudioChoiceDone[itemIndex] = true;
+        }
+
+        if (off && subtitle) {
+            disableSubtitles();
+            nestedSubtitleChosenBy[itemIndex] = chosenBy;
+            nestedSubtitleResults[itemIndex] = TrackResult.off();
+            return;
+        }
+
+        if (chosen == null) {
+            return;
+        }
+
+        if (!chosen.selected) {
+            if (subtitle) {
+                applySubtitle(chosen.group, chosen.trackIndex);
+            } else {
+                applyAudioCandidate(chosen);
+            }
+        }
+
+        final TrackResult result = nestedTrackResult(candidates, chosen);
+        if (subtitle) {
+            nestedSubtitleChosenBy[itemIndex] = chosenBy;
+            nestedSubtitleResults[itemIndex] = result;
+        } else {
+            nestedAudioChosenBy[itemIndex] = chosenBy;
+            nestedAudioResults[itemIndex] = result;
+        }
+    }
+
+    private static final class TrackDecision {
+        final TrackCandidate candidate;
+        final boolean off;
+        final String chosenBy;
+
+        TrackDecision(TrackCandidate candidate, boolean off, String chosenBy) {
+            this.candidate = candidate;
+            this.off = off;
+            this.chosenBy = chosenBy;
+        }
+
+        static TrackDecision none() {
+            return new TrackDecision(null, false, null);
+        }
+    }
+
+    private TrackDecision chooseByRequest(final List<TrackCandidate> candidates,
+                                          final PlaylistApi.TrackRequest request,
+                                          final boolean subtitle) {
+        // Only index/off here. Label and ordinal have to come after selected external subtitles.
+        return chooseIndexByRequest(candidates, request, subtitle);
+    }
+
+    private TrackDecision chooseIndexByRequest(final List<TrackCandidate> candidates,
+                                               final PlaylistApi.TrackRequest request,
+                                               final boolean subtitle) {
+        if (request == null) {
+            return TrackDecision.none();
+        }
+        if (subtitle && request.off()) {
+            return new TrackDecision(null, true,
+                    request.index != null && request.index == -1 ? "index" : "languages");
+        }
+        if (request.index == null || request.index < 0) {
+            return TrackDecision.none();
+        }
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.menuIndex != request.index || !candidate.supported) {
+                continue;
+            }
+            if (request.label != null && !nestedTrackLabelsMatch(request.label, candidate.label)) {
+                return TrackDecision.none();
+            }
+            return new TrackDecision(candidate, false, "index");
+        }
+        return TrackDecision.none();
+    }
+
+    private TrackDecision chooseNamedByRequest(final List<TrackCandidate> candidates,
+                                               final PlaylistApi.TrackRequest request) {
+        if (request == null) {
+            return TrackDecision.none();
+        }
+        if (request.label != null) {
+            final TrackCandidate byLabel =
+                    chooseByLabel(candidates, request.label, request.languages);
+            if (byLabel != null) {
+                return new TrackDecision(byLabel, false, "label");
+            }
+        }
+        if (request.ordinal != null && request.languages != null
+                && request.languages.length > 0) {
+            final String language = request.languages[0];
+            final ArrayList<TrackCandidate> inLanguage = new ArrayList<>();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && language.equals(candidate.language)) {
+                    inLanguage.add(candidate);
+                }
+            }
+            if ((request.count == null || request.count == inLanguage.size())
+                    && request.ordinal >= 0 && request.ordinal < inLanguage.size()) {
+                return new TrackDecision(inLanguage.get(request.ordinal), false, "language_ordinal");
+            }
+        }
+        return TrackDecision.none();
+    }
+
+    private TrackCandidate chooseByViewerMemory(final List<TrackCandidate> candidates,
+                                                final String label, final String language,
+                                                final int ordinal, final int count) {
+        if (label != null) {
+            final TrackCandidate byLabel = chooseByLabel(candidates, label,
+                    language == null ? null : new String[]{language});
+            if (byLabel != null) {
+                return byLabel;
+            }
+        }
+        if (language != null && ordinal >= 0) {
+            final ArrayList<TrackCandidate> same = new ArrayList<>();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && language.equals(candidate.language)) {
+                    same.add(candidate);
+                }
+            }
+            if ((count < 0 || count == same.size()) && ordinal < same.size()) {
+                return same.get(ordinal);
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate chooseByLabel(final List<TrackCandidate> candidates, final String label,
+                                         @Nullable final String[] languages) {
+        if (languages != null && languages.length > 0) {
+            for (String language : languages) {
+                for (TrackCandidate candidate : candidates) {
+                    if (candidate.supported && language.equals(candidate.language)
+                            && nestedTrackLabelsMatch(label, candidate.label)) {
+                        return candidate;
+                    }
+                }
+            }
+            return null;
+        }
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.supported && nestedTrackLabelsMatch(label, candidate.label)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate chooseByLanguages(final List<TrackCandidate> candidates,
+                                             final String[] languages,
+                                             final boolean subtitle) {
+        for (String language : languages) {
+            TrackCandidate fallback = null;
+            for (TrackCandidate candidate : candidates) {
+                if (!candidate.supported || !language.equals(candidate.language)) {
+                    continue;
+                }
+                if (fallback == null) {
+                    fallback = candidate;
+                }
+                if (subtitle) {
+                    final int flags = candidate.format.selectionFlags;
+                    final boolean forced = (flags & C.SELECTION_FLAG_FORCED) != 0;
+                    final boolean sdh = (candidate.format.roleFlags & C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND) != 0;
+                    if (!forced && !sdh) {
+                        return candidate;
+                    }
+                } else {
+                    final boolean commentary =
+                            (candidate.format.roleFlags & C.ROLE_FLAG_COMMENTARY) != 0;
+                    if (!commentary) {
+                        return candidate;
+                    }
+                }
+            }
+            if (fallback != null) {
+                return fallback;
+            }
+        }
+        return null;
+    }
+
+    private TrackCandidate selectedExternalSubtitleCandidate(final PlaylistApi.Item item,
+                                                             final List<TrackCandidate> candidates) {
+        if (item == null) {
+            return null;
+        }
+        for (PlaylistApi.ExternalSubtitle subtitle : item.activeSubtitles()) {
+            if (!subtitle.selected) {
+                continue;
+            }
+            final String id = subtitle.uri.toString();
+            for (TrackCandidate candidate : candidates) {
+                if (candidate.supported && id.equals(candidate.format.id)) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void applyAudioCandidate(final TrackCandidate candidate) {
+        if (player == null || candidate == null) {
+            return;
+        }
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setOverrideForType(new TrackSelectionOverride(
+                        candidate.group, Collections.singletonList(candidate.trackIndex)))
+                .build());
+    }
+
+    private TrackResult nestedTrackResult(final List<TrackCandidate> candidates,
+                                          final TrackCandidate selected) {
+        final String rawLanguage = selected.format.language;
+        final String isoLanguage = selected.language;
+        int ordinal = -1;
+        int count = -1;
+        if (isoLanguage != null && rawLanguage != null && !rawLanguage.trim().isEmpty()
+                && !"und".equalsIgnoreCase(rawLanguage)) {
+            count = 0;
+            for (TrackCandidate candidate : candidates) {
+                if (!candidate.supported || !isoLanguage.equals(candidate.language)) {
+                    continue;
+                }
+                if (candidate == selected) {
+                    ordinal = count;
+                }
+                count++;
+            }
+        }
+        return new TrackResult(rawLanguage,
+                cleanResultTrackLabel(selected.label),
+                ordinal, count, selected.menuIndex);
+    }
+
+    private static String cleanResultTrackLabel(@Nullable final String label) {
+        if (label == null) {
+            return null;
+        }
+        final String value = label.trim();
+        if (value.isEmpty() || value.matches("(?i)^(rus|eng|ukr|deu|fra|spa|ita|por|jpn|kor|zho)\\d+$")) {
+            return null;
+        }
+        return value;
+    }
+
+    /**
+     * Safe subset of the official 2.1.2 label matcher: whole-word, case-insensitive matching after
+     * codec/channel/language noise is removed. Studio aliases are layered on separately below.
+     */
+    private boolean nestedTrackLabelsMatch(@Nullable final String wanted,
+                                           @Nullable final String actual) {
+        if (nestedTrackMatcher == null) {
+            nestedTrackMatcher = PlaylistTrackMatcher.load(this);
+        }
+        return nestedTrackMatcher.labelsMatch(wanted, actual);
+    }
+
     private static class AudioChoice {
         final String label;
         final String detail; // the codec, channels and bitrate; null when the track declares none
@@ -7695,13 +8664,133 @@ public class PlayerActivity extends Activity {
         return choices;
     }
 
-    // Shows the audio button only when there is more than one audio track to pick from.
+    private PlaylistApi.Item currentNestedItem() {
+        if (nestedPlaylistModel == null || player == null) {
+            return null;
+        }
+        final int index = player.getCurrentMediaItemIndex();
+        return index >= 0 && index < nestedPlaylistModel.items.size()
+                ? nestedPlaylistModel.items.get(index) : null;
+    }
+
+    private boolean hasNestedVoiceChoices() {
+        final PlaylistApi.Item item = currentNestedItem();
+        return item != null && item.voices.size() >= 2;
+    }
+
+    // Shows the audio button when either the stream exposes multiple tracks or the launcher supplied
+    // multiple 2.1.2 voices (one dub per source).
     private void updateAudioButton() {
         if (buttonAudio == null) {
             return;
         }
-        final boolean show = player != null && buildAudioChoices().size() >= 2;
+        final ArrayList<AudioChoice> choices = buildAudioChoices();
+        final PlaylistApi.Item nestedItem = currentNestedItem();
+        final boolean voices = nestedItem != null && nestedItem.voices.size() >= 2;
+        final boolean show = player != null && (choices.size() >= 2 || voices);
         buttonAudio.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (!show) {
+            return;
+        }
+
+        String label = null;
+        if (voices) {
+            final PlaylistApi.Voice voice = nestedItem.currentVoice();
+            if (voice != null) {
+                label = voice.label;
+            }
+        }
+        if (label == null || label.trim().isEmpty()) {
+            for (final AudioChoice choice : choices) {
+                if (choice.selected) {
+                    label = choice.label;
+                    break;
+                }
+            }
+        }
+        if ((label == null || label.trim().isEmpty()) && !choices.isEmpty()) {
+            label = choices.get(0).label;
+        }
+        if (label == null || label.trim().isEmpty()) {
+            label = getString(R.string.button_audio_track);
+        }
+        buttonAudio.setText(mPrefs != null && mPrefs.roundValueButtons ? null : label);
+    }
+
+    private void applyNestedVoice(final int voiceIndex, final boolean viewerChoice) {
+        if (player == null || nestedPlaylistModel == null) {
+            return;
+        }
+        final int itemIndex = player.getCurrentMediaItemIndex();
+        if (itemIndex < 0 || itemIndex >= nestedPlaylistModel.items.size()) {
+            return;
+        }
+        final PlaylistApi.Item item = nestedPlaylistModel.items.get(itemIndex);
+        if (voiceIndex < 0 || voiceIndex >= item.voices.size() || voiceIndex == item.selectedVoice) {
+            return;
+        }
+
+        final PlaylistApi.Voice voice = item.voices.get(voiceIndex);
+        final long position = Math.max(0L, player.getCurrentPosition());
+        final boolean resume = player.getPlayWhenReady();
+
+        savePlayer();
+        final PlaylistApi.Voice oldVoice = item.currentVoice();
+        final boolean subtitleSourceChanges =
+                (oldVoice != null && oldVoice.subtitles != null)
+                        || voice.subtitles != null;
+        item.selectedVoice = voiceIndex;
+        item.uri = voice.uri;
+        if (nestedAudioChoiceDone != null && itemIndex < nestedAudioChoiceDone.length) {
+            nestedAudioChoiceDone[itemIndex] = false;
+            nestedAudioChosenBy[itemIndex] = null;
+            nestedAudioResults[itemIndex] = null;
+        }
+        if (subtitleSourceChanges && nestedSubtitleChoiceDone != null
+                && itemIndex < nestedSubtitleChoiceDone.length) {
+            nestedSubtitleChoiceDone[itemIndex] = false;
+            nestedSubtitleChosenBy[itemIndex] = null;
+            nestedSubtitleResults[itemIndex] = null;
+        }
+        if (viewerChoice) {
+            nestedViewerVoiceLabel = voice.label;
+        }
+
+        final MediaItem old = apiMediaItems.get(itemIndex);
+        final MediaItem.Builder updated = old.buildUpon().setUri(voice.uri);
+        final List<MediaItem.SubtitleConfiguration> subs =
+                buildNestedSubtitleConfigurations(item.activeSubtitles());
+        updated.setSubtitleConfigurations(subs);
+        apiMediaItems.set(itemIndex, updated.build());
+        apiPlaylistQuality.set(itemIndex, qualityMap(item.activeQualities()));
+        apiHeaders = mergedHeaders(nestedPlaylistModel.headers, item.headers);
+        apiPlaylistStartIndex = itemIndex;
+        apiExtrasIndex = itemIndex;
+
+        mPrefs.updatePosition(position);
+        sourceSwitchKeepPaused = !resume;
+        restorePlayState = resume;
+        initializePlayer();
+    }
+
+    /** Carry a voice explicitly picked by the viewer to the next episode when that label exists there. */
+    private void applyNestedViewerVoiceToCurrentItem() {
+        if (nestedViewerVoiceLabel == null || player == null || nestedPlaylistModel == null) {
+            return;
+        }
+        final PlaylistApi.Item item = currentNestedItem();
+        if (item == null || item.voices.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < item.voices.size(); i++) {
+            final PlaylistApi.Voice voice = item.voices.get(i);
+            if (nestedViewerVoiceLabel.equals(voice.label)) {
+                if (i != item.selectedVoice) {
+                    applyNestedVoice(i, false);
+                }
+                return;
+            }
+        }
     }
 
     // Media3 keeps the subtitle button visible-but-disabled while loading; we instead hide it entirely
@@ -7847,35 +8936,66 @@ public class PlayerActivity extends Activity {
     }
 
     private void updateSubtitleButton() {
-        if (exoSubtitle == null) {
+        if (buttonSubtitle == null) {
             return;
         }
-        // Seeded from a subtitle painted without a track of its own; the loop below can only add.
-        // The second line counts for both, and for two separate reasons. The icon says "subtitles are
-        // on screen", and a hint is on screen — a dark icon over a line of text reads as the player
-        // having lost track of itself. And the button is the only door to the picker that can switch
-        // the hint off again: a film with no text track of its own and a downloaded hint would
-        // otherwise hide the button while the hint plays, with no way back to Off.
         boolean hasSubtitles = subtitleWithoutTrack() != null || secondaryActive();
         boolean textSelected =
                 paintedSubtitleUri != null || mainLineTrackSelected() || secondaryActive();
+        String label = null;
+
+        if (paintedSubtitleUri != null) {
+            label = subtitleFileLabel(paintedSubtitleUri);
+        }
         if (player != null) {
+            final Format secondary = secondaryTextTrack.get();
             for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
-                if (group.getType() == C.TRACK_TYPE_TEXT
-                        && !isPhantomClosedCaption(group.getMediaTrackGroup().getFormat(0))) {
+                if (group.getType() != C.TRACK_TYPE_TEXT) {
+                    continue;
+                }
+                final TrackGroup trackGroup = group.getMediaTrackGroup();
+                if (!isPhantomClosedCaption(trackGroup.getFormat(0))) {
                     hasSubtitles = true;
+                }
+                for (int i = 0; i < group.length; i++) {
+                    if (!group.isTrackSelected(i)) {
+                        continue;
+                    }
+                    final Format format = trackGroup.getFormat(i);
+                    if (secondary != null && format.equals(secondary)) {
+                        continue;
+                    }
+                    final String name = trackName(format);
+                    final String language = languageDisplayName(format.language);
+                    label = name != null && !name.isEmpty() ? name
+                            : language != null && !language.isEmpty() ? language
+                            : getString(R.string.subtitle_title);
+                    break;
+                }
+                if (label != null) {
                     break;
                 }
             }
         }
-        exoSubtitle.setVisibility(hasSubtitles ? View.VISIBLE : View.GONE);
-        // Media3 owns this button too (it keeps the id it found) and disables it whenever the player
-        // reports no text track — which is exactly the case for a subtitle painted from its file. It
-        // dims the icon with the same alpha this helper applies, so setEnabled alone would leave a
-        // working button that still looks dead. The deferred post() this runs from gives us last word.
-        Utils.setButtonEnabled(this, exoSubtitle, hasSubtitles);
-        // Light the CC icon coral while either line is actually showing something.
-        exoSubtitle.setSelected(textSelected);
+        if (label == null && subtitleWithoutTrack() != null) {
+            label = subtitleFileLabel(subtitleWithoutTrack());
+        }
+        if (label == null) {
+            label = getString(R.string.subtitle_off);
+        }
+
+        buttonSubtitle.setVisibility(hasSubtitles ? View.VISIBLE : View.GONE);
+        buttonSubtitle.setEnabled(hasSubtitles);
+        buttonSubtitle.setAlpha(hasSubtitles ? 1f : 0.4f);
+        buttonSubtitle.setText(mPrefs != null && mPrefs.roundValueButtons ? null : label);
+        buttonSubtitle.setSelected(textSelected);
+
+        // The Media3 button remains detached from the hierarchy, but keep its state sane because
+        // Media3 still knows the id and may update it on track changes.
+        if (exoSubtitle != null) {
+            exoSubtitle.setVisibility(View.GONE);
+            exoSubtitle.setSelected(textSelected);
+        }
     }
 
     private void applyAudio(AudioChoice choice) {
@@ -7888,14 +9008,31 @@ public class PlayerActivity extends Activity {
                 .setOverrideForType(new TrackSelectionOverride(
                         choice.group, Collections.singletonList(choice.trackIndex)))
                 .build());
+        playerView.post(this::updateAudioButton);
     }
 
     private void showAudioDialog() {
         final ArrayList<AudioChoice> choices = buildAudioChoices();
-        if (choices.size() < 2) {
+        final PlaylistApi.Item nestedItem = currentNestedItem();
+        final boolean voices = nestedItem != null && nestedItem.voices.size() >= 2;
+        if (choices.size() < 2 && !voices) {
             return;
         }
         final List<Dialogs.MenuItem> items = new ArrayList<>();
+
+        if (voices) {
+            for (int i = 0; i < nestedItem.voices.size(); i++) {
+                final int voiceIndex = i;
+                final PlaylistApi.Voice voice = nestedItem.voices.get(i);
+                items.add(new Dialogs.MenuItem(voice.label, null,
+                        i == nestedItem.selectedVoice,
+                        () -> applyNestedVoice(voiceIndex, true)));
+            }
+            if (!choices.isEmpty()) {
+                items.add(Dialogs.MenuItem.rule());
+            }
+        }
+
         String selectedLanguage = null;
         for (final AudioChoice choice : choices) {
             if (!choice.supported) {
@@ -7910,7 +9047,10 @@ public class PlayerActivity extends Activity {
                 continue;
             }
             items.add(new Dialogs.MenuItem(choice.label, choice.detail, choice.selected,
-                    () -> applyAudio(choice)));
+                    () -> {
+                        rememberNestedViewerAudio(choice);
+                        applyAudio(choice);
+                    }));
             if (choice.selected) {
                 selectedLanguage = choice.language;
             }
@@ -7928,6 +9068,72 @@ public class PlayerActivity extends Activity {
                     null, false, () -> preferAudioLanguage(language)));
         }
         Dialogs.menu(this, ui, () -> showPickerDialog(Dialogs.openMenu()), getString(R.string.audio_title), items);
+    }
+
+    private void rememberNestedViewerAudio(final AudioChoice choice) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null || choice == null) {
+            return;
+        }
+        final List<TrackCandidate> candidates =
+                nestedTrackCandidates(player.getCurrentTracks(), C.TRACK_TYPE_AUDIO);
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.group == choice.group && candidate.trackIndex == choice.trackIndex) {
+                final TrackResult result = nestedTrackResult(candidates, candidate);
+                nestedViewerAudioLabel = result.label;
+                nestedViewerAudioLanguage = candidate.language;
+                nestedViewerAudioOrdinal = result.ordinal;
+                nestedViewerAudioCount = result.count;
+                final int item = player.getCurrentMediaItemIndex();
+                if (nestedAudioResults != null && item >= 0 && item < nestedAudioResults.length) {
+                    nestedAudioChoiceDone[item] = true;
+                    nestedAudioChosenBy[item] = "viewer";
+                    nestedAudioResults[item] = result;
+                }
+                return;
+            }
+        }
+    }
+
+    private void rememberNestedViewerSubtitle(final TrackGroup group, final int trackIndex) {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null || group == null) {
+            return;
+        }
+        final List<TrackCandidate> candidates =
+                nestedTrackCandidates(player.getCurrentTracks(), C.TRACK_TYPE_TEXT);
+        for (TrackCandidate candidate : candidates) {
+            if (candidate.group == group && candidate.trackIndex == trackIndex) {
+                final TrackResult result = nestedTrackResult(candidates, candidate);
+                nestedViewerSubtitleOff = false;
+                nestedViewerSubtitleLabel = result.label;
+                nestedViewerSubtitleLanguage = candidate.language;
+                nestedViewerSubtitleOrdinal = result.ordinal;
+                nestedViewerSubtitleCount = result.count;
+                final int item = player.getCurrentMediaItemIndex();
+                if (nestedSubtitleResults != null && item >= 0 && item < nestedSubtitleResults.length) {
+                    nestedSubtitleChoiceDone[item] = true;
+                    nestedSubtitleChosenBy[item] = "viewer";
+                    nestedSubtitleResults[item] = result;
+                }
+                return;
+            }
+        }
+    }
+
+    private void rememberNestedViewerSubtitleOff() {
+        if (!nestedPlaylistSession || nestedPlaylistModel == null || player == null) {
+            return;
+        }
+        nestedViewerSubtitleOff = true;
+        nestedViewerSubtitleLabel = null;
+        nestedViewerSubtitleLanguage = null;
+        nestedViewerSubtitleOrdinal = -1;
+        nestedViewerSubtitleCount = -1;
+        final int item = player.getCurrentMediaItemIndex();
+        if (nestedSubtitleResults != null && item >= 0 && item < nestedSubtitleResults.length) {
+            nestedSubtitleChoiceDone[item] = true;
+            nestedSubtitleChosenBy[item] = "viewer";
+            nestedSubtitleResults[item] = TrackResult.off();
+        }
     }
 
     /**
@@ -7983,6 +9189,53 @@ public class PlayerActivity extends Activity {
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .setPreferredTextLanguages(languages.toArray(new String[0]))
         );
+    }
+
+    private PlaylistApi.TrackRequest nestedEffectiveTrackRequest(final boolean subtitle) {
+        if (nestedPlaylistModel == null || nestedPlaylistModel.items.isEmpty()) {
+            return null;
+        }
+        int index = apiPlaylistStartIndex;
+        if (player != null) {
+            index = player.getCurrentMediaItemIndex();
+        }
+        if (index < 0 || index >= nestedPlaylistModel.items.size()) {
+            index = nestedPlaylistModel.startIndex;
+        }
+        final PlaylistApi.TrackRequest item = subtitle
+                ? nestedPlaylistModel.items.get(index).subtitle
+                : nestedPlaylistModel.items.get(index).audio;
+        final PlaylistApi.TrackRequest root = subtitle
+                ? nestedPlaylistModel.subtitle : nestedPlaylistModel.audio;
+        return item != null && item.languages != null ? item : root;
+    }
+
+    private void applyNestedInitialAudioLanguages() {
+        if (trackSelector == null || !nestedPlaylistSession) {
+            return;
+        }
+        final PlaylistApi.TrackRequest request = nestedEffectiveTrackRequest(false);
+        if (request == null || request.languages == null || request.languages.length == 0) {
+            return;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setPreferredAudioLanguages(request.languages));
+    }
+
+    private void applyNestedInitialTextLanguages() {
+        if (trackSelector == null || !nestedPlaylistSession) {
+            return;
+        }
+        final PlaylistApi.TrackRequest request = nestedEffectiveTrackRequest(true);
+        if (request == null || request.languages == null) {
+            return;
+        }
+        if (request.languages.length == 0 || request.off()) {
+            mainLineOff = true;
+            return;
+        }
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setPreferredTextLanguages(request.languages));
     }
 
     /**
@@ -8740,7 +9993,10 @@ public class PlayerActivity extends Activity {
             items.add(Dialogs.MenuItem.caption(getString(R.string.subtitle_main_title)));
         }
         items.add(new Dialogs.MenuItem(getString(R.string.subtitle_off), null, !textEnabled && !painting,
-                this::disableSubtitles));
+                () -> {
+                    rememberNestedViewerSubtitleOff();
+                    disableSubtitles();
+                }));
         if (fileOnly != null) {
             // addSubtitleTrack rather than paintSubtitle: it carries the already-on-screen guard, so
             // tapping the ticked row costs nothing and tapping it after "off" puts the subtitle back.
@@ -8774,7 +10030,10 @@ public class PlayerActivity extends Activity {
                 // (SubtitleOffset drops the renderer's cues), and two ticked rows is a lie.
                 items.add(new Dialogs.MenuItem(text[0], text[1],
                         textEnabled && !painting && group.isTrackSelected(i),
-                        () -> applySubtitle(trackGroup, index)));
+                        () -> {
+                            rememberNestedViewerSubtitle(trackGroup, index);
+                            applySubtitle(trackGroup, index);
+                        }));
             }
         }
         // Last, and with no tick: it is an action rather than a track, so it sits under a rule of its
@@ -10461,6 +11720,167 @@ public class PlayerActivity extends Activity {
     // the glyph at the standard 24dp. Nothing is drawn at rest — the pill behind is the frame. Focus draws a
     // contour on the box less 4dp on every side, so the line has air against the pill's edge and against its
     // neighbour, and keeps the pill's own corner language rather than cutting a circle into it.
+    /**
+     * Released 2.1.3 value selector (JADX I1): a one-line rounded chip whose label is the
+     * current quality / dub / subtitle choice. The icon is optional; quality is text-only.
+     */
+    // Exact player chrome palette from the published 2.1.3 APK (xr(activity, false)).
+    // Unlike the old ARX chrome, the released build follows the resolved Appearance mode:
+    // light -> detached white plate, dark -> translucent black, AMOLED dark -> solid black.
+    private boolean officialControlLight() {
+        return Prefs.isLight(this);
+    }
+
+    private int officialControlBaseColor() {
+        if (officialControlLight()) {
+            return 0xE6FFFFFF;
+        }
+        return Prefs.isAmoledBlack(this) ? 0xFF000000 : 0xCC000000;
+    }
+
+    private int officialControlInsetColor() {
+        return officialControlLight() ? 0x14000000 : 0x1AFFFFFF;
+    }
+
+    private int officialControlInkColor() {
+        return officialControlLight() ? 0xDE000000 : 0xE6FFFFFF;
+    }
+
+    private int officialControlSecondaryInkColor() {
+        return officialControlLight() ? 0x8A000000 : 0x99FFFFFF;
+    }
+
+    private int officialControlUnplayedColor() {
+        return officialControlLight() ? 0xFFC9C9CC : 0xFF38393C;
+    }
+
+    /**
+     * The buffered run of the timeline, from the released palette ({@code xr.l} for a stream and
+     * {@code xr.m} for a local file).
+     *
+     * <p>The stream/local split is the one the published build makes, and it is about the decoder's own
+     * report rather than taste: a local file is buffered to the end the moment it opens, so a light rail
+     * would flood the whole bar. Both tones follow the resolved appearance — this used to be the two
+     * inherited {@code buffered_white}/{@code track_white} constants, which happen to be the *dark*
+     * palette's pair, so a light player drew a white bar over its own light plate.
+     */
+    private int officialControlBufferedColor(final boolean network) {
+        if (officialControlLight()) {
+            return network ? 0xFF8E8E93 : 0xFFBDC1C1;
+        }
+        // The dark rail is a flat tone in the published build. Measured on the fixture's grid, which
+        // puts a bright line under the bar every 240px: the published bar reads 206,206,207 on every
+        // column, while the tag's translucent xr.l composited over whatever is behind it and moved to
+        // 193,202,203 across those lines. #CECECF is that same flat value — and it is also what xr.l
+        // comes to over the released unplayed tone (#38393C), so it holds whether the release draws an
+        // opaque colour or lays the rail down under a bar its library no longer composites over.
+        return network ? 0xFFCECECF : 0x33FFFFFF;
+    }
+
+    private int officialControlActiveColor() {
+        final boolean light = officialControlLight();
+        final android.view.ContextThemeWrapper themed =
+                new android.view.ContextThemeWrapper(this, Prefs.accentOverlay(this, light));
+        return MaterialColors.getColor(
+                themed,
+                light ? R.attr.accentFill : R.attr.accentInk,
+                brandColor());
+    }
+
+    /** Exact ss2.g()/i() geometry from the published 2.1.3 APK. */
+    private int officialControlBox() {
+        return isTvBox ? ui.dp(40) : ui.dpS(48);
+    }
+
+    private int officialControlIconSize() {
+        return isTvBox ? ui.dp(24) : ui.dpS(22);
+    }
+
+    private ColorStateList officialControlIconTint() {
+        return new ColorStateList(
+                new int[][]{
+                        new int[]{android.R.attr.state_selected},
+                        new int[]{-android.R.attr.state_enabled},
+                        new int[0]
+                },
+                new int[]{
+                        officialControlActiveColor(),
+                        officialControlLight() ? 0x61000000 : 0x66FFFFFF,
+                        officialControlInkColor()
+                });
+    }
+
+    /**
+     * Released 2.1.3 value selector (JADX I1): one-line rounded chip carrying the
+     * current quality / dub / subtitle value. Background is inset 6dp on touch devices.
+     */
+    private TextView createOfficialValueChip(final int iconRes, final String description) {
+        final TextView chip = new TextView(this);
+        chip.setId(View.generateViewId());
+        chip.setContentDescription(description);
+        chip.setFocusable(true);
+        chip.setClickable(true);
+        chip.setSingleLine(true);
+        chip.setEllipsize(TextUtils.TruncateAt.END);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setTextColor(officialControlInkColor());
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textAction());
+        chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        chip.setVisibility(View.GONE);
+
+        final int inset = isTvBox ? 0 : ui.dpS(6);
+        chip.setBackground(new InsetDrawable(
+                (Drawable) Utils.shape(officialControlInsetColor(), Utils.CIRCLE), inset));
+        chip.setForeground(Utils.chromeForeground(this, inset));
+
+        final int endPad = ui.dpS(16) + inset;
+        int startPad = endPad;
+        int extraWidth = 0;
+        if (iconRes != 0) {
+            final Drawable icon = ContextCompat.getDrawable(this, iconRes);
+            if (icon != null) {
+                final int iconSize = officialControlIconSize();
+                icon.setBounds(0, 0, iconSize, iconSize);
+                chip.setCompoundDrawablesRelative(icon, null, null, null);
+                chip.setCompoundDrawableTintList(officialControlIconTint());
+                chip.setCompoundDrawablePadding(ui.dpS(8));
+                startPad = ui.dpS(12) + inset;
+                extraWidth = iconSize + ui.dpS(8);
+            }
+        }
+        chip.setPadding(startPad, 0, endPad, 0);
+        chip.setMaxWidth(ui.dpS(160) + startPad + extraWidth + endPad);
+
+        final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, officialControlBox());
+        lp.gravity = Gravity.CENTER_VERTICAL;
+        chip.setLayoutParams(lp);
+        return chip;
+    }
+
+    /** Released 2.1.3 S3-equivalent: inset round control on the light bottom plate. */
+    private void styleOfficialRoundButton(final ImageButton button, final boolean addMargin) {
+        if (button == null) {
+            return;
+        }
+        final int size = officialControlBox();
+        final int icon = officialControlIconSize();
+        final int pad = Math.max(0, (size - icon) / 2);
+        final int inset = isTvBox ? 0 : ui.dpS(6);
+        button.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        button.setImageTintList(officialControlIconTint());
+        button.setBackground(new InsetDrawable(
+                (Drawable) Utils.shape(officialControlInsetColor(), Utils.CIRCLE), inset));
+        button.setForeground(Utils.chromeForeground(this, inset));
+        button.setPadding(pad, pad, pad, pad);
+        final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+        lp.gravity = Gravity.CENTER_VERTICAL;
+        if (addMargin && isTvBox) {
+            lp.setMarginStart(ui.dpS(8));
+        }
+        button.setLayoutParams(lp);
+    }
+
     private void styleClusterButton(final ImageButton button) {
         if (button == null) {
             return;
@@ -11784,7 +13204,15 @@ public class PlayerActivity extends Activity {
             // A new accent is baked into the whole window, not just the player: the same path that
             // restarts the screen on a dead decoder rebuilds it with the new theme, position kept.
             final Map<String, ?> after = mPrefs.snapshot();
-            if (before != null && !Objects.equals(before.get(Prefs.ACCENT_KEY), after.get(Prefs.ACCENT_KEY))) {
+            // Changing capture mode or tunneling can change SurfaceView vs TextureView.
+            // Rebuilding ExoPlayer on the old view would keep the wrong surface until
+            // the user force-stops the app. Recreate the screen, retaining playback
+            // and nested playlist state in the existing Activity restoration path.
+            final View currentVideoSurface = playerView != null ? playerView.getVideoSurfaceView() : null;
+            final boolean surfaceTypeChanged = currentVideoSurface != null
+                    && (currentVideoSurface instanceof TextureView) != shouldUseTextureView();
+            if (surfaceTypeChanged || (before != null
+                    && !Objects.equals(before.get(Prefs.ACCENT_KEY), after.get(Prefs.ACCENT_KEY)))) {
                 releasePlayer();
                 playerView.post(this::recreate);
                 return;
@@ -11981,6 +13409,11 @@ public class PlayerActivity extends Activity {
         // rather than next to its use below, which the empty state skips: the flag must never outlive this
         // call and suppress the next file the user opens.
         final boolean keepPaused = sourceSwitchKeepPaused;
+        final boolean askForInitialNestedResume = nestedPlaylistSession
+                && "ask_every".equals(nestedResumeMode) && pendingNestedResumePositionMs > 0;
+        if (askForInitialNestedResume) {
+            play = false;
+        }
         sourceSwitchKeepPaused = false;
         // A watchdog armed for the player being replaced must not judge the fresh one. The load watchdog
         // needs saying too: the teardown below is inline rather than releasePlayer(), which is where it
@@ -12076,6 +13509,7 @@ public class PlayerActivity extends Activity {
         // Ordered fallback chain: the selector walks the list and takes the first language the media
         // actually carries. An empty list leaves the media's own order alone.
         applyPreferredAudioLanguages();
+        applyNestedInitialAudioLanguages();
         // A subtitle nobody asked for is in the way, so the file marking one as default is not enough
         // on its own: subtitles come on when the preferred-language list below matches, or by hand.
         // This used to depend on the system captioning toggle, which is no longer read anywhere.
@@ -12083,6 +13517,7 @@ public class PlayerActivity extends Activity {
                 .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
         );
         applyPreferredTextLanguages();
+        applyNestedInitialTextLanguages();
         // Set rather than left to the default so Dv7Converter can hand the very same instance to the
         // Matroska extractor it re-creates — subtitle parsing is a constructor argument there, and
         // matching it by construction beats matching Media3's defaults from memory.
@@ -12186,17 +13621,11 @@ public class PlayerActivity extends Activity {
                 super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector,
                         enableDecoderFallback, eventHandler, eventListener,
                         allowedVideoJoiningTimeMs, out);
-                // Keep MediaCodec first. This is the same fallback proven by Lampa Native
-                // 1.13.0-native.2: NextLib's FFmpeg/libavcodec renderer advertises full support for
-                // video/hevc when its bundled decoder is available, including HEVC RExt 4:4:4 10-bit.
-                // A track that MediaCodec reports as EXCEEDS_CAPABILITIES therefore lands here without
-                // ever opening the broken platform codec. Runtime failures can also be routed here by
-                // sessionFfmpegVideoFormats below.
-                out.add(new io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegVideoRenderer(
-                        allowedVideoJoiningTimeMs, eventHandler, eventListener,
-                        MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
-                        Math.min(4, Runtime.getRuntime().availableProcessors()),
-                        /* numInputBuffers= */ 4, /* numOutputBuffers= */ 4));
+                // Native FFmpeg renderer reconstructed from official Just+ 2.2.2.
+                // Android hardware decoding keeps priority for normal HEVC;
+                // unsupported profiles and actual MediaCodec failures use native FFmpeg.
+                // NextLib was removed after real-device verification.
+                out.add(new FfmpegVideoRenderer(eventHandler, eventListener));
                 // The same dav1d renderer the base class just built, with its pipeline opened up. The
                 // base class can only reach the four-argument constructor by reflection, and that one
                 // takes DEFAULT_MAX_FRAME_DELAY = 2: two frames in flight, whatever the device has.
@@ -12249,9 +13678,6 @@ public class PlayerActivity extends Activity {
                     protected int supportsFormat(MediaCodecSelector selector, Format format)
                             throws MediaCodecUtil.DecoderQueryException {
                         if (sessionFfmpegVideoFormats.contains(videoFormatKey(format))) {
-                            // Do not hand a format back to a MediaCodec path that has already failed
-                            // through every platform fallback. Reporting unsupported makes Media3 select
-                            // the FFmpeg video renderer appended after this renderer.
                             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE);
                         }
                         return super.supportsFormat(selector, format);
@@ -12805,11 +14231,11 @@ public class PlayerActivity extends Activity {
             mBrightnessControl.setActive(true, !Utils.isReducedMotion(this));
             if (isNetworkUri) {
                 // Reads as a light rail ahead of the playhead, the way the design shows a buffering stream.
-                timeBar.setBufferedColor(ContextCompat.getColor(this, R.color.buffered_white));
+                timeBar.setBufferedColor(officialControlBufferedColor(true));
             } else {
                 // Local files report the whole file as buffered, so anything brighter floods the bar:
                 // https://github.com/google/ExoPlayer/issues/5765
-                timeBar.setBufferedColor(ContextCompat.getColor(this, R.color.track_white));
+                timeBar.setBufferedColor(officialControlBufferedColor(false));
             }
 
             applyStoredFrameMode();
@@ -12886,12 +14312,20 @@ public class PlayerActivity extends Activity {
             // under the viewer comes back the way they left it, and every such path says so - keepPaused
             // for the rebuilds inside one activity, pauseAfterScreenRestart for the one that throws the
             // activity away.
-            if (!keepPaused && !pauseAfterScreenRestart && !holdIdle) {
+            if (!keepPaused && !pauseAfterScreenRestart && !holdIdle
+                    && !askForInitialNestedResume) {
                 play = true;
             }
             pauseAfterScreenRestart = false;
 
             updateTopInfo();
+            // A newly opened item has no decoded picture yet. Show artwork while
+            // Media3 prepares its network stream; no buffer allocation is changed.
+            if (!holdIdle) {
+                showStartupSplash();
+            } else {
+                hideStartupSplash(false);
+            }
 
             setupSkipSource();
 
@@ -12951,7 +14385,9 @@ public class PlayerActivity extends Activity {
         // The item set above made its transition before the listener was there to trace it.
         final Uri startUri = currentMediaUri();
         if (startUri != null) {
-            Utils.log("media=" + Utils.reportUri(startUri, mPrefs.maskReports));
+            final String reportedMedia = Utils.reportUri(startUri, mPrefs.maskReports);
+            Utils.log("media=" + reportedMedia);
+            Utils.setLastPlayingReport(reportedMedia);
         }
         // The renderers factory has just loaded the extension libraries it needs, so this is free here.
         if (ffmpegAvailable == null
@@ -12966,6 +14402,12 @@ public class PlayerActivity extends Activity {
             player.prepare();
         }
         liveWatchStartMs = SystemClock.elapsedRealtime();
+        if (askForInitialNestedResume && player != null) {
+            final long saved = pendingNestedResumePositionMs;
+            final int index = player.getCurrentMediaItemIndex();
+            pendingNestedResumePositionMs = 0L;
+            playerView.post(() -> showNestedResumeChoice(index, saved, true));
+        }
 
         // The second line is view-scoped and survives this rebuild. A track of the media cannot be
         // remembered in the preferences — a Format is not a Uri — so it lives in fields that outlive
@@ -13022,6 +14464,7 @@ public class PlayerActivity extends Activity {
      */
     void frameRateSettled() {
         earlyModeSwitchRequested = false;
+        displayModeSwitchRequested = false;
         playerView.removeCallbacks(frameRateGiveUpRunnable);
         if (displayManager != null && displayListener != null) {
             displayManager.unregisterDisplayListener(displayListener);
@@ -13079,7 +14522,14 @@ public class PlayerActivity extends Activity {
 
                         @Override
                         public void onDisplayChanged(int displayId) {
-                            frameRateSettled();
+                            playerView.removeCallbacks(frameRateGiveUpRunnable);
+                            final int pauseMs = displayModeSwitchRequested && mPrefs != null
+                                    ? Math.max(0, mPrefs.modeSwitchPauseMs) : 0;
+                            if (pauseMs > 0) {
+                                playerView.postDelayed(frameRateGiveUpRunnable, pauseMs);
+                            } else {
+                                frameRateSettled();
+                            }
                         }
                     };
                 }
@@ -13114,8 +14564,11 @@ public class PlayerActivity extends Activity {
             // a recovery, a return from the background — would start before its display had settled.
             playerView.removeCallbacks(frameRateGiveUpRunnable);
             if (play) {
-                playerView.postDelayed(frameRateGiveUpRunnable, resolutionSwitchRequested
-                        ? RESOLUTION_SWITCH_TIMEOUT_MS : FRAME_RATE_SWITCH_TIMEOUT_MS);
+                final long timeout = (resolutionSwitchRequested
+                        ? RESOLUTION_SWITCH_TIMEOUT_MS : FRAME_RATE_SWITCH_TIMEOUT_MS)
+                        + (displayModeSwitchRequested && mPrefs != null
+                        ? Math.max(0, mPrefs.modeSwitchPauseMs) : 0);
+                playerView.postDelayed(frameRateGiveUpRunnable, timeout);
             }
         } else {
             frameRateSettled();
@@ -13242,6 +14695,47 @@ public class PlayerActivity extends Activity {
      * session and may have given positions this player has never seen. The file is the fallback, and
      * the only source a folder or DLNA playlist has.
      */
+    /** The official 2.2.1+ playlist ask_resume flag overrides the global resume preference. */
+    private void showNestedResumeChoice(final int index, final long saved, final boolean wasPlaying) {
+        if (isFinishing() || isDestroyed() || !nestedPlaylistSession
+                || !"ask_every".equals(nestedResumeMode) || player == null
+                || player.getCurrentMediaItemIndex() != index || saved <= 0L) {
+            return;
+        }
+        if (activeNestedResumeDialog != null && activeNestedResumeDialog.isShowing()) {
+            activeNestedResumeDialog.dismiss();
+        }
+        player.setPlayWhenReady(false);
+        activeNestedResumeDialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.playlist_resume_prompt)
+                .setPositiveButton(R.string.playlist_resume_action, (dialog, which) -> {
+                    if (player != null && player.getCurrentMediaItemIndex() == index) {
+                        player.setSeekParameters(SeekParameters.EXACT);
+                        player.seekTo(index, saved);
+                        player.setPlayWhenReady(wasPlaying);
+                    }
+                    activeNestedResumeDialog = null;
+                })
+                .setNegativeButton(R.string.playlist_start_over_action, (dialog, which) -> {
+                    if (player != null && player.getCurrentMediaItemIndex() == index) {
+                        player.setSeekParameters(SeekParameters.EXACT);
+                        player.seekTo(index, 0L);
+                        player.setPlayWhenReady(wasPlaying);
+                    }
+                    activeNestedResumeDialog = null;
+                })
+                .setOnCancelListener(dialog -> {
+                    // Cancel keeps the remembered position and returns to the same state.
+                    if (player != null && player.getCurrentMediaItemIndex() == index) {
+                        player.setSeekParameters(SeekParameters.EXACT);
+                        player.seekTo(index, saved);
+                        player.setPlayWhenReady(wasPlaying);
+                    }
+                    activeNestedResumeDialog = null;
+                })
+                .show();
+    }
+
     private long savedPlaylistPosition(final int index) {
         if (apiPlaylistPositions != null && index >= 0 && index < apiPlaylistPositions.length) {
             final long saved = apiPlaylistPositions[index];
@@ -13424,6 +14918,7 @@ public class PlayerActivity extends Activity {
         // it. STATE_IDLE keeps the timeline and the position, so the play button (dispatchPlayPause ->
         // handlePlayButtonAction) re-prepares this very item, which is what the message asks for.
         player.stop();
+        hideStartupSplash(false);
         // Usually an upstream/network condition rather than an app bug, so information rather than an
         // error — but it is a way playback ends that nothing else reports, and the trace it carries is
         // what says whether the server went quiet or the player stopped asking.
@@ -13536,7 +15031,7 @@ public class PlayerActivity extends Activity {
         setEpisodeNavLoading(false);
         Glide.with(getApplicationContext()).clear(posterView);
         posterSlot.setVisibility(View.GONE);
-        topInfoPanel.setVisibility(View.GONE);
+        headerRoot.setVisibility(View.GONE);
         if (playlistDialog != null) {
             playlistDialog.dismiss();
             playlistDialog = null;
@@ -13641,6 +15136,9 @@ public class PlayerActivity extends Activity {
             // STATE_READY gives. Without it the one-seek-at-a-time gate the scrubbing and swipe-seek
             // paths share can latch shut mid-drag.
             frameRendered = true;
+            // The first actual video frame wins, not STATE_READY: video can be READY
+            // while the renderer is still waiting to paint its output surface.
+            hideStartupSplash(true);
         }
 
         @Override
@@ -13711,6 +15209,9 @@ public class PlayerActivity extends Activity {
             if (oldIndex != newIndex) {
                 final boolean playedToEnd = reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION;
                 final long leftAt = playedToEnd ? 0 : oldPosition.positionMs;
+                if (nestedPlaylistSession) {
+                    nestedJournal.close(oldIndex, Math.max(0L, oldPosition.positionMs), -1L);
+                }
                 rememberEpisodePosition(oldIndex, leftAt);
                 // And on disk, keyed by the episode's own uri: the array above lives for this session
                 // and goes back to the launcher, but "have I watched this" is a question the next
@@ -13725,9 +15226,14 @@ public class PlayerActivity extends Activity {
             // (gapless) keeps starting the next episode from the beginning, as it should. The follow-up
             // seek lands with oldIndex == newIndex, so it neither loops nor overwrites the saved slot.
             if (reason == Player.DISCONTINUITY_REASON_SEEK && oldIndex != newIndex
-                    && newPosition.positionMs < 1000) {
+                    && newPosition.positionMs < 1000
+                    && !"never".equals(nestedResumeMode)) {
                 final long saved = savedPlaylistPosition(newIndex);
-                if (saved > 0) {
+                if (saved > 0 && "ask_every".equals(nestedResumeMode) && nestedPlaylistSession) {
+                    final boolean resumePlaying = player.getPlayWhenReady();
+                    player.setPlayWhenReady(false);
+                    playerView.post(() -> showNestedResumeChoice(newIndex, saved, resumePlaying));
+                } else if (saved > 0) {
                     // Exactly where it was left, and exact is also what keeps this off the trap in
                     // seekBackwards: a backwards tolerance is sticky for the life of the player, so a
                     // rewind gesture earlier in the session would still be in force here, and a saved
@@ -13801,6 +15307,10 @@ public class PlayerActivity extends Activity {
             // A new item decodes through a fresh codec, so it gets the freeze budget over again.
             videoFreezeRecoveries = 0;
             updateTopInfo();
+            if (mediaItem != null && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+                // Gapless playlist changes need a fresh poster even when Media3 stays READY.
+                showStartupSplash();
+            }
             hideSkipButton();
             cancelSegmentFinder();
             setupSkipSource();
@@ -13860,8 +15370,10 @@ public class PlayerActivity extends Activity {
             Utils.log("tracks: video=" + selectedMime(tracks, C.TRACK_TYPE_VIDEO)
                     + " audio=" + selectedMime(tracks, C.TRACK_TYPE_AUDIO)
                     + " passthrough=" + (audioSink != null && audioSink.isPassthrough()));
-            // Tracks are now known — (re)map any container names onto them, then refresh the header.
+            // Tracks are now known — (re)map any container names onto them first, because launcher
+            // labels are matched against the same human-readable names the menu shows.
             resolveTrackNames();
+            applyNestedTrackRequests(tracks);
             updateMediaInfo();
             // In-stream renditions are known only now, so the quality button's visibility can change.
             updateQualityButton();
@@ -13894,10 +15406,14 @@ public class PlayerActivity extends Activity {
             // The track list is what decides whether anything is missing, so this is the first moment
             // the question can be asked at all.
             maybeSearchSubtitlesOnline(tracks);
-            // Apply a sticky quality choice to a freshly auto-advanced episode once its variants are known.
-            // Posted so the reinitialisation never runs while listeners are being dispatched.
+            // Apply sticky launcher-source choices only after the new item and its tracks are settled.
+            // Voice goes first because it may replace the source entirely; quality then applies inside
+            // the chosen voice.
             if (playerView != null) {
-                playerView.post(PlayerActivity.this::applyStickyQuality);
+                playerView.post(() -> {
+                    applyNestedViewerVoiceToCurrentItem();
+                    applyStickyQuality();
+                });
             }
         }
 
@@ -13938,6 +15454,14 @@ public class PlayerActivity extends Activity {
         public void onIsPlayingChanged(boolean isPlaying) {
             Utils.log("playing=" + isPlaying + (player != null ? " playWhenReady=" + player.getPlayWhenReady()
                     + " state=" + stateName(player.getPlaybackState()) : ""));
+            if (nestedPlaylistSession) {
+                touchNestedJournal();
+                if (isPlaying) {
+                    armNestedReportTimer();
+                } else {
+                    cancelNestedReportTimer();
+                }
+            }
             // Subtitles are painted off the media position, which only moves while this is true.
             if (subtitleOffset != null) {
                 subtitleOffset.wake();
@@ -14040,6 +15564,10 @@ public class PlayerActivity extends Activity {
             setEndControlsVisible(haveMedia && (state == Player.STATE_ENDED || isNearEnd));
 
             if (state == Player.STATE_READY) {
+                // Audio-only items do not produce onRenderedFirstFrame().
+                if (player.getVideoFormat() == null) {
+                    hideStartupSplash(true);
+                }
                 frameRendered = true;
                 cancelLoadWatchdog();
                 // Loaded successfully — clear any pending resolver-handshake flag from a prior attempt.
@@ -14157,6 +15685,7 @@ public class PlayerActivity extends Activity {
             // to resume, a deleted file — would otherwise count as a video watched to its end and report
             // that to the launcher. Same guard as on the end controls above.
             } else if (state == Player.STATE_ENDED && haveMedia) {
+                hideStartupSplash(false);
                 cancelLoadWatchdog();
                 playbackFinished = true;
                 // A single item, or the last of a playlist, ends here rather than in an end-of-item pause.
@@ -14170,6 +15699,9 @@ public class PlayerActivity extends Activity {
 
         @Override
         public void onPlayerError(PlaybackException error) {
+            // Never cover the error/retry actions with a failed startup artwork card.
+            hideStartupSplash(false);
+            Utils.setLastPlaybackErrorReport(error.getErrorCodeName() + ": " + ErrorActivity.rootMessage(error));
             Utils.log("error " + error.getErrorCodeName() + ": " + ErrorActivity.rootMessage(error)
                     + (error instanceof ExoPlaybackException
                         && ((ExoPlaybackException) error).rendererFormat != null
@@ -14546,9 +16078,9 @@ public class PlayerActivity extends Activity {
     }
 
     /**
-     * Pixel/Android 17 can accept an ordinary HEVC track in the Tensor hardware codec and fail on the
-     * first buffer with 0x80000000. Re-preparing hands it to the same codec, so after the upstream retry
-     * budget is spent try the platform software implementations one at a time.
+     * Pixel/Android 17 can accept an ordinary HEVC track in the hardware codec and fail on the
+     * first buffer. Walk the software MediaCodec implementations and finally the bundled FFmpeg
+     * renderer without widening the refusal beyond the exact codec/profile that failed.
      */
     private boolean recoverHevcSoftwareDecoder(@Nullable final Format failingFormat) {
         if (player == null || failingFormat == null
@@ -14556,6 +16088,7 @@ public class PlayerActivity extends Activity {
                 || forceHevcSoftwareStage >= 3) {
             return false;
         }
+
         if (forceHevcSoftwareStage == 0) {
             boolean hasCodec2Software = false;
             try {
@@ -14567,53 +16100,35 @@ public class PlayerActivity extends Activity {
                     }
                 }
             } catch (MediaCodecUtil.DecoderQueryException ignored) {
-                // A codec query failure is itself enough reason to skip straight to the bundled
-                // decoder rather than ending playback.
+                // A failing MediaCodec query should not prevent native FFmpeg recovery.
             }
             if (hasCodec2Software) {
                 forceHevcSoftwareStage = 1;
                 Utils.log("rebuild: HEVC " + failingFormat.codecs
                         + " with c2.android software decoder");
-            } else if (io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
-                    && io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
-                            .supportsFormat(MimeTypes.VIDEO_H265)) {
+            } else if (FfmpegVideoDecoder.isAvailable()) {
                 forceHevcSoftwareStage = 3;
-                sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
-                Utils.log("rebuild: HEVC " + failingFormat.codecs
-                        + " with NextLib FFmpeg/libavcodec video decoder");
             } else {
                 return false;
             }
-        } else if (forceHevcSoftwareStage == 1) {
-            if (videoDecoderName != null && videoDecoderName.startsWith("c2.android.")
-                    && legacyGoogleHevcDecoder() != null) {
-                forceHevcSoftwareStage = 2;
-                Utils.log("rebuild: HEVC " + failingFormat.codecs
-                        + " with OMX.google software decoder");
-            } else if (io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
-                    && io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
-                            .supportsFormat(MimeTypes.VIDEO_H265)) {
-                forceHevcSoftwareStage = 3;
-                sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
-                Utils.log("rebuild: HEVC " + failingFormat.codecs
-                        + " with NextLib FFmpeg/libavcodec video decoder");
-            } else {
-                return false;
-            }
-        } else {
-            // Both Android software codec implementations were tried. This is the path the Pixel 10
-            // RExt sample needs: libavcodec is independent of MediaCodec and supports the profile.
-            if (!io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
-                    || !io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
-                            .supportsFormat(MimeTypes.VIDEO_H265)) {
-                return false;
-            }
-            forceHevcSoftwareStage = 3;
-            sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+        } else if (forceHevcSoftwareStage == 1
+                && videoDecoderName != null
+                && videoDecoderName.startsWith("c2.android.")
+                && legacyGoogleHevcDecoder() != null) {
+            forceHevcSoftwareStage = 2;
             Utils.log("rebuild: HEVC " + failingFormat.codecs
-                    + " with NextLib FFmpeg/libavcodec video decoder");
+                    + " with OMX.google software decoder");
+        } else if (FfmpegVideoDecoder.isAvailable()) {
+            forceHevcSoftwareStage = 3;
+        } else {
+            return false;
         }
 
+        if (forceHevcSoftwareStage == 3) {
+            sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+            Utils.log("rebuild: HEVC " + failingFormat.codecs
+                    + " with official 2.2.2 native FFmpeg video decoder");
+        }
         pendingHevcSoftwareRecovery = true;
         restorePlayState = player.getPlayWhenReady();
         sourceSwitchKeepPaused = !restorePlayState;
@@ -14624,11 +16139,6 @@ public class PlayerActivity extends Activity {
         return true;
     }
 
-    /**
-     * Media3 may hide OMX.google.hevc.decoder as an alias of the Codec2 software decoder. Android's own
-     * MediaCodecList still exposes it on Pixel 10, so construct the Media3 descriptor from the framework
-     * capabilities and let the normal MediaCodec adapter instantiate it by name.
-     */
     @Nullable
     private static MediaCodecInfo legacyGoogleHevcDecoder() {
         try {
@@ -16131,7 +17641,7 @@ public class PlayerActivity extends Activity {
 
     /** Whether a pause is currently entitled to hold the screen awake. */
     private boolean keepAwakeOnPause() {
-        return mPrefs != null && mPrefs.keepAwakeOnPause && isTvBox && haveMedia && !isInPip();
+        return mPrefs != null && mPrefs.keepAwakeMinutes > 0 && haveMedia && !isInPip();
     }
 
     /**
@@ -16153,7 +17663,8 @@ public class PlayerActivity extends Activity {
         final boolean holding = keepAwakeOnPause();
         holdScreen(playing || holding);
         if (holding && !playing) {
-            playerView.postDelayed(keepAwakeGiveUpRunnable, KEEP_AWAKE_MAX_MS);
+            playerView.postDelayed(keepAwakeGiveUpRunnable,
+                    TimeUnit.MINUTES.toMillis(Math.max(1, mPrefs.keepAwakeMinutes)));
         }
 
         if (dimOverlay == null) {
@@ -17194,6 +18705,153 @@ public class PlayerActivity extends Activity {
         }
     }
 
+    /**
+     * Cinematic startup card as a topmost CoordinatorLayout child. We intentionally
+     * create this once, not per item or renderer rebuild, and use the same input art
+     * that Lampa / the nested playlist already passes to the information header.
+     * The card itself does not consume gestures or remote-key events.
+     */
+    private void createStartupSplash() {
+        startupSplash = new FrameLayout(this);
+        startupSplash.setBackgroundColor(Color.rgb(9, 10, 14));
+        startupSplash.setVisibility(View.GONE);
+        startupSplash.setClickable(false);
+        startupSplash.setFocusable(false);
+        startupSplash.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        // The pause burn-in dim layer has elevation 100dp. Startup artwork must be
+        // above it even when the activity is recreated for Screen Capture.
+        startupSplash.setElevation(Utils.dpToPx(101));
+
+        startupArtwork = new ImageView(this);
+        startupArtwork.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        startupSplash.addView(startupArtwork, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        final View scrim = new View(this);
+        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xB8000000, 0x98000000, 0xD9000000}));
+        startupSplash.addView(scrim, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        final int sideMargin = ui.dpS(48);
+        final int logoHeight = ui.dpS(isTvBox ? 160 : 124);
+        final FrameLayout.LayoutParams centerParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, logoHeight, Gravity.CENTER);
+        centerParams.leftMargin = sideMargin;
+        centerParams.rightMargin = sideMargin;
+
+        startupTitle = new TextView(this);
+        startupTitle.setGravity(Gravity.CENTER);
+        startupTitle.setTextColor(Color.rgb(255, 25, 42));
+        startupTitle.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
+        startupTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, isTvBox ? 60 : 54);
+        startupTitle.setMaxLines(2);
+        startupTitle.setEllipsize(TextUtils.TruncateAt.END);
+        startupSplash.addView(startupTitle, new FrameLayout.LayoutParams(centerParams));
+
+        startupLogo = new ImageView(this);
+        startupLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        startupLogo.setVisibility(View.GONE);
+        startupSplash.addView(startupLogo, new FrameLayout.LayoutParams(centerParams));
+
+        coordinatorLayout.addView(startupSplash, new CoordinatorLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void showStartupSplash() {
+        if (startupSplash == null || player == null || player.getCurrentMediaItem() == null) {
+            return;
+        }
+        final MediaItem item = player.getCurrentMediaItem();
+        final MediaMetadata metadata = item.mediaMetadata;
+        final int index = player.getCurrentMediaItemIndex();
+
+        // Use per-episode art when available. The single-item thumbnail is only a
+        // fallback for that original item, never a stale poster from a prior episode.
+        // Native Lampa playlists ship a landscape backdrop separately from the
+        // portrait episode thumbnail. The opening card must use the backdrop
+        // first; fitting the portrait poster across the screen loses the art.
+        Uri artwork = nestedPlaylistSession && nestedPlaylistModel != null
+                && index >= 0 && index < nestedPlaylistModel.items.size()
+                ? nestedPlaylistModel.items.get(index).background : null;
+        if (artwork == null) {
+            artwork = metadata != null ? metadata.artworkUri : null;
+        }
+        if (artwork == null && (apiMediaItems.isEmpty() || index == apiExtrasIndex)) {
+            artwork = apiThumbnailUri;
+        }
+        if (artwork == null && apiMediaItems.isEmpty()) {
+            artwork = playingArtwork;
+        }
+
+        final Uri logo = nestedPlaylistSession && index >= 0 && index < apiPlaylistLogos.size()
+                ? apiPlaylistLogos.get(index) : null;
+        CharSequence title = !TextUtils.isEmpty(apiTitle) ? apiTitle
+                : (metadata != null ? metadata.title : null);
+        if (TextUtils.isEmpty(title)) {
+            title = Utils.getFileName(this, mPrefs.mediaUri);
+        }
+
+        startupSplash.animate().cancel();
+        startupSplashPending = true;
+        startupSplash.setAlpha(1f);
+        startupSplash.setVisibility(View.VISIBLE);
+        startupSplash.bringToFront();
+        startupTitle.setText(title == null ? "" : title.toString());
+        startupTitle.setVisibility(View.VISIBLE);
+        Glide.with(this).clear(startupArtwork);
+        Glide.with(this).clear(startupLogo);
+        startupArtwork.setImageDrawable(null);
+        startupLogo.setImageDrawable(null);
+        startupLogo.setVisibility(View.GONE);
+
+        if (artwork != null) {
+            Glide.with(this).load(artwork).into(startupArtwork);
+        }
+        if (logo != null) {
+            Glide.with(this).load(logo).listener(new RequestListener<Drawable>() {
+                @Override
+                public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target,
+                                            boolean firstResource) {
+                    return false; // the red title stays available as a fallback
+                }
+
+                @Override
+                public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target,
+                                               DataSource source, boolean firstResource) {
+                    if (startupSplashPending) {
+                        startupLogo.setVisibility(View.VISIBLE);
+                        startupTitle.setVisibility(View.GONE);
+                    }
+                    return false;
+                }
+            }).into(startupLogo);
+        }
+    }
+
+    private void hideStartupSplash(boolean animate) {
+        if (startupSplash == null || !startupSplashPending) {
+            return;
+        }
+        startupSplashPending = false;
+        startupSplash.animate().cancel();
+        if (!animate) {
+            startupSplash.setVisibility(View.GONE);
+            startupSplash.setAlpha(1f);
+            Glide.with(this).clear(startupArtwork);
+            Glide.with(this).clear(startupLogo);
+            return;
+        }
+        startupSplash.animate().alpha(0f).setDuration(220L).withEndAction(() -> {
+            if (!startupSplashPending) {
+                startupSplash.setVisibility(View.GONE);
+                startupSplash.setAlpha(1f);
+                Glide.with(this).clear(startupArtwork);
+                Glide.with(this).clear(startupLogo);
+            }
+        });
+    }
+
     // The rate lives exactly as long as the ring above it: when loading ends — for good or for the next
     // retry — both go away together.
     private void stopLoadingSpeed() {
@@ -17348,10 +19006,10 @@ public class PlayerActivity extends Activity {
         button.setLayoutParams(lp);
         button.setPadding(padding, padding, padding, padding);
         button.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        button.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        button.setImageTintList(ColorStateList.valueOf(officialControlInkColor()));
         // The same chrome plate the hero sits on, circular to suit the round glyphs. The 12dp icon padding
         // leaves a ring matching the hero's proportion.
-        button.setBackground(Utils.plate(this, Utils.CIRCLE));
+        button.setBackground(Utils.shape(officialControlBaseColor(), Utils.CIRCLE));
         // Replacing the background drops the touch-press highlight, so re-add it with the focus contour.
         button.setForeground(Utils.chromeForeground(this, 0));
     }
@@ -17567,7 +19225,11 @@ public class PlayerActivity extends Activity {
         Utils.setButtonEnabled(this, buttonAspectRatio, enable);
         // The gear stays reachable with no player: its menu drops the player-dependent rows by itself
         // (see showMoreMenu) and keeps "Open" and the settings screen — the way out of a failed clip.
-        Utils.setButtonEnabled(this, exoSettings, true);
+        if (exoSettings != null) {
+            Utils.setButtonEnabled(this, exoSettings, true);
+        } else if (buttonMore != null) {
+            Utils.setButtonEnabled(this, buttonMore, true);
+        }
     }
 
     private void scaleStart() {

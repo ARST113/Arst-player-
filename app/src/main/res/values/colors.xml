@@ -46,7 +46,7 @@
 
     <!-- The launcher icon's own ground, a shade under the wash's plum. Named because the About block
          draws the same tile the launcher does. -->
-    <color name="app_icon_ground">#FF150B33</color>
+    <color name="app_icon_ground">#FF06112C</color>
 
     <!-- The flag, at its published values. A badge rather than a palette entry: nothing else in the
          app reads these, and nothing else should. -->
@@ -152,4 +152,6 @@
     <color name="exo_bottom_bar_background" tools:keep="@color/exo_bottom_bar_background">@color/ui_controls_background</color>
     <color name="exo_black_opacity_70" tools:keep="@color/exo_black_opacity_70">@color/ui_controls_background</color>
     <color name="exo_styled_error_message_background" tools:keep="@color/exo_styled_error_message_background">@color/ui_controls_background</color>
+    <color name="deco_fill_1">#ff0057b7</color>
+    <color name="deco_fill_2">#ffffd700</color>
 </resources>

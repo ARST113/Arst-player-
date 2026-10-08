@@ -503,7 +503,9 @@ public class Utils {
 
     public enum Orientation {
         VIDEO(0, R.string.video_orientation_video),
-        SYSTEM(1, R.string.video_orientation_system);
+        SYSTEM(1, R.string.video_orientation_system),
+        SENSOR(2, R.string.video_orientation_sensor),
+        LANDSCAPE(3, R.string.video_orientation_landscape);
 
         public final int value;
         public final int description;
@@ -511,6 +513,15 @@ public class Utils {
         Orientation(int type, int description) {
             this.value = type;
             this.description = description;
+        }
+
+        public static Orientation fromValue(final int value) {
+            for (final Orientation orientation : values()) {
+                if (orientation.value == value) {
+                    return orientation;
+                }
+            }
+            return LANDSCAPE;
         }
     }
 
@@ -532,9 +543,12 @@ public class Utils {
             case SYSTEM:
                 activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
                 break;
-            /*case SENSOR:
+            case SENSOR:
                 activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
-                break;*/
+                break;
+            case LANDSCAPE:
+                activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                break;
         }
     }
 
@@ -1128,6 +1142,8 @@ public class Utils {
     private static final long LOG_BASE_MS = SystemClock.elapsedRealtime();
     private static String lastLogged;
     private static int lastLoggedRepeats;
+    private static volatile String lastPlayingReport;
+    private static volatile String lastPlaybackErrorReport;
 
     public static void log(final String text) {
         if (BuildConfig.DEBUG) {
@@ -1156,6 +1172,32 @@ public class Utils {
     private static String logLine(final String text) {
         final long ms = SystemClock.elapsedRealtime() - LOG_BASE_MS;
         return String.format(Locale.US, "%6.2f %s", ms / 1000f, text);
+    }
+
+    public static void setLastPlayingReport(final String value) {
+        lastPlayingReport = value;
+    }
+
+    public static void setLastPlaybackErrorReport(final String value) {
+        lastPlaybackErrorReport = value;
+    }
+
+    /** Official 2.1.3-style Settings report prefix followed by the ordinary ARX trace. */
+    public static String settingsReportLog() {
+        final StringBuilder out = new StringBuilder();
+        if (lastPlayingReport != null && !lastPlayingReport.isEmpty()) {
+            out.append("Playing: ").append(lastPlayingReport);
+        }
+        if (lastPlaybackErrorReport != null && !lastPlaybackErrorReport.isEmpty()) {
+            if (out.length() > 0) out.append('\n');
+            out.append("Last playback error: ").append(lastPlaybackErrorReport);
+        }
+        final String trace = recentLog();
+        if (!trace.isEmpty()) {
+            if (out.length() > 0) out.append("\n\n");
+            out.append(trace);
+        }
+        return out.toString();
     }
 
     /** The trace so far, oldest first; empty string when nothing has been traced. */
@@ -1453,6 +1495,18 @@ public class Utils {
         {
             boolean switchingModes = false;
             activity.resolutionSwitchRequested = false;
+            activity.displayModeSwitchRequested = false;
+
+            // Official 2.1.3 correction is opt-in. Keep the ARX matcher identical when it is off.
+            if (activity.mPrefs != null && activity.mPrefs.frameRateCorrection) {
+                if (Math.abs(frameRate - 24f) < 0.02f) {
+                    frameRate = 24000f / 1001f;
+                } else if (Math.abs(frameRate - 30f) < 0.02f) {
+                    frameRate = 30000f / 1001f;
+                } else if (Math.abs(frameRate - 60f) < 0.02f) {
+                    frameRate = 60000f / 1001f;
+                }
+            }
 
             // A detached decor view answers null. Falling through to the settled path rather than returning:
             // the caller has already told the player a switch is pending, so bailing out here left the
@@ -1514,20 +1568,29 @@ public class Utils {
                         Display.Mode modeBest = null;
 
                         for (Display.Mode mode : modesHigh) {
-                            // A whole multiple of the content rate, judged on the *relative* error. The
-                            // centi-Hz remainder this replaces could not match 23.976 at all, since
-                            // normRate truncates it to 2397, which divides neither 4795 (47.952 Hz) nor
-                            // 11988 (119.88 Hz). But the tolerance has to stay under the 1/1001 that
-                            // separates an NTSC rate from its integer neighbour, or 120 Hz also "matches"
-                            // 23.976 content and, being the higher rate, beats the 119.88 mode that is the
-                            // exact one. 2e-4 sits between the float noise on these values (~5e-6) and
-                            // that 1e-3 gap.
+                            // A whole multiple of the content rate, judged on the relative error.
                             final float ratio = mode.getRefreshRate() / frameRate;
                             final int multiple = Math.round(ratio);
                             if (multiple >= 1 && Math.abs(ratio - multiple) < multiple * 0.0002f) {
                                 if (modeBest == null || normRate(mode.getRefreshRate()) > normRate(modeBest.getRefreshRate())) {
                                     modeBest = mode;
                                 }
+                            }
+                        }
+
+                        if (activity.mPrefs != null && activity.mPrefs.frameRateDoubling) {
+                            Display.Mode doubledBest = null;
+                            for (Display.Mode mode : modesHigh) {
+                                final float ratio = mode.getRefreshRate() / frameRate;
+                                final int multiple = Math.round(ratio);
+                                if (multiple == 2 && Math.abs(ratio - 2f) < 0.0004f
+                                        && (doubledBest == null
+                                        || normRate(mode.getRefreshRate()) > normRate(doubledBest.getRefreshRate()))) {
+                                    doubledBest = mode;
+                                }
+                            }
+                            if (doubledBest != null) {
+                                modeBest = doubledBest;
                             }
                         }
 
@@ -1538,6 +1601,7 @@ public class Utils {
                             modeBest = modeTop;
 
                         switchingModes = !(modeBest.getModeId() == activeMode.getModeId());
+                        activity.displayModeSwitchRequested = switchingModes;
                         log("display mode: video " + videoWidth + "w @" + frameRate
                                 + ", active " + modeText(activeMode) + ", target width " + targetText
                                 + ", " + modesResolutionCount + " candidates"
