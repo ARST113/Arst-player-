@@ -1120,6 +1120,9 @@ public class PlayerActivity extends Activity {
     PendingIntent nestedResultCallback;
     long nestedReportIntervalMs;
     String nestedResumeMode;
+    // Pending initial question requested by playlist.ask_resume; replayed once after prepare.
+    long pendingNestedResumePositionMs;
+    @Nullable AlertDialog activeNestedResumeDialog;
     PlaylistApi.Playlist nestedPlaylistModel;
     String nestedPlaylistError;
     String nestedViewerVoiceLabel;
@@ -3526,6 +3529,8 @@ public class PlayerActivity extends Activity {
                     startPosition = 0L;
                 }
                 mPrefs.updatePosition(startPosition == C.TIME_UNSET ? 0L : startPosition);
+                pendingNestedResumePositionMs = "ask_every".equals(nestedResumeMode)
+                        && startPosition > 0 ? startPosition : 0L;
             } else if (bundle != null) {
                 intentReturnResult = bundle.getBoolean(API_RETURN_RESULT);
                 if (bundle.containsKey(API_POSITION)) {
@@ -4259,6 +4264,11 @@ public class PlayerActivity extends Activity {
         nestedResultCallback = null;
         nestedReportIntervalMs = 0L;
         nestedResumeMode = null;
+        pendingNestedResumePositionMs = 0L;
+        if (activeNestedResumeDialog != null) {
+            activeNestedResumeDialog.dismiss();
+            activeNestedResumeDialog = null;
+        }
         nestedPlaylistModel = null;
         nestedPlaylistError = null;
         nestedViewerVoiceLabel = null;
@@ -13348,6 +13358,11 @@ public class PlayerActivity extends Activity {
         // rather than next to its use below, which the empty state skips: the flag must never outlive this
         // call and suppress the next file the user opens.
         final boolean keepPaused = sourceSwitchKeepPaused;
+        final boolean askForInitialNestedResume = nestedPlaylistSession
+                && "ask_every".equals(nestedResumeMode) && pendingNestedResumePositionMs > 0;
+        if (askForInitialNestedResume) {
+            play = false;
+        }
         sourceSwitchKeepPaused = false;
         // A watchdog armed for the player being replaced must not judge the fresh one. The load watchdog
         // needs saying too: the teardown below is inline rather than releasePlayer(), which is where it
@@ -14246,7 +14261,8 @@ public class PlayerActivity extends Activity {
             // under the viewer comes back the way they left it, and every such path says so - keepPaused
             // for the rebuilds inside one activity, pauseAfterScreenRestart for the one that throws the
             // activity away.
-            if (!keepPaused && !pauseAfterScreenRestart && !holdIdle) {
+            if (!keepPaused && !pauseAfterScreenRestart && !holdIdle
+                    && !askForInitialNestedResume) {
                 play = true;
             }
             pauseAfterScreenRestart = false;
@@ -14328,6 +14344,12 @@ public class PlayerActivity extends Activity {
             player.prepare();
         }
         liveWatchStartMs = SystemClock.elapsedRealtime();
+        if (askForInitialNestedResume && player != null) {
+            final long saved = pendingNestedResumePositionMs;
+            final int index = player.getCurrentMediaItemIndex();
+            pendingNestedResumePositionMs = 0L;
+            playerView.post(() -> showNestedResumeChoice(index, saved, true));
+        }
 
         // The second line is view-scoped and survives this rebuild. A track of the media cannot be
         // remembered in the preferences — a Format is not a Uri — so it lives in fields that outlive
@@ -14615,6 +14637,47 @@ public class PlayerActivity extends Activity {
      * session and may have given positions this player has never seen. The file is the fallback, and
      * the only source a folder or DLNA playlist has.
      */
+    /** The official 2.2.1+ playlist ask_resume flag overrides the global resume preference. */
+    private void showNestedResumeChoice(final int index, final long saved, final boolean wasPlaying) {
+        if (isFinishing() || isDestroyed() || !nestedPlaylistSession
+                || !"ask_every".equals(nestedResumeMode) || player == null
+                || player.getCurrentMediaItemIndex() != index || saved <= 0L) {
+            return;
+        }
+        if (activeNestedResumeDialog != null && activeNestedResumeDialog.isShowing()) {
+            activeNestedResumeDialog.dismiss();
+        }
+        player.setPlayWhenReady(false);
+        activeNestedResumeDialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.playlist_resume_prompt)
+                .setPositiveButton(R.string.playlist_resume_action, (dialog, which) -> {
+                    if (player != null && player.getCurrentMediaItemIndex() == index) {
+                        player.setSeekParameters(SeekParameters.EXACT);
+                        player.seekTo(index, saved);
+                        player.setPlayWhenReady(wasPlaying);
+                    }
+                    activeNestedResumeDialog = null;
+                })
+                .setNegativeButton(R.string.playlist_start_over_action, (dialog, which) -> {
+                    if (player != null && player.getCurrentMediaItemIndex() == index) {
+                        player.setSeekParameters(SeekParameters.EXACT);
+                        player.seekTo(index, 0L);
+                        player.setPlayWhenReady(wasPlaying);
+                    }
+                    activeNestedResumeDialog = null;
+                })
+                .setOnCancelListener(dialog -> {
+                    // Cancel keeps the remembered position and returns to the same state.
+                    if (player != null && player.getCurrentMediaItemIndex() == index) {
+                        player.setSeekParameters(SeekParameters.EXACT);
+                        player.seekTo(index, saved);
+                        player.setPlayWhenReady(wasPlaying);
+                    }
+                    activeNestedResumeDialog = null;
+                })
+                .show();
+    }
+
     private long savedPlaylistPosition(final int index) {
         if (apiPlaylistPositions != null && index >= 0 && index < apiPlaylistPositions.length) {
             final long saved = apiPlaylistPositions[index];
@@ -15104,7 +15167,11 @@ public class PlayerActivity extends Activity {
                     && newPosition.positionMs < 1000
                     && !"never".equals(nestedResumeMode)) {
                 final long saved = savedPlaylistPosition(newIndex);
-                if (saved > 0) {
+                if (saved > 0 && "ask_every".equals(nestedResumeMode) && nestedPlaylistSession) {
+                    final boolean resumePlaying = player.getPlayWhenReady();
+                    player.setPlayWhenReady(false);
+                    playerView.post(() -> showNestedResumeChoice(newIndex, saved, resumePlaying));
+                } else if (saved > 0) {
                     // Exactly where it was left, and exact is also what keeps this off the trap in
                     // seekBackwards: a backwards tolerance is sticky for the life of the player, so a
                     // rewind gesture earlier in the session would still be in force here, and a saved
