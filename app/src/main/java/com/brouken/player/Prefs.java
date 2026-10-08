@@ -72,6 +72,7 @@ class Prefs {
     public static final String ACCENT_CORAL = "coral";
     private static final String PREF_KEY_HOLD_SPEED_MODE = "holdSpeedMode";
     private static final String PREF_KEY_TUNNELING = "tunneling";
+    private static final String PREF_KEY_CAPTURE_VISIBLE = "captureVisible";
     private static final String PREF_KEY_FRAMERATE_MATCHING = "frameRateMatching";
     private static final String PREF_KEY_FRAME_RATE_CORRECTION = "frameRateCorrection";
     private static final String PREF_KEY_FRAME_RATE_DOUBLING = "frameRateDoubling";
@@ -250,6 +251,7 @@ class Prefs {
     public String holdSpeedMode = HOLD_SPEED_ADJUST;
 
     public boolean tunneling = false;
+    public boolean captureVisible = false;
     public boolean frameRateMatching = false;
     public boolean frameRateCorrection = false;
     public boolean frameRateDoubling = false;
@@ -513,6 +515,7 @@ class Prefs {
                 PREF_KEY_DISABLE_VOLUME_BRIGHTNESS_GESTURES, disableVolumeBrightnessGestures);
         holdSpeedMode = getHoldSpeedMode(mContext);
         tunneling = mSharedPreferences.getBoolean(PREF_KEY_TUNNELING, tunneling);
+        captureVisible = mSharedPreferences.getBoolean(PREF_KEY_CAPTURE_VISIBLE, captureVisible);
         frameRateMatching = mSharedPreferences.getBoolean(PREF_KEY_FRAMERATE_MATCHING, frameRateMatching);
         frameRateCorrection = mSharedPreferences.getBoolean(PREF_KEY_FRAME_RATE_CORRECTION, frameRateCorrection);
         frameRateDoubling = mSharedPreferences.getBoolean(PREF_KEY_FRAME_RATE_DOUBLING, frameRateDoubling);
