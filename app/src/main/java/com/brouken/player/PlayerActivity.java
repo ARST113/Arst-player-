@@ -13468,7 +13468,7 @@ public class PlayerActivity extends Activity {
         trackSelector = new DefaultTrackSelector(this, new AverageBitrateTrackSelection.Factory());
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true));
-        if (mPrefs.tunneling && !mPrefs.captureVisible) {
+        if (mPrefs.tunneling) {
             trackSelector.setParameters(trackSelector.buildUponParameters()
                     .setTunnelingEnabled(true)
             );
