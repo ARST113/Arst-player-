@@ -47,13 +47,31 @@ jobs:
             cp "$source" "app/src/main/res/drawable/$icon"
             echo "Imported $icon ($(wc -c < "app/src/main/res/drawable/$icon") bytes)"
           done
+          cp /tmp/out/resources/res/layout/preference_about_deco.xml app/src/main/res/layout/preference_about_deco.xml
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          src=Path('/tmp/out/resources/res/values/colors.xml')
+          orig={x.attrib.get('name'):x.text for x in ET.parse(src).getroot()
+                if x.tag == 'color'}
+          dst=Path('app/src/main/res/values/colors.xml')
+          contents=dst.read_text()
+          for name in ['deco_fill_1','deco_fill_2']:
+              assert name in orig, f'Missing official value: {name}'
+              if f'name="{name}"' not in contents:
+                  contents=contents.replace('</resources>',
+                      f'    <color name="{name}">{orig[name]}</color>\n</resources>')
+          dst.write_text(contents)
+          print('Official decorative colors:', [(name,orig[name]) for name in ['deco_fill_1','deco_fill_2']])
+          PY
       - name: Commit exact resource vectors
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/res/drawable/ic_bug_report_24dp.xml app/src/main/res/drawable/ic_double_arrow_24dp.xml
+          git add app/src/main/res/drawable/ic_bug_report_24dp.xml app/src/main/res/drawable/ic_double_arrow_24dp.xml \
+            app/src/main/res/layout/preference_about_deco.xml app/src/main/res/values/colors.xml
           if ! git diff --cached --quiet; then
             git commit -m 'ui: restore original 2.2.2 section icons'
             git fetch origin reconstruct-2.2.2
