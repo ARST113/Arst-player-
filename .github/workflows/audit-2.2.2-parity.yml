@@ -208,6 +208,36 @@ jobs:
           for k,v in list(delta['different'].items())[:100]:
               print('SETTING DIFF',k,json.dumps(v,ensure_ascii=False)[:600])
           PY
+      - name: Inspect 2.2.2 About and changed settings icon resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('/tmp/official-decompiled')
+          root=Path('parity-evidence/root_preferences.xml')
+          lines=root.read_text(errors='replace').splitlines()
+          for i,line in enumerate(lines):
+              if any(k in line for k in ('aboutDeco','allVersions','aboutStand','diagnosticsScreen','skipScreen','videoScreen')):
+                  print('UPSTREAM SETTING',i+1)
+                  for j in range(max(0,i-6),min(len(lines),i+9)):
+                      print(f'{j+1}: {lines[j][:200]}')
+          strings=Path('parity-evidence/official-values/strings.xml')
+          for line in strings.read_text(errors='replace').splitlines():
+              if any(k in line for k in ('name="pref_all', 'name="all_versions', 'name="pref_about', 'name="about_', 'name="deco_')):
+                  print('UPSTREAM ABOUT TEXT',line[:260])
+          for pattern in ['allVersions','aboutDeco']:
+              hits=[]
+              for p in (src/'sources').rglob('*.java'):
+                  if p.stat().st_size > 1300000: continue
+                  for i,line in enumerate(p.read_text(errors='replace').splitlines()):
+                      if pattern in line:
+                          hits.append((str(p.relative_to(src)),i+1,line.strip()[:200]))
+              print('UPSTREAM ABOUT CALLS',pattern,hits[:30])
+          for name in ('ic_bug_report_24dp.xml','ic_double_arrow_24dp.xml'):
+              matches=list((src/'resources/res').rglob(name))
+              print('UPSTREAM VECTOR ICON',name,[(str(p),p.stat().st_size) for p in matches[:4]])
+          PY
       - name: Publish reference evidence
         uses: actions/upload-artifact@v4
         if: always()
