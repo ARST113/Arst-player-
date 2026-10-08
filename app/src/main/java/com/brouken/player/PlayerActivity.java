@@ -14918,6 +14918,7 @@ public class PlayerActivity extends Activity {
         // it. STATE_IDLE keeps the timeline and the position, so the play button (dispatchPlayPause ->
         // handlePlayButtonAction) re-prepares this very item, which is what the message asks for.
         player.stop();
+        hideStartupSplash(false);
         // Usually an upstream/network condition rather than an app bug, so information rather than an
         // error — but it is a way playback ends that nothing else reports, and the trace it carries is
         // what says whether the server went quiet or the player stopped asking.
@@ -15684,6 +15685,7 @@ public class PlayerActivity extends Activity {
             // to resume, a deleted file — would otherwise count as a video watched to its end and report
             // that to the launcher. Same guard as on the end controls above.
             } else if (state == Player.STATE_ENDED && haveMedia) {
+                hideStartupSplash(false);
                 cancelLoadWatchdog();
                 playbackFinished = true;
                 // A single item, or the last of a playlist, ends here rather than in an end-of-item pause.
@@ -18766,7 +18768,15 @@ public class PlayerActivity extends Activity {
 
         // Use per-episode art when available. The single-item thumbnail is only a
         // fallback for that original item, never a stale poster from a prior episode.
-        Uri artwork = metadata != null ? metadata.artworkUri : null;
+        // Native Lampa playlists ship a landscape backdrop separately from the
+        // portrait episode thumbnail. The opening card must use the backdrop
+        // first; fitting the portrait poster across the screen loses the art.
+        Uri artwork = nestedPlaylistSession && nestedPlaylistModel != null
+                && index >= 0 && index < nestedPlaylistModel.items.size()
+                ? nestedPlaylistModel.items.get(index).background : null;
+        if (artwork == null) {
+            artwork = metadata != null ? metadata.artworkUri : null;
+        }
         if (artwork == null && (apiMediaItems.isEmpty() || index == apiExtrasIndex)) {
             artwork = apiThumbnailUri;
         }
