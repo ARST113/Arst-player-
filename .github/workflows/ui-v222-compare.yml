@@ -7,8 +7,7 @@ on:
     paths:
       - '.github/workflows/ui-v222-compare.yml'
       - 'app/src/main/res/**'
-      - 'app/src/main/java/com/brouken/player/PlayerActivity.java'
-      - 'app/src/main/java/com/brouken/player/SettingsActivity.java'
+
 
 permissions:
   contents: read
@@ -57,12 +56,13 @@ jobs:
       - name: 'Capture official vs ARX: controls, playlist, quality, dark and settings'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 900
           script: |
             set -euo pipefail
             timeout 2100 bash /tmp/ui-v222-compare.sh
