@@ -426,7 +426,7 @@ public class PlayerActivity extends Activity {
     private volatile boolean forceHevcForDolbyVision;
     private boolean pendingStuckRecovery;
     // Generic HEVC recovery for devices that accept a stream in MediaCodec and then fail on the
-    // first buffers. 0 = normal, 1 = c2.android software, 2 = OMX.google, 3 = NextLib, 4 = official 2.2.2 JNI FFmpeg.
+    // first buffers. 0 = normal, 1 = c2.android software, 2 = OMX.google, 3 = official native FFmpeg.
     private volatile int forceHevcSoftwareStage;
     private boolean pendingHevcSoftwareRecovery;
     // Installed for this player build when Dolby Vision profile 7 is being rewritten as profile 8.1;
@@ -6047,32 +6047,16 @@ public class PlayerActivity extends Activity {
                 duration == C.TIME_UNSET || duration <= 0 ? -1L : duration);
     }
 
+    // Just+ 2.2.2 no longer emits periodic playback progress to Lampa.
+    // Playback position and watched state are still sent by the final callback
+    // on leaving the player. Keep the methods for existing lifecycle call sites.
     private void armNestedReportTimer() {
-        if (playerView == null || nestedResultCallback == null || nestedReportIntervalMs <= 0) {
-            return;
-        }
-        playerView.removeCallbacks(nestedReportRunnable);
-        playerView.postDelayed(nestedReportRunnable, nestedReportIntervalMs);
+        // Intentionally disabled.
     }
 
     private void cancelNestedReportTimer() {
-        if (playerView != null) {
-            playerView.removeCallbacks(nestedReportRunnable);
-        }
+        // No periodic task is scheduled in 2.2.2.
     }
-
-    private final Runnable nestedReportRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (!nestedPlaylistSession || nestedPlaylistError != null || player == null
-                    || !player.isPlaying()) {
-                return;
-            }
-            touchNestedJournal();
-            sendNestedPlaylistCallback(buildNestedPlaylistResult("user"));
-            armNestedReportTimer();
-        }
-    };
 
     private void sendNestedPlaylistCallback(final Bundle result) {
         if (nestedResultCallback == null || result == null) {
@@ -13571,25 +13555,11 @@ public class PlayerActivity extends Activity {
                 super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector,
                         enableDecoderFallback, eventHandler, eventListener,
                         allowedVideoJoiningTimeMs, out);
-                // Distinct, independently compiled video FFmpeg implementations:
-                // ARX NextLib remains the first fallback for compatibility with working builds;
-                // stage 4 is reached ONLY after NextLib has failed on a real HEVC stream.
-                // Then prefer the official 2.2.2 JNI renderer while continuing to retain
-                // the NextLib instance as an emergency alternative.
-                final Renderer arxNextLibRenderer =
-                        new io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegVideoRenderer(
-                                allowedVideoJoiningTimeMs, eventHandler, eventListener,
-                                MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
-                                Math.min(4, Runtime.getRuntime().availableProcessors()),
-                                /* numInputBuffers= */ 4, /* numOutputBuffers= */ 4);
-                final Renderer officialVideoRenderer = new FfmpegVideoRenderer(eventHandler, eventListener);
-                if (forceHevcSoftwareStage == 4) {
-                    out.add(officialVideoRenderer);
-                    out.add(arxNextLibRenderer);
-                } else {
-                    out.add(arxNextLibRenderer);
-                    out.add(officialVideoRenderer);
-                }
+                // Native FFmpeg renderer reconstructed from official Just+ 2.2.2.
+                // Android hardware decoding keeps priority for normal HEVC;
+                // unsupported profiles and actual MediaCodec failures use native FFmpeg.
+                // NextLib was removed after real-device verification.
+                out.add(new FfmpegVideoRenderer(eventHandler, eventListener));
                 // The same dav1d renderer the base class just built, with its pipeline opened up. The
                 // base class can only reach the four-argument constructor by reflection, and that one
                 // takes DEFAULT_MAX_FRAME_DELAY = 2: two frames in flight, whatever the device has.
@@ -15975,9 +15945,10 @@ public class PlayerActivity extends Activity {
     private boolean recoverHevcSoftwareDecoder(@Nullable final Format failingFormat) {
         if (player == null || failingFormat == null
                 || !MimeTypes.VIDEO_H265.equals(failingFormat.sampleMimeType)
-                || forceHevcSoftwareStage >= 4) {
+                || forceHevcSoftwareStage >= 3) {
             return false;
         }
+
         if (forceHevcSoftwareStage == 0) {
             boolean hasCodec2Software = false;
             try {
@@ -15989,61 +15960,35 @@ public class PlayerActivity extends Activity {
                     }
                 }
             } catch (MediaCodecUtil.DecoderQueryException ignored) {
-                // Fall through to FFmpeg when the codec query itself is broken.
+                // A failing MediaCodec query should not prevent native FFmpeg recovery.
             }
             if (hasCodec2Software) {
                 forceHevcSoftwareStage = 1;
                 Utils.log("rebuild: HEVC " + failingFormat.codecs
                         + " with c2.android software decoder");
-            } else if (io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
-                    && io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
-                            .supportsFormat(MimeTypes.VIDEO_H265)) {
+            } else if (FfmpegVideoDecoder.isAvailable()) {
                 forceHevcSoftwareStage = 3;
-                sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
-                Utils.log("rebuild: HEVC " + failingFormat.codecs
-                        + " with NextLib FFmpeg/libavcodec video decoder");
             } else {
                 return false;
             }
-        } else if (forceHevcSoftwareStage == 1) {
-            if (videoDecoderName != null && videoDecoderName.startsWith("c2.android.")
-                    && legacyGoogleHevcDecoder() != null) {
-                forceHevcSoftwareStage = 2;
-                Utils.log("rebuild: HEVC " + failingFormat.codecs
-                        + " with OMX.google software decoder");
-            } else if (io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
-                    && io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
-                            .supportsFormat(MimeTypes.VIDEO_H265)) {
-                forceHevcSoftwareStage = 3;
-                sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
-                Utils.log("rebuild: HEVC " + failingFormat.codecs
-                        + " with NextLib FFmpeg/libavcodec video decoder");
-            } else {
-                return false;
-            }
-        } else if (forceHevcSoftwareStage == 2) {
-            if (!io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
-                    || !io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
-                            .supportsFormat(MimeTypes.VIDEO_H265)) {
-                return false;
-            }
+        } else if (forceHevcSoftwareStage == 1
+                && videoDecoderName != null
+                && videoDecoderName.startsWith("c2.android.")
+                && legacyGoogleHevcDecoder() != null) {
+            forceHevcSoftwareStage = 2;
+            Utils.log("rebuild: HEVC " + failingFormat.codecs
+                    + " with OMX.google software decoder");
+        } else if (FfmpegVideoDecoder.isAvailable()) {
             forceHevcSoftwareStage = 3;
-            sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
-            Utils.log("rebuild: HEVC " + failingFormat.codecs
-                    + " with NextLib FFmpeg/libavcodec video decoder");
-        } else if (forceHevcSoftwareStage == 3) {
-            // A real failure of the verified ARX software renderer is the only
-            // reason to switch to the upstream 2.2.2 JNI video decoder. Never
-            // drop the existing HEVC recovery paths pre-emptively.
-            if (!FfmpegVideoDecoder.isAvailable()) {
-                return false;
-            }
-            forceHevcSoftwareStage = 4;
-            sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
-            Utils.log("rebuild: HEVC " + failingFormat.codecs
-                    + " with native Just+ 2.2.2 FFmpeg video decoder");
+        } else {
+            return false;
         }
 
+        if (forceHevcSoftwareStage == 3) {
+            sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+            Utils.log("rebuild: HEVC " + failingFormat.codecs
+                    + " with official 2.2.2 native FFmpeg video decoder");
+        }
         pendingHevcSoftwareRecovery = true;
         restorePlayState = player.getPlayWhenReady();
         sourceSwitchKeepPaused = !restorePlayState;
