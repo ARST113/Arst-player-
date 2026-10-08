@@ -15,7 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ github.token }}
+      # Optional fine-grained fallback token (Contents + Workflows: write) for repos
+      # where GitHub Actions cannot create releases with the default token.
+      GH_TOKEN: ${{ secrets.ARX_RELEASE_TOKEN || github.token }}
       TAG: arx-v2.2.2-arx2
       VERIFIED_COMMIT: a32f9d032fd67f90052f31d98641fb2d83e46093
       VERIFIED_RUN: '37758777401'
@@ -59,16 +61,20 @@ jobs:
 
           Previous arx1 was field-tested for HEVC/TorrServer, Lampa playlists/resume, Dolby Vision, HDR and launcher icon.
           This arx2 build passed GitHub Actions debug/release compilation, unit tests, APK signature and native FFmpeg JNI checksum verification (Actions #37758777401).
+          APK build source commit: a32f9d032fd67f90052f31d98641fb2d83e46093; subsequent changes before this release only affect CI workflows/documentation.
 
           TESTING PRE-RELEASE: hardware screen recording/Ambilight behavior and pixel-level screen comparisons remain unverified; screenshot CI emulator currently fails with adb device offline.
 
           APK SHA-256:
           7905148ac980012cde5a08f39214cf531570ce9a3091f319c0f90b8bf2fd4804
           EOF
+          # Tag the publishing workflow HEAD. The validated Android sources are
+          # unchanged since VERIFIED_COMMIT (only CI/docs were committed).
+          # GITHUB_TOKEN can reject tags targeting older workflow-bearing commits.
           gh release create "$TAG" \
             "ARX.TPlayer.v2.2.2-arx2-release.apk#ARX.TPlayer.v2.2.2-arx2-release.apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$VERIFIED_COMMIT" \
+            --target "$GITHUB_SHA" \
             --title "ARX TPlayer 2.2.2-arx2 (UI parity test)" \
             --notes-file release-notes.md \
             --prerelease
