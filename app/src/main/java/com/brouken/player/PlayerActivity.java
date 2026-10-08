@@ -756,6 +756,17 @@ public class PlayerActivity extends Activity {
     // controls have just appeared, or they have just stopped being fully visible, which is the first frame
     // of their fade — with the states in between keeping whatever the last edge decided.
     private boolean controllerChromeVisible;
+    // Media3's animated hide keeps the time bar visible for another ~2 seconds after
+    // the other controls have faded. The released chrome should disappear as one panel:
+    // complete Media3's hide as soon as its 250 ms fade has finished.
+    private boolean controllerHideCompleting;
+    private final Runnable completeControllerHideAction = () -> {
+        if (controllerHideCompleting && playerView != null && controllerVisible
+                && !playerView.isControllerFullyVisible() && !isScrubbing && !pickerDialogOpen) {
+            playerView.hideControllerImmediately();
+        }
+        controllerHideCompleting = false;
+    };
     public static Snackbar snackbar;
     // The TV dialog of a held load stall, closed when playback resumes on its own.
     private AlertDialog stallDialog;
@@ -2812,10 +2823,23 @@ public class PlayerActivity extends Activity {
                 // apart is where they came from: the show starts from hidden, the hide from fully visible.
                 if (!controllerVisible) {
                     controllerChromeVisible = false;
+                    controllerHideCompleting = false;
+                    playerView.removeCallbacks(completeControllerHideAction);
                 } else if (controllerVisibleFully || !wasVisible) {
                     controllerChromeVisible = true;
+                    // A re-show cancels the finishing hide, so a quick second tap cannot
+                    // dismiss controls the user has just brought back.
+                    if (controllerVisibleFully || !wasVisible) {
+                        controllerHideCompleting = false;
+                        playerView.removeCallbacks(completeControllerHideAction);
+                    }
                 } else if (wasVisibleFully) {
                     controllerChromeVisible = false;
+                    // Follow Media3's normal fade but skip its extra progress-only
+                    // interval. This also fixes auto-hide while playback is paused.
+                    controllerHideCompleting = true;
+                    playerView.removeCallbacks(completeControllerHideAction);
+                    playerView.postDelayed(completeControllerHideAction, CHROME_FADE_MS + 50L);
                 }
 
                 if (controllerVisible) {
