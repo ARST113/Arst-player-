@@ -1613,8 +1613,8 @@ public class PlayerActivity extends Activity {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         }
         super.onCreate(savedInstanceState);
-        if (Build.VERSION.SDK_INT == 28 && Build.MANUFACTURER.equalsIgnoreCase("xiaomi") &&
-                (Build.DEVICE.equalsIgnoreCase("oneday") || Build.DEVICE.equalsIgnoreCase("once"))) {
+        if (mPrefs.captureVisible || (Build.VERSION.SDK_INT == 28 && Build.MANUFACTURER.equalsIgnoreCase("xiaomi") &&
+                (Build.DEVICE.equalsIgnoreCase("oneday") || Build.DEVICE.equalsIgnoreCase("once")))) {
             setContentView(R.layout.activity_player_textureview);
         } else {
             setContentView(R.layout.activity_player);
@@ -13435,7 +13435,7 @@ public class PlayerActivity extends Activity {
         trackSelector = new DefaultTrackSelector(this, new AverageBitrateTrackSelection.Factory());
         trackSelector.setParameters(trackSelector.buildUponParameters()
                 .setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true));
-        if (mPrefs.tunneling) {
+        if (mPrefs.tunneling && !mPrefs.captureVisible) {
             trackSelector.setParameters(trackSelector.buildUponParameters()
                     .setTunnelingEnabled(true)
             );
