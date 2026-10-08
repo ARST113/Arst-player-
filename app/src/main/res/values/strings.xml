@@ -649,4 +649,6 @@
     <string name="playlist_resume_prompt">Resume playback from the saved position?</string>
     <string name="playlist_resume_action">Resume</string>
     <string name="playlist_start_over_action">Start over</string>
+    <string name="pref_all_versions">All versions</string>
+    <string name="pref_all_versions_summary">Release notes of every version</string>
 </resources>
