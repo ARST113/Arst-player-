@@ -64,7 +64,9 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           emulator-boot-timeout: 900
           script: |
-            set -euo pipefail
+            # android-emulator-runner invokes this script with /bin/sh (dash on Ubuntu).
+            # pipefail is not a POSIX sh option; the Bash comparison script sets it itself.
+            set -eu
             timeout 2100 bash /tmp/ui-v222-compare.sh
             mkdir -p ui-reference
             for build in official arx; do
