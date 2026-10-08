@@ -1,0 +1,75 @@
+name: Promote verified ARX 2.2.2-arx3 release to stable
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/promote-arx-2.2.2-arx3-stable.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.ARX_RELEASE_TOKEN || github.token }}
+      TAG: arx-v2.2.2-arx3
+      VERIFIED_APK_SHA256: 6e341924ca06764fae87ff89110ab0b1a5181f52dab8d0f4154424587a684dd7
+      VERIFIED_SOURCE_COMMIT: f996c66172ea37263603d5f10c0ff27154424347
+      VERIFIED_RUN: '37798888202'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify main contains exactly the hardware-tested application
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = master
+          git merge-base --is-ancestor "$VERIFIED_SOURCE_COMMIT" "$GITHUB_SHA"
+          git diff --exit-code "$VERIFIED_SOURCE_COMMIT" "$GITHUB_SHA" -- app/
+          test "$(git show "$GITHUB_SHA:app/build.gradle" | grep -c 'versionName "2.2.2-arx3"')" = 1
+      - name: Verify published APK and successful signed build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh run view "$VERIFIED_RUN" --repo "$GITHUB_REPOSITORY" --json conclusion --jq '.conclusion')" = success
+          test "$(gh run view "$VERIFIED_RUN" --repo "$GITHUB_REPOSITORY" --json headSha --jq '.headSha')" = 275838e0f06ca4dd7e835c5311f1ef31bf8af70a
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > /tmp/release.json
+          test "$(jq -r '.assets[] | select(.name == "ARX.TPlayer.v2.2.2-arx3-release.apk") | .digest' /tmp/release.json)" = "sha256:$VERIFIED_APK_SHA256"
+          test "$(jq -r '.assets[] | select(.name == "ARX.TPlayer.v2.2.2-arx3-release.apk") | .size' /tmp/release.json)" = 40293219
+          echo "EXACT VERIFIED APK PRESERVED: $VERIFIED_APK_SHA256"
+      - name: Promote arx3 without rebuilding or replacing its APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/stable-notes.md <<'EOF'
+          ARX TPlayer 2.2.2-arx3 — stable release, tested on a real Android device.
+
+          Features and fixes compared with arx2:
+          - Official Just+ Player 2.2.2 FFmpeg video and audio native libraries, without NextLib.
+          - Compatible Lampa native/legacy playlists, seek/resume, tracks and progress callbacks.
+          - Hardware HEVC playback, Dolby Vision, HDR/HDR10 confirmed in prior testing.
+          - Cinematic full-screen Lampa loading artwork: landscape background, series logo or red title.
+          - Startup artwork disappears on the first decoded video frame; new playlist items receive their own card.
+          - Full controller auto-hide, including the leftover bottom progress strip.
+          - Restored official 2.2.2 Settings UI, Screen Capture option and release history.
+
+          Signature/package: original ARX pinned release keystore, com.justplus.player.
+          Android versionCode: 2002005. Can be installed over ARX 2.2.2-arx2.
+          Source: master (PR #3), hardware-tested app revision f996c66172ea37263603d5f10c0ff27154424347.
+          Signed build verification: https://github.com/ARST113/Arst-player-/actions/runs/37798888202
+
+          SHA-256 (unchanged APK):
+          6e341924ca06764fae87ff89110ab0b1a5181f52dab8d0f4154424587a684dd7
+
+          Note: in-app updater still queries the original just-plus-player repository. Until the ARX update feed is switched, install new ARX versions directly from this repository's Releases. Some rare media formats and Screen Capture/Ambilight combinations were not exhaustively device-tested.
+          EOF
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --title 'ARX TPlayer 2.2.2-arx3 (stable)' \
+            --prerelease=false --latest --notes-file /tmp/stable-notes.md
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,isPrerelease,assets
