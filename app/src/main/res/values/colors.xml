@@ -46,7 +46,7 @@
 
     <!-- The launcher icon's own ground, a shade under the wash's plum. Named because the About block
          draws the same tile the launcher does. -->
-    <color name="app_icon_ground">#FF150B33</color>
+    <color name="app_icon_ground">#FF06112C</color>
 
     <!-- The flag, at its published values. A badge rather than a palette entry: nothing else in the
          app reads these, and nothing else should. -->
