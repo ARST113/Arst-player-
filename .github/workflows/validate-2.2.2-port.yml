@@ -1,0 +1,48 @@
+name: ARX 2.2.2 reconstruction compile check
+
+on:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths: ['.github/workflows/validate-2.2.2-port.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: reconstruct-2.2.2
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Compile new renderer and run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleLatestUniversalDebug :app:assembleLatestUniversalRelease \
+            :app:testLatestUniversalDebugUnitTest --no-daemon 2>&1 | tee arx-222-build.log
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arx-2.2.2-build-log
+          path: arx-222-build.log
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Upload candidate APKs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arx-2.2.2-reconstruction-candidate-apks
+          path: |
+            app/build/outputs/apk/latestUniversal/debug/*.apk
+            app/build/outputs/apk/latestUniversal/release/*.apk
+          retention-days: 14
