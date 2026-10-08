@@ -10,6 +10,7 @@ on:
       - 'app/src/main/java/com/brouken/player/FfmpegVideoDecoder.java'
       - 'app/src/main/java/com/brouken/player/FfmpegVideoRenderer.java'
       - 'app/src/main/jniLibs/**'
+      - 'app/libs/**'
       - 'app/src/main/res/**'
       - 'app/build.gradle'
   workflow_dispatch:
