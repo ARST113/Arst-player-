@@ -207,6 +207,10 @@ jobs:
           print('ATTRIBUTE/HIERARCHY DIFF COUNT',len(delta['different']))
           for k,v in list(delta['different'].items())[:100]:
               print('SETTING DIFF',k,json.dumps(v,ensure_ascii=False)[:600])
+          assert not delta['only_official'], 'Missing official preference keys: '+str(delta['only_official'])
+          assert not delta['only_arx'], 'Unexpected non-upstream preference keys: '+str(delta['only_arx'])
+          assert not delta['different'], 'Settings hierarchy differs from official: '+str(list(delta['different']))
+          print('PASS: All named preference keys and visible attributes match official 2.2.2')
           PY
       - name: Inspect 2.2.2 About and changed settings icon resources
         shell: bash
