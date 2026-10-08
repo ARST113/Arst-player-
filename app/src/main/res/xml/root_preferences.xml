@@ -133,7 +133,7 @@
     </PreferenceCategory>
     <PreferenceCategory app:title="@string/pref_section_playback">
         <PreferenceScreen
-            app:icon="@drawable/ic_movie_24dp"
+            app:icon="@drawable/ic_theaters_24dp"
             app:key="videoScreen"
             app:summary="@string/pref_video_header_summary"
             app:title="@string/pref_video_header">
@@ -462,7 +462,7 @@
     </PreferenceCategory>
     <PreferenceCategory app:title="@string/pref_features_header">
         <PreferenceScreen
-            app:icon="@drawable/ic_fast_forward_24dp"
+            app:icon="@drawable/ic_double_arrow_24dp"
             app:key="skipScreen"
             app:summary="@string/pref_skip_header_summary"
             app:title="@string/pref_skip_header">
@@ -617,7 +617,7 @@
             </PreferenceCategory>
         </PreferenceScreen>
         <PreferenceScreen
-            app:icon="@drawable/ic_info_24dp"
+            app:icon="@drawable/ic_bug_report_24dp"
             app:key="diagnosticsScreen"
             app:summary="@string/pref_diagnostics_header_summary"
             app:title="@string/pref_diagnostics_header">
