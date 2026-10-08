@@ -171,6 +171,43 @@ jobs:
               print('UPSTREAM CAPTURE REFERENCE',item)
           print('TOTAL UPSTREAM CAPTURE REFERENCES',len(hits))
           PY
+      - name: Compare full settings hierarchy against official 2.2.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          import json
+          from pathlib import Path
+          appns='{http://schemas.android.com/apk/res-auto}'
+          paths={'official':Path('parity-evidence/root_preferences.xml'),
+                 'arx':Path('app/src/main/res/xml/root_preferences.xml')}
+          def scan(path):
+              data={}
+              root=ET.parse(path).getroot()
+              def walk(node,container):
+                  key=node.attrib.get(appns+'key')
+                  if key:
+                      attrs={x.split('}')[-1]:v for x,v in node.attrib.items()
+                             if x.split('}')[-1] in ('key','title','summary','defaultValue',
+                             'dependency','disableDependentsState','summaryOff','summaryOn',
+                             'entries','entryValues','icon')}
+                      data[key]={'screen':container,'tag':node.tag.split('}')[-1],'attrs':attrs}
+                  for sub in node:
+                      walk(sub, key if node.tag.endswith('PreferenceScreen') and key else container)
+              walk(root,'root')
+              return data
+          a,b=scan(paths['official']),scan(paths['arx'])
+          delta={'only_official':sorted(set(a)-set(b)), 'only_arx':sorted(set(b)-set(a)),
+                 'different':{key:{'official':a[key], 'arx':b[key]}
+                              for key in sorted(set(a)&set(b)) if a[key]!=b[key]}}
+          Path('parity-evidence/settings-semantic-delta.json').write_text(json.dumps(delta,indent=2))
+          print('OFFICIAL ONLY SETTINGS',delta['only_official'])
+          print('ARX ONLY SETTINGS',delta['only_arx'])
+          print('ATTRIBUTE/HIERARCHY DIFF COUNT',len(delta['different']))
+          for k,v in list(delta['different'].items())[:100]:
+              print('SETTING DIFF',k,json.dumps(v,ensure_ascii=False)[:600])
+          PY
       - name: Publish reference evidence
         uses: actions/upload-artifact@v4
         if: always()
