@@ -6,6 +6,9 @@ on:
     paths:
       - '.github/workflows/validate-2.2.2-port.yml'
       - 'app/src/main/java/com/brouken/player/PlayerActivity.java'
+      - 'app/src/main/java/com/brouken/player/SettingsActivity.java'
+      - 'app/src/main/java/com/brouken/player/Prefs.java'
+      - 'app/src/main/java/com/brouken/player/update/**'
       - 'app/src/main/java/com/brouken/player/PlaylistApi.java'
       - 'app/src/main/java/com/brouken/player/FfmpegVideoDecoder.java'
       - 'app/src/main/java/com/brouken/player/FfmpegVideoRenderer.java'
