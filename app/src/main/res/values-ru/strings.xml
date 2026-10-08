@@ -610,4 +610,6 @@
     <string name="playlist_resume_prompt">Продолжить просмотр с сохранённого места?</string>
     <string name="playlist_resume_action">Продолжить</string>
     <string name="playlist_start_over_action">С начала</string>
+    <string name="pref_all_versions">Все версии</string>
+    <string name="pref_all_versions_summary">История изменений всех версий</string>
 </resources>
