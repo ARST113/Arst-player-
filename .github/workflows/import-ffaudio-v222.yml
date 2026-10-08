@@ -1,0 +1,59 @@
+name: Import official 2.2.2 FFmpeg audio JNI
+
+on:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths:
+      - '.github/workflows/import-ffaudio-v222.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  replace-official-jni:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: reconstruct-2.2.2
+          fetch-depth: 0
+      - name: Download verified Just+ 2.2.2 release
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 --retry-all-errors \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.2.2/JustPlus.Player.v2.2.2.apk \
+            -o /tmp/official-v222.apk
+          echo '1e69816c14cedc30929e9e59657a6a8ac766fcd22b584774fc85aa9ec79bd916  /tmp/official-v222.apk' | sha256sum -c
+      - name: Replace FFmpeg audio JNI in existing Media3 AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          aar="$PWD/app/libs/lib-decoder-ffmpeg-release.aar"
+          mkdir -p /tmp/ffaudio-aar/jni/arm64-v8a /tmp/ffaudio-aar/jni/armeabi-v7a
+          for abi in arm64-v8a armeabi-v7a; do
+            name="jni/$abi/libffmpegJNI.so"
+            unzip -Z1 "$aar" | grep -Fxq "$name"
+            unzip -p /tmp/official-v222.apk "lib/$abi/libffmpegJNI.so" > "/tmp/ffaudio-aar/$name"
+            echo "Replacing $name with official release variant:"
+            sha256sum "/tmp/ffaudio-aar/$name"
+          done
+          echo '7c50ed7526e2a78fe9c61bf3059f887f2610e23a9ecd92cedb0041c1489f0536  /tmp/ffaudio-aar/jni/arm64-v8a/libffmpegJNI.so' | sha256sum -c
+          echo '1e54c5b39726a9a907eb797099edfd5bc84dfbc152b10653eb5637bbc562c14b  /tmp/ffaudio-aar/jni/armeabi-v7a/libffmpegJNI.so' | sha256sum -c
+          (cd /tmp/ffaudio-aar && zip -q -X -u "$aar" jni/arm64-v8a/libffmpegJNI.so jni/armeabi-v7a/libffmpegJNI.so)
+          unzip -p "$aar" jni/arm64-v8a/libffmpegJNI.so | sha256sum
+          unzip -p "$aar" jni/armeabi-v7a/libffmpegJNI.so | sha256sum
+          [ "$(unzip -p "$aar" jni/arm64-v8a/libffmpegJNI.so | sha256sum | cut -d' ' -f1)" = "7c50ed7526e2a78fe9c61bf3059f887f2610e23a9ecd92cedb0041c1489f0536" ]
+          [ "$(unzip -p "$aar" jni/armeabi-v7a/libffmpegJNI.so | sha256sum | cut -d' ' -f1)" = "1e54c5b39726a9a907eb797099edfd5bc84dfbc152b10653eb5637bbc562c14b" ]
+      - name: Commit updated AAR to migration branch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/libs/lib-decoder-ffmpeg-release.aar
+          if ! git diff --cached --quiet; then
+            git commit -m 'audio: import corrected official 2.2.2 FFmpeg audio JNI'
+            git push origin HEAD:reconstruct-2.2.2
+          fi
