@@ -28,7 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: reconstruct-2.2.2
+          # Use the exact triggering revision. A second commit while an earlier
+          # build is queued must never silently change the signed APK's sources.
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
