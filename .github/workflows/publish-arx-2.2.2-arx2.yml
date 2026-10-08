@@ -1,0 +1,75 @@
+name: Publish ARX TPlayer 2.2.2-arx2 UI-parity pre-release
+
+on:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths: ['.github/workflows/publish-arx-2.2.2-arx2.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: arx-v2.2.2-arx2
+      VERIFIED_COMMIT: a32f9d032fd67f90052f31d98641fb2d83e46093
+      VERIFIED_RUN: '37758777401'
+      VERIFIED_APK_SHA256: 7905148ac980012cde5a08f39214cf531570ce9a3091f319c0f90b8bf2fd4804
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve and verify the exact successful Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run view "$VERIFIED_RUN" --repo "$GITHUB_REPOSITORY" --json conclusion,headSha \
+            --jq '{conclusion: .conclusion, headSha: .headSha}' > /tmp/verified-run.json
+          test "$(jq -r '.conclusion' /tmp/verified-run.json)" = success
+          test "$(jq -r '.headSha' /tmp/verified-run.json)" = "$VERIFIED_COMMIT"
+          mkdir -p downloaded
+          gh run download "$VERIFIED_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name arx-2.2.2-reconstruction-candidate-apks --dir downloaded
+          apk="$(find downloaded -type f -name 'ARX.TPlayer.v2.2.2-arx2.apk' | head -n1)"
+          test -n "$apk" && test -s "$apk"
+          echo "$VERIFIED_APK_SHA256  $apk" | sha256sum -c -
+          cp "$apk" ARX.TPlayer.v2.2.2-arx2-release.apk
+      - name: Publish testing pre-release without replacing the working arx1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Pre-release already exists; preserving the original published APK."
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets
+            exit 0
+          fi
+          cat > release-notes.md <<'EOF'
+          ARX TPlayer 2.2.2-arx2 — testing update of official Just+ Player 2.2.2 reconstruction.
+
+          Changes since arx1:
+          - Restored official Screen Capture/Tunneling preference dependency.
+          - Correct SurfaceView/TextureView switching with Activity recreation when preferences change, preserving the current session.
+          - Restored official Video, Skip, Diagnostics icons and the original About decoration.
+          - Added a functional in-app "All versions" release-history reader with release notes and links.
+          - Fixed Russian and English labels; unchanged FFmpeg video/audio JNI, Lampa playlists, resume and user's blue neon launcher icon.
+          - Exact named settings-key, hierarchy and visible-attribute parity: 0 differences in audited official APK resources (Actions #37758954701).
+
+          Previous arx1 was field-tested for HEVC/TorrServer, Lampa playlists/resume, Dolby Vision, HDR and launcher icon.
+          This arx2 build passed GitHub Actions debug/release compilation, unit tests, APK signature and native FFmpeg JNI checksum verification (Actions #37758777401).
+
+          TESTING PRE-RELEASE: hardware screen recording/Ambilight behavior and pixel-level screen comparisons remain unverified; screenshot CI emulator currently fails with adb device offline.
+
+          APK SHA-256:
+          7905148ac980012cde5a08f39214cf531570ce9a3091f319c0f90b8bf2fd4804
+          EOF
+          gh release create "$TAG" \
+            "ARX.TPlayer.v2.2.2-arx2-release.apk#ARX.TPlayer.v2.2.2-arx2-release.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$VERIFIED_COMMIT" \
+            --title "ARX TPlayer 2.2.2-arx2 (UI parity test)" \
+            --notes-file release-notes.md \
+            --prerelease
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets
