@@ -651,4 +651,9 @@
     <string name="playlist_start_over_action">Start over</string>
     <string name="pref_all_versions">All versions</string>
     <string name="pref_all_versions_summary">Release notes of every version</string>
+    <string name="deco_line_1" translatable="false">STAND WITH</string>
+    <string name="deco_line_2" translatable="false">UKRAINE</string>
+    <string name="update_versions_loading">Loading release history…</string>
+    <string name="update_versions_empty">Release history is unavailable. Try again later.</string>
+    <string name="update_versions_close">Close</string>
 </resources>
