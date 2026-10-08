@@ -826,6 +826,14 @@ public class PlayerActivity extends Activity {
     private LinearLayout headerButtons;
     private FrameLayout posterSlot;
     private ImageView posterView;
+    // First-open cinematic card. This is deliberately outside Media3's controller:
+    // a slow torrent gets its supplied poster/logo before its first decoded frame.
+    // Seeking and subsequent rebuffering keep the actual video frame visible.
+    private FrameLayout startupSplash;
+    private ImageView startupArtwork;
+    private ImageView startupLogo;
+    private TextView startupTitle;
+    private boolean startupSplashPending;
     private TextView posterPlaceholderView;
     private TextView posterBadgeView;
     // Official 2.1.3 header: nested playlists default to the supplied transparent series logo.
@@ -1704,6 +1712,7 @@ public class PlayerActivity extends Activity {
         dimOverlay = findViewById(R.id.dim_overlay);
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         playerView = findViewById(R.id.video_view);
+        createStartupSplash();
         // Built with the view rather than with the player: it paints from a file and asks for the
         // position lazily, so a rebuild of the player leaves it alone.
         final View secondaryHint = playerView.findViewById(R.id.subtitle_secondary);
@@ -14310,6 +14319,13 @@ public class PlayerActivity extends Activity {
             pauseAfterScreenRestart = false;
 
             updateTopInfo();
+            // A newly opened item has no decoded picture yet. Show artwork while
+            // Media3 prepares its network stream; no buffer allocation is changed.
+            if (!holdIdle) {
+                showStartupSplash();
+            } else {
+                hideStartupSplash(false);
+            }
 
             setupSkipSource();
 
@@ -15119,6 +15135,9 @@ public class PlayerActivity extends Activity {
             // STATE_READY gives. Without it the one-seek-at-a-time gate the scrubbing and swipe-seek
             // paths share can latch shut mid-drag.
             frameRendered = true;
+            // The first actual video frame wins, not STATE_READY: video can be READY
+            // while the renderer is still waiting to paint its output surface.
+            hideStartupSplash(true);
         }
 
         @Override
@@ -15287,6 +15306,10 @@ public class PlayerActivity extends Activity {
             // A new item decodes through a fresh codec, so it gets the freeze budget over again.
             videoFreezeRecoveries = 0;
             updateTopInfo();
+            if (mediaItem != null && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+                // Gapless playlist changes need a fresh poster even when Media3 stays READY.
+                showStartupSplash();
+            }
             hideSkipButton();
             cancelSegmentFinder();
             setupSkipSource();
@@ -15540,6 +15563,10 @@ public class PlayerActivity extends Activity {
             setEndControlsVisible(haveMedia && (state == Player.STATE_ENDED || isNearEnd));
 
             if (state == Player.STATE_READY) {
+                // Audio-only items do not produce onRenderedFirstFrame().
+                if (player.getVideoFormat() == null) {
+                    hideStartupSplash(true);
+                }
                 frameRendered = true;
                 cancelLoadWatchdog();
                 // Loaded successfully — clear any pending resolver-handshake flag from a prior attempt.
@@ -15670,6 +15697,8 @@ public class PlayerActivity extends Activity {
 
         @Override
         public void onPlayerError(PlaybackException error) {
+            // Never cover the error/retry actions with a failed startup artwork card.
+            hideStartupSplash(false);
             Utils.setLastPlaybackErrorReport(error.getErrorCodeName() + ": " + ErrorActivity.rootMessage(error));
             Utils.log("error " + error.getErrorCodeName() + ": " + ErrorActivity.rootMessage(error)
                     + (error instanceof ExoPlaybackException
@@ -18672,6 +18701,145 @@ public class PlayerActivity extends Activity {
             // Keep controller UI visible - alternative to resetHideCallbacks()
             playerView.setControllerShowTimeoutMs(PlayerActivity.CONTROLLER_TIMEOUT);
         }
+    }
+
+    /**
+     * Cinematic startup card as a topmost CoordinatorLayout child. We intentionally
+     * create this once, not per item or renderer rebuild, and use the same input art
+     * that Lampa / the nested playlist already passes to the information header.
+     * The card itself does not consume gestures or remote-key events.
+     */
+    private void createStartupSplash() {
+        startupSplash = new FrameLayout(this);
+        startupSplash.setBackgroundColor(Color.rgb(9, 10, 14));
+        startupSplash.setVisibility(View.GONE);
+        startupSplash.setClickable(false);
+        startupSplash.setFocusable(false);
+        startupSplash.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        // The pause burn-in dim layer has elevation 100dp. Startup artwork must be
+        // above it even when the activity is recreated for Screen Capture.
+        startupSplash.setElevation(Utils.dpToPx(101));
+
+        startupArtwork = new ImageView(this);
+        startupArtwork.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        startupSplash.addView(startupArtwork, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        final View scrim = new View(this);
+        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{0xB8000000, 0x98000000, 0xD9000000}));
+        startupSplash.addView(scrim, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        final int sideMargin = ui.dpS(48);
+        final int logoHeight = ui.dpS(isTvBox ? 160 : 124);
+        final FrameLayout.LayoutParams centerParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, logoHeight, Gravity.CENTER);
+        centerParams.leftMargin = sideMargin;
+        centerParams.rightMargin = sideMargin;
+
+        startupTitle = new TextView(this);
+        startupTitle.setGravity(Gravity.CENTER);
+        startupTitle.setTextColor(Color.rgb(255, 25, 42));
+        startupTitle.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
+        startupTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, isTvBox ? 60 : 54);
+        startupTitle.setMaxLines(2);
+        startupTitle.setEllipsize(TextUtils.TruncateAt.END);
+        startupSplash.addView(startupTitle, new FrameLayout.LayoutParams(centerParams));
+
+        startupLogo = new ImageView(this);
+        startupLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        startupLogo.setVisibility(View.GONE);
+        startupSplash.addView(startupLogo, new FrameLayout.LayoutParams(centerParams));
+
+        coordinatorLayout.addView(startupSplash, new CoordinatorLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void showStartupSplash() {
+        if (startupSplash == null || player == null || player.getCurrentMediaItem() == null) {
+            return;
+        }
+        final MediaItem item = player.getCurrentMediaItem();
+        final MediaMetadata metadata = item.mediaMetadata;
+        final int index = player.getCurrentMediaItemIndex();
+
+        // Use per-episode art when available. The single-item thumbnail is only a
+        // fallback for that original item, never a stale poster from a prior episode.
+        Uri artwork = metadata != null ? metadata.artworkUri : null;
+        if (artwork == null && (apiMediaItems.isEmpty() || index == apiExtrasIndex)) {
+            artwork = apiThumbnailUri;
+        }
+        if (artwork == null && apiMediaItems.isEmpty()) {
+            artwork = playingArtwork;
+        }
+
+        final Uri logo = nestedPlaylistSession && index >= 0 && index < apiPlaylistLogos.size()
+                ? apiPlaylistLogos.get(index) : null;
+        CharSequence title = !TextUtils.isEmpty(apiTitle) ? apiTitle
+                : (metadata != null ? metadata.title : null);
+        if (TextUtils.isEmpty(title)) {
+            title = Utils.getFileName(this, mPrefs.mediaUri);
+        }
+
+        startupSplash.animate().cancel();
+        startupSplashPending = true;
+        startupSplash.setAlpha(1f);
+        startupSplash.setVisibility(View.VISIBLE);
+        startupSplash.bringToFront();
+        startupTitle.setText(title == null ? "" : title.toString());
+        startupTitle.setVisibility(View.VISIBLE);
+        Glide.with(this).clear(startupArtwork);
+        Glide.with(this).clear(startupLogo);
+        startupArtwork.setImageDrawable(null);
+        startupLogo.setImageDrawable(null);
+        startupLogo.setVisibility(View.GONE);
+
+        if (artwork != null) {
+            Glide.with(this).load(artwork).into(startupArtwork);
+        }
+        if (logo != null) {
+            Glide.with(this).load(logo).listener(new RequestListener<Drawable>() {
+                @Override
+                public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target,
+                                            boolean firstResource) {
+                    return false; // the red title stays available as a fallback
+                }
+
+                @Override
+                public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target,
+                                               DataSource source, boolean firstResource) {
+                    if (startupSplashPending) {
+                        startupLogo.setVisibility(View.VISIBLE);
+                        startupTitle.setVisibility(View.GONE);
+                    }
+                    return false;
+                }
+            }).into(startupLogo);
+        }
+    }
+
+    private void hideStartupSplash(boolean animate) {
+        if (startupSplash == null || !startupSplashPending) {
+            return;
+        }
+        startupSplashPending = false;
+        startupSplash.animate().cancel();
+        if (!animate) {
+            startupSplash.setVisibility(View.GONE);
+            startupSplash.setAlpha(1f);
+            Glide.with(this).clear(startupArtwork);
+            Glide.with(this).clear(startupLogo);
+            return;
+        }
+        startupSplash.animate().alpha(0f).setDuration(220L).withEndAction(() -> {
+            if (!startupSplashPending) {
+                startupSplash.setVisibility(View.GONE);
+                startupSplash.setAlpha(1f);
+                Glide.with(this).clear(startupArtwork);
+                Glide.with(this).clear(startupLogo);
+            }
+        });
     }
 
     // The rate lives exactly as long as the ring above it: when loading ends — for good or for the next
