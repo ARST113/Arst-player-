@@ -48,8 +48,14 @@ jobs:
           mkdir -p parity-evidence
           for cls in PlayerActivity Prefs SettingsActivity; do
             f="/tmp/official-decompiled/sources/com/brouken/player/$cls.java"
-            cp "$f" "parity-evidence/$cls.java"
+            if test -f "$f"; then
+              cp "$f" "parity-evidence/$cls.java"
+            else
+              echo "Upstream has no standalone source file $cls.java"
+            fi
           done
+          find /tmp/official-decompiled/sources/com/brouken/player -maxdepth 1 -name '*.java' \
+            -printf '%f\n' | sort > parity-evidence/upstream-class-names.txt
           cp -r /tmp/official-decompiled/resources/res/values parity-evidence/official-values || true
       - name: Print precise new screen-capture implementation
         shell: bash
@@ -61,6 +67,9 @@ jobs:
           files=[Path('parity-evidence')/f'{name}.java' for name in ('PlayerActivity','Prefs','SettingsActivity')]
           pats=[r'capture',r'screen.?record',r'screen.?shot',r'tone.?map',r'hdr.?to.?sdr',r'SDR',r'TextureView',r'tunneling']
           for f in files:
+              if not f.exists():
+                  print(f'No standalone upstream source for {f.name}; likely obfuscated/merged')
+                  continue
               lines=f.read_text(errors='replace').splitlines()
               print(f'=== UPSTREAM {f.name}, {len(lines)} lines ===')
               selected=[]
