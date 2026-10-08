@@ -762,7 +762,7 @@ public class PlayerActivity extends Activity {
     private boolean controllerHideCompleting;
     private final Runnable completeControllerHideAction = () -> {
         if (controllerHideCompleting && playerView != null && controllerVisible
-                && !playerView.isControllerFullyVisible() && !isScrubbing && !pickerDialogOpen) {
+                && !playerView.isControllerFullyVisible() && !this.isScrubbing && !this.pickerDialogOpen) {
             playerView.hideControllerImmediately();
         }
         controllerHideCompleting = false;
