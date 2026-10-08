@@ -3,7 +3,14 @@ name: ARX 2.2.2 reconstruction compile check
 on:
   push:
     branches: [reconstruct-2.2.2]
-    paths: ['.github/workflows/validate-2.2.2-port.yml']
+    paths:
+      - '.github/workflows/validate-2.2.2-port.yml'
+      - 'app/src/main/java/com/brouken/player/PlayerActivity.java'
+      - 'app/src/main/java/com/brouken/player/PlaylistApi.java'
+      - 'app/src/main/java/com/brouken/player/FfmpegVideoDecoder.java'
+      - 'app/src/main/java/com/brouken/player/FfmpegVideoRenderer.java'
+      - 'app/src/main/jniLibs/**'
+      - 'app/build.gradle'
   workflow_dispatch:
 
 permissions:
