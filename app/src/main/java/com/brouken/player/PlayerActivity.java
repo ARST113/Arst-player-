@@ -1616,7 +1616,7 @@ public class PlayerActivity extends Activity {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         }
         super.onCreate(savedInstanceState);
-        if (mPrefs.captureVisible || (Build.VERSION.SDK_INT == 28 && Build.MANUFACTURER.equalsIgnoreCase("xiaomi") &&
+        if ((mPrefs.captureVisible && !mPrefs.tunneling) || (Build.VERSION.SDK_INT == 28 && Build.MANUFACTURER.equalsIgnoreCase("xiaomi") &&
                 (Build.DEVICE.equalsIgnoreCase("oneday") || Build.DEVICE.equalsIgnoreCase("once")))) {
             setContentView(R.layout.activity_player_textureview);
         } else {
