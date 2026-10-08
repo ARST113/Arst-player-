@@ -38,6 +38,27 @@ jobs:
           set -o pipefail
           ./gradlew :app:assembleLatestUniversalDebug :app:assembleLatestUniversalRelease \
             :app:testLatestUniversalDebugUnitTest --no-daemon 2>&1 | tee arx-222-build.log
+      - name: Verify signed candidate and official FFmpeg native libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/latestUniversal/release -type f -name '*.apk' | head -n1)"
+          test -s "$apk"
+          signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          "$signer" verify --verbose --print-certs "$apk"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          "$aapt" dump badging "$apk" | grep "versionName='2.2.2-arx1'"
+          for abi in arm64-v8a armeabi-v7a; do
+            unzip -Z1 "$apk" | grep -Fxq "lib/$abi/libffvideoJNI.so"
+            unzip -Z1 "$apk" | grep -Fxq "lib/$abi/libffmpegJNI.so"
+          done
+          echo '7c50ed7526e2a78fe9c61bf3059f887f2610e23a9ecd92cedb0041c1489f0536  -' | \
+            ( unzip -p "$apk" lib/arm64-v8a/libffmpegJNI.so | sha256sum -c - )
+          echo '1e54c5b39726a9a907eb797099edfd5bc84dfbc152b10653eb5637bbc562c14b  -' | \
+            ( unzip -p "$apk" lib/armeabi-v7a/libffmpegJNI.so | sha256sum -c - )
+          test -s app/src/main/res/drawable-nodpi/arx_launcher_source.webp
+          test -s app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          sha256sum "$apk"
       - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
