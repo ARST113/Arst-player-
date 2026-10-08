@@ -1,0 +1,105 @@
+name: Audit original 2.2.2 capture and UI delta
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths: ['.github/workflows/audit-2.2.2-parity.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify original official APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-all-errors \
+            'https://github.com/just-plus-player/just-plus-player/releases/download/v2.2.2/JustPlus.Player.v2.2.2.apk' \
+            -o /tmp/official-v222.apk
+          echo '1e69816c14cedc30929e9e59657a6a8ac766fcd22b584774fc85aa9ec79bd916  /tmp/official-v222.apk' | sha256sum -c -
+      - name: Install JADX
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://api.github.com/repos/skylot/jadx/releases/latest -o /tmp/jadx.json
+          url="$(jq -r '[.assets[] | select(.name | test("^jadx-[0-9].*\\.zip$"))][0].browser_download_url // empty' /tmp/jadx.json)"
+          test -n "$url"
+          curl -fsSL --retry 3 "$url" -o /tmp/jadx.zip
+          mkdir -p /tmp/jadx
+          unzip -q /tmp/jadx.zip -d /tmp/jadx
+          chmod +x /tmp/jadx/bin/jadx
+      - name: Decompile original code and resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/jadx/bin/jadx -j 4 -d /tmp/official-decompiled /tmp/official-v222.apk \
+            >/tmp/jadx.stdout 2>/tmp/jadx.stderr || true
+          test -f /tmp/official-decompiled/sources/com/brouken/player/PlayerActivity.java
+          mkdir -p parity-evidence
+          for cls in PlayerActivity Prefs SettingsActivity; do
+            f="/tmp/official-decompiled/sources/com/brouken/player/$cls.java"
+            cp "$f" "parity-evidence/$cls.java"
+          done
+          cp -r /tmp/official-decompiled/resources/res/values parity-evidence/official-values || true
+      - name: Print precise new screen-capture implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, collections
+          files=[Path('parity-evidence')/f'{name}.java' for name in ('PlayerActivity','Prefs','SettingsActivity')]
+          pats=[r'capture',r'screen.?record',r'screen.?shot',r'tone.?map',r'hdr.?to.?sdr',r'SDR',r'TextureView',r'tunneling']
+          for f in files:
+              lines=f.read_text(errors='replace').splitlines()
+              print(f'=== UPSTREAM {f.name}, {len(lines)} lines ===')
+              selected=[]
+              for i,s in enumerate(lines):
+                  if any(re.search(p,s,re.I) for p in pats):
+                      selected.append(i)
+              for i in selected[:45]:
+                  print(f'--- {f.name}:{i+1} ---')
+                  for j in range(max(0,i-5), min(len(lines),i+8)):
+                      print(f'{j+1}: {lines[j][:230]}')
+          PY
+      - name: Compare named resources with original APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re, json
+          from pathlib import Path
+          root=Path('parity-evidence')
+          official=root/'official-values'
+          ours=Path('app/src/main/res/values')
+          out={}
+          for name in ('strings.xml','arrays.xml','colors.xml','dimens.xml','styles.xml'):
+              o=official/name;a=ours/name
+              if not o.exists() or not a.exists(): continue
+              pattern=r'<(?:string|color|dimen|string-array|integer-array|style)\s+name="([^"]+)"'
+              oo=set(re.findall(pattern,o.read_text(errors='replace')))
+              aa=set(re.findall(pattern,a.read_text(errors='replace')))
+              out[name]={'official_only':sorted(oo-aa),'arx_only':sorted(aa-oo),'common':len(oo&aa)}
+          (root/'resource-delta.json').write_text(json.dumps(out,indent=2))
+          for filename,stats in out.items():
+              print('=== resource',filename,'=== official_only',len(stats['official_only']),'arx_only',len(stats['arx_only']))
+              print('new official names:',stats['official_only'][:120])
+          PY
+      - name: Publish reference evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-2.2.2-parity-evidence
+          path: parity-evidence/
+          retention-days: 7
+          if-no-files-found: warn
