@@ -584,6 +584,11 @@
                     app:useSimpleSummaryProvider="true"/>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
+                    app:key="captureVisible"
+                    app:summary="@string/pref_capture_visible_summary"
+                    app:title="@string/pref_capture_visible"/>
+                <SwitchPreferenceCompat
+                    app:defaultValue="false"
                     app:key="tunneling"
                     app:summary="@string/pref_tunneling_summary"
                     app:title="@string/pref_tunneling"/>
