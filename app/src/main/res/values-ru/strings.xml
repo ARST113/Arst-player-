@@ -612,4 +612,7 @@
     <string name="playlist_start_over_action">С начала</string>
     <string name="pref_all_versions">Все версии</string>
     <string name="pref_all_versions_summary">История изменений всех версий</string>
+    <string name="update_versions_loading">Загрузка истории версий…</string>
+    <string name="update_versions_empty">Не удалось загрузить историю версий. Попробуйте позднее.</string>
+    <string name="update_versions_close">Закрыть</string>
 </resources>
