@@ -5,6 +5,7 @@ on:
     branches: [reconstruct-2.2.2]
     paths:
       - '.github/workflows/apply-neon-icon-v222.yml'
+      - 'app/src/main/res/drawable-nodpi/arx_launcher_source.webp'
   workflow_dispatch:
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
 
           src = Path('app/src/main/res/drawable-nodpi/arx_launcher_source.webp')
           source = Image.open(src).convert('RGBA')
-          assert source.size == (64,64), 'Source icon changed unexpectedly'
+          assert source.width >= 64 and source.height >= 64, 'Invalid source icon'
 
           root = Path('app/src/main/res')
           for qualifier, size in (('mdpi',48),('hdpi',72),('xhdpi',96),
