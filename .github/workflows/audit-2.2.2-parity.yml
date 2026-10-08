@@ -144,6 +144,33 @@ jobs:
                   if re.search('capture|ambilight|screen.?record|hdr|decoder',line,re.I) and '<string ' in line:
                       print('OFFICIAL STRING:',line[:280])
           PY
+      - name: Inspect authoritative preference XML and all capture setting call sites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          base=Path('/tmp/official-decompiled')
+          src=base/'sources'
+          preferences=base/'resources/res/xml/root_preferences.xml'
+          if preferences.exists():
+              lines=preferences.read_text(errors='replace').splitlines()
+              for i,line in enumerate(lines):
+                  if 'captureVisible' in line or 'tunneling' in line or 'pref_capture_visible' in line:
+                      print('UPSTREAM XML PREF',i+1,'\n'+'\n'.join(lines[max(0,i-6):min(len(lines),i+7)]))
+              Path('parity-evidence/root_preferences.xml').write_bytes(preferences.read_bytes())
+          hits=[]
+          for p in src.rglob('*.java'):
+              if p.stat().st_size>2000000: continue
+              text=p.read_text(errors='replace')
+              for i,line in enumerate(text.splitlines()):
+                  if 'captureVisible' in line or 'pref_capture_visible' in line:
+                      hits.append((str(p.relative_to(src)),i+1,line.strip()[:180]))
+          for item in hits[:40]:
+              print('UPSTREAM CAPTURE REFERENCE',item)
+          print('TOTAL UPSTREAM CAPTURE REFERENCES',len(hits))
+          PY
       - name: Publish reference evidence
         uses: actions/upload-artifact@v4
         if: always()
