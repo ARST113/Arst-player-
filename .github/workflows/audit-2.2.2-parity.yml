@@ -104,6 +104,46 @@ jobs:
               print('=== resource',filename,'=== official_only',len(stats['official_only']),'arx_only',len(stats['arx_only']))
               print('new official names:',stats['official_only'][:120])
           PY
+      - name: Recover official capture and preference implementation (obfuscated fields)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          base=Path('/tmp/official-decompiled/sources')
+          file=Path('parity-evidence/PlayerActivity.java')
+          lines=file.read_text(errors='replace').splitlines()
+          for name,pattern in [('official capture layout',r'hu1Var2\.y|hu1Var2\.x'),
+                                ('all capture preference reads',r'\.H\.y|\.H\.x'),
+                                ('view output setup',r'activity_player_textureview')]:
+              hits=[i for i,s in enumerate(lines) if re.search(pattern,s)]
+              print(f'CAPTURE AUDIT [{name}] matches={len(hits)}')
+              for i in hits[:18]:
+                  print('  CONTEXT AT',i+1)
+                  for k in range(max(0,i-12),min(len(lines),i+13)):
+                      print(f'  {k+1}: {lines[k][:220]}')
+          class_files=[p for p in base.rglob('hu1.java')]
+          if not class_files:
+              class_files=[p for p in base.rglob('*.java')
+                           if p.stat().st_size < 500000 and re.search(r'\bclass hu1\b',
+                                        p.read_text(errors='replace')[:4000])]
+          print('OBFUSCATED PREFS FILES', [str(p) for p in class_files[:6]])
+          for p in class_files[:1]:
+              target=Path('parity-evidence/obfuscated-hu1.java')
+              target.write_bytes(p.read_bytes())
+              src=p.read_text(errors='replace').splitlines()
+              for i,l in enumerate(src):
+                  if any(t in l for t in ('captureVisible','tunneling','screenCapture','videoCapture')):
+                      print('PREF KEY AT',i+1)
+                      for k in range(max(0,i-6),min(len(src),i+7)):
+                          print(f'  {k+1}: {src[k][:220]}')
+          xml=Path('parity-evidence/official-values/strings.xml')
+          if xml.exists():
+              for line in xml.read_text(errors='replace').splitlines():
+                  if re.search('capture|ambilight|screen.?record|hdr|decoder',line,re.I) and '<string ' in line:
+                      print('OFFICIAL STRING:',line[:280])
+          PY
       - name: Publish reference evidence
         uses: actions/upload-artifact@v4
         if: always()
