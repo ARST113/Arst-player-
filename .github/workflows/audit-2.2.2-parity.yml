@@ -238,6 +238,23 @@ jobs:
               matches=list((src/'resources/res').rglob(name))
               print('UPSTREAM VECTOR ICON',name,[(str(p),p.stat().st_size) for p in matches[:4]])
           PY
+      - name: Decode original All versions and About decorative actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          f=Path('parity-evidence/SettingsActivity.java')
+          x=f.read_text(errors='replace').splitlines()
+          for a,b in [(560,615)]:
+              print('ORIGINAL ABOUT HANDLERS',a,b)
+              for i in range(a-1,min(b,len(x))):
+                  print(f'{i+1}: {x[i][:240]}')
+          src=Path('/tmp/official-decompiled/resources/res/layout/preference_about_deco.xml')
+          print('ABOUT DECO XML EXISTS',src.exists())
+          if src.exists():
+              print(src.read_text(errors='replace')[:6500])
+          PY
       - name: Publish reference evidence
         uses: actions/upload-artifact@v4
         if: always()
