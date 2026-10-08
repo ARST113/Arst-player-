@@ -157,6 +157,8 @@
     <string name="pref_allow_system_framerate_on">The system picks the rate. The screen may blink</string>
     <string name="pref_allow_system_framerate_off">Nothing moves the refresh rate while you watch</string>
     <string name="pref_tunneling">Tunneled playback</string>
+    <string name="pref_capture_visible">Video visible to screen capture</string>
+    <string name="pref_capture_visible_summary">For Ambilight backlights and screen recording; disables HDR and tunneling</string>
     <string name="pref_tunneling_summary">Improves 4K and HDR. On some boxes the picture freezes, and the app turns it off itself</string>
     <string name="notice_tunneling_disabled">Tunneled playback disabled — it freezes the picture on this device</string>
     <string name="notice_quality_lowered">Switched to %1$s — the original needs a hardware decoder this device does not have</string>
