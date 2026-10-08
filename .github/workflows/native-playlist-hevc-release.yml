@@ -1,0 +1,105 @@
+name: ARX TPlayer release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      ARX_VERSION: 2.1.1-arx1
+      ARX_TAG: v2.1.1-arx1
+      ARX_KEYSTORE_BASE64: ${{ secrets.ARX_KEYSTORE_BASE64 }}
+      ARX_KEYSTORE_PASSWORD: ${{ secrets.ARX_KEYSTORE_PASSWORD }}
+      ARX_KEY_ALIAS: ${{ secrets.ARX_KEY_ALIAS }}
+      ARX_KEY_PASSWORD: ${{ secrets.ARX_KEY_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Set ARX TPlayer version metadata
+        run: git tag -f "$ARX_TAG"
+
+      - name: Build and test
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace \
+            :app:assembleLatestUniversalRelease \
+            :app:testLatestUniversalDebugUnitTest
+
+      - name: Sign release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          KEYSTORE=/tmp/arx-release.jks
+          if [ -n "${ARX_KEYSTORE_BASE64:-}" ] && \
+             [ -n "${ARX_KEYSTORE_PASSWORD:-}" ] && \
+             [ -n "${ARX_KEY_ALIAS:-}" ] && \
+             [ -n "${ARX_KEY_PASSWORD:-}" ]; then
+            printf '%s' "$ARX_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+            STOREPASS="$ARX_KEYSTORE_PASSWORD"
+            KEYPASS="$ARX_KEY_PASSWORD"
+            ALIAS="$ARX_KEY_ALIAS"
+            echo "Using repository release signing key"
+          else
+            STOREPASS=android
+            KEYPASS=android
+            ALIAS=arx-tplayer
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE" \
+              -storepass "$STOREPASS" -keypass "$KEYPASS" \
+              -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=ARX TPlayer,O=ARST113,C=FI"
+            echo "WARNING: release signing secrets are not configured; using an ephemeral signing key"
+          fi
+
+          APK="$(find app/build/outputs/apk/latestUniversal/release -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          OUT="/tmp/ARX.TPlayer.v${ARX_VERSION}.apk"
+
+          "$APKSIGNER" sign \
+            --ks "$KEYSTORE" \
+            --ks-pass "pass:$STOREPASS" \
+            --key-pass "pass:$KEYPASS" \
+            --ks-key-alias "$ALIAS" \
+            --out "$OUT" \
+            "$APK"
+
+          "$APKSIGNER" verify --verbose --print-certs "$OUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ARX-TPlayer-${{ env.ARX_VERSION }}
+          if-no-files-found: error
+          path: /tmp/ARX.TPlayer.v${{ env.ARX_VERSION }}.apk
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="/tmp/ARX.TPlayer.v${ARX_VERSION}.apk"
+
+          if ! gh release view "$ARX_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$ARX_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "ARX TPlayer ${ARX_VERSION}" \
+              --notes "ARX TPlayer release based on Just+ Player 2.1.1 with the current native playlist API and NextLib FFmpeg/libavcodec HEVC fallback."
+          fi
+
+          gh release upload "$ARX_TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY"
