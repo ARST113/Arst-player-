@@ -923,7 +923,7 @@ public class PlayerActivity extends Activity {
     // arriving, so once the wait gets noticeable the rate answers it: 0,0 MB/s reads as "nothing is
     // coming", anything else as "alive, just slow". Delayed so the short reloads after a seek stay clean.
     private TextView loadingSpeedView;
-    private static final long LOADING_SPEED_DELAY_MS = 2_500L;
+    private static final long LOADING_SPEED_DELAY_MS = 2_000L;
     private static final long LOADING_SPEED_TICK_MS = 1_000L;
     private long loadingSpeedBytes;
     private boolean loadingSpeedScheduled;
@@ -931,10 +931,10 @@ public class PlayerActivity extends Activity {
         @Override
         public void run() {
             final long total = TrackNameParsingDataSource.bytesRead.get();
-            final double mbPerSec = Math.max(0, total - loadingSpeedBytes)
-                    * 1000d / LOADING_SPEED_TICK_MS / (1024 * 1024);
+            final double mbps = Math.max(0, total - loadingSpeedBytes)
+                    * 1000d / LOADING_SPEED_TICK_MS * 8d / 1_000_000d;
             loadingSpeedBytes = total;
-            loadingSpeedView.setText(getString(R.string.loading_speed, mbPerSec));
+            loadingSpeedView.setText(getString(R.string.loading_speed, mbps));
             loadingSpeedView.setVisibility(View.VISIBLE);
             playerView.postDelayed(this, LOADING_SPEED_TICK_MS);
         }
