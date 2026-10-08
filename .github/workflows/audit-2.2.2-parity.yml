@@ -276,6 +276,46 @@ jobs:
                       for j in range(max(0,i-8),min(len(ls),i+19)):
                           print(f'{j+1}: {ls[j][:240]}')
           PY
+      - name: Inspect upstream buffering poster and controller dismissal
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          root=Path('/tmp/official-decompiled')
+          src=root/'sources'
+          player=src/'com/brouken/player/PlayerActivity.java'
+          ours=Path('app/src/main/java/com/brouken/player/PlayerActivity.java')
+          keys=re.compile(r'poster|splash|loading|preload|thumbnail|artwork|buffering|hideController|hideControllerImmediately|controllerShowTimeout|showTimeout|showController|setAnimationEnabled|setControllerAutoShow|loadingSpeed|STATE_BUFFERING', re.I)
+          for tag,f in [('UPSTREAM PlayerActivity',player),('ARX PlayerActivity',ours)]:
+            print('AUDIT FILE', tag, 'exists=',f.exists())
+            if not f.exists():continue
+            lines=f.read_text(errors='replace').splitlines()
+            hits=[i for i,l in enumerate(lines) if keys.search(l)]
+            print('MATCH_COUNT',len(hits),'FILE_LINES',len(lines))
+            for i in hits[:100]:
+              print(f'[{tag}:{i+1}] {lines[i][:250]}')
+              for j in range(max(0,i-2),min(len(lines),i+3)):
+                if j!=i:print('   ',j+1,lines[j][:210])
+          for target in ('CustomPlayerView.java','PlayerView.java','PlayerControlView.java','StyledPlayerControlView.java'):
+            candidates=list(src.rglob(target))
+            for f in candidates[:2]:
+              lines=f.read_text(errors='replace').splitlines()
+              hits=[i for i,l in enumerate(lines) if re.search(r'hideController|showTimeout|hideImmediately|setAnimationEnabled|animationEnabled',l,re.I)]
+              print('CONTROLLER UPSTREAM',str(f.relative_to(src)),'lines',len(lines),'hits',len(hits))
+              for i in hits[:35]:
+                print(' ',i+1,lines[i][:250])
+          for dir in ('layout','layout-land','drawable'):
+            folder=root/'resources/res'/dir
+            if not folder.exists():continue
+            for f in folder.glob('*.xml'):
+              text=f.read_text(errors='replace')
+              if re.search(r'poster|preload|splash|loading|buffer',f.name,re.I) or (
+                  re.search(r'PlayerActivity|player_control_view|player_view',f.name,re.I) and re.search(r'poster|loading',text,re.I)):
+                print('UPSTREAM RESOURCE',f.name,text[:1200].replace('\n',' '))
+          print('ORIGINAL AUDIT COMPLETE')
+          PY
       - name: Publish reference evidence
         uses: actions/upload-artifact@v4
         if: always()
