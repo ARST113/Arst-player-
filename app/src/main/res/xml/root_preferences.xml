@@ -584,14 +584,16 @@
                     app:useSimpleSummaryProvider="true"/>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
-                    app:key="captureVisible"
-                    app:summary="@string/pref_capture_visible_summary"
-                    app:title="@string/pref_capture_visible"/>
-                <SwitchPreferenceCompat
-                    app:defaultValue="false"
+                    app:disableDependentsState="true"
                     app:key="tunneling"
                     app:summary="@string/pref_tunneling_summary"
                     app:title="@string/pref_tunneling"/>
+                <SwitchPreferenceCompat
+                    app:defaultValue="false"
+                    app:dependency="tunneling"
+                    app:key="captureVisible"
+                    app:summary="@string/pref_capture_visible_summary"
+                    app:title="@string/pref_capture_visible"/>
             </PreferenceCategory>
             <PreferenceCategory app:title="@string/pref_section_dolby_vision">
                 <SwitchPreferenceCompat
