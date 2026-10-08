@@ -1,0 +1,67 @@
+name: Publish ARX TPlayer 2.2.2-arx1 pre-release APK
+
+on:
+  push:
+    branches: [reconstruct-2.2.2]
+    paths:
+      - '.github/workflows/publish-arx-2.2.2-arx1.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: arx-v2.2.2-arx1
+      VERIFIED_COMMIT: de8791efe2c80f2d6f98dcecda4e17f3409aba80
+      VERIFIED_RUN: '37748465301'
+      VERIFIED_APK_SHA256: 48fdc66f0e67119e291819157b378184a7593b21b2fcbbbccbbb3bdad040d94d
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the successful signed APK artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run view "$VERIFIED_RUN" --repo "$GITHUB_REPOSITORY" --json conclusion,headSha \
+            --jq '{conclusion: .conclusion, headSha: .headSha}' > verified-run.json
+          test "$(jq -r '.conclusion' verified-run.json)" = success
+          test "$(jq -r '.headSha' verified-run.json)" = "$VERIFIED_COMMIT"
+          mkdir -p downloaded
+          gh run download "$VERIFIED_RUN" --repo "$GITHUB_REPOSITORY" \
+            --name arx-2.2.2-reconstruction-candidate-apks --dir downloaded
+          find downloaded -type f -maxdepth 6 -name '*.apk' -print
+          apk="$(find downloaded -type f -name 'ARX.TPlayer.v2.2.2-arx1.apk' | head -n 1)"
+          test -n "$apk" && test -s "$apk"
+          echo "$VERIFIED_APK_SHA256  $apk" | sha256sum --check
+          cp "$apk" ARX.TPlayer.v2.2.2-arx1-release.apk
+      - name: Publish a clearly labeled testing pre-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; will not replace its verified APK."
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets
+            exit 0
+          fi
+          cat > release-notes.md <<'EOF'
+          ARX TPlayer 2.2.2-arx1 — testing pre-release based on the official Just+ Player 2.2.2 APK.
+
+          - Uses the official native FFmpeg software HEVC decoder and original ARM JNI libraries.
+          - Removes NextLib from the video renderer and dependencies.
+          - Updates FFmpeg audio JNI, playlist ask_resume behavior, and Lampa exit-time progress callback.
+          - Adds video-visible-to-screen-capture mode (TextureView; tunneling disabled).
+          - Replaces the phone, adaptive, themed and Android TV icons with the user's blue neon play emblem.
+          - VersionCode 2002003; package com.justplus.player; signed with the established ARX test certificate.
+
+          WARNING: functional parity with every upstream 2.2.2 behavior and physical-device playback are still being validated. Back up existing settings before installation. This is a pre-release, not a finished production rollout.
+
+          Verified SHA-256:
+          48fdc66f0e67119e291819157b378184a7593b21b2fcbbbccbbb3bdad040d94d
+          EOF
+          gh release create "$TAG"             "ARX.TPlayer.v2.2.2-arx1-release.apk#ARX.TPlayer.v2.2.2-arx1-release.apk"             --repo "$GITHUB_REPOSITORY"             --target "$VERIFIED_COMMIT"             --title "ARX TPlayer 2.2.2-arx1 (test build)"             --notes-file release-notes.md             --prerelease
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets
