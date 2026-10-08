@@ -257,11 +257,25 @@ final class PlaylistApi {
         final long reportIntervalMs = interval == null || interval <= 0
                 ? 0L : Math.max(30_000L, (long) Math.floor(interval));
 
+        // Upstream 2.2.1+ accepts a single ask_resume boolean. Retain resume_mode
+        // as a legacy fallback to avoid breaking existing Lampa integrations.
         String resumeMode = text(root, "resume_mode");
         if (resumeMode != null && !RESUME_MODES.contains(resumeMode)) {
             warn(warnings, "playlist.resume_mode",
                     "\"" + resumeMode + "\" is not one of " + RESUME_MODES);
             resumeMode = null;
+        }
+        if (root.containsKey("ask_resume")) {
+            final Object ask = root.get("ask_resume");
+            if (ask instanceof Boolean) {
+                resumeMode = (Boolean) ask ? "ask_every" : "always";
+            } else {
+                warn(warnings, "playlist.ask_resume", "expected a Boolean");
+                resumeMode = "always";
+            }
+        } else if (resumeMode == null) {
+            // Official 2.2.2 bypasses the user's global resume setting for playlists.
+            resumeMode = "always";
         }
 
         final ArrayList<Item> items = new ArrayList<>(rawItems.length);
