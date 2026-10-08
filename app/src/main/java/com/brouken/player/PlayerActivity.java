@@ -81,6 +81,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceView;
+import android.view.TextureView;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.ViewGroup;
@@ -1586,6 +1587,19 @@ public class PlayerActivity extends Activity {
         }
     };
 
+    /**
+     * Official 2.2.2 uses a TextureView for screen capture only when tunneling
+     * is off. Surface selection is an Activity layout decision, so changing the
+     * preference requires recreating the Activity, not just the ExoPlayer.
+     */
+    private boolean shouldUseTextureView() {
+        return (mPrefs.captureVisible && !mPrefs.tunneling)
+                || (Build.VERSION.SDK_INT == 28
+                    && Build.MANUFACTURER.equalsIgnoreCase("xiaomi")
+                    && (Build.DEVICE.equalsIgnoreCase("oneday")
+                        || Build.DEVICE.equalsIgnoreCase("once")));
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.O)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1616,12 +1630,8 @@ public class PlayerActivity extends Activity {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         }
         super.onCreate(savedInstanceState);
-        if ((mPrefs.captureVisible && !mPrefs.tunneling) || (Build.VERSION.SDK_INT == 28 && Build.MANUFACTURER.equalsIgnoreCase("xiaomi") &&
-                (Build.DEVICE.equalsIgnoreCase("oneday") || Build.DEVICE.equalsIgnoreCase("once")))) {
-            setContentView(R.layout.activity_player_textureview);
-        } else {
-            setContentView(R.layout.activity_player);
-        }
+        setContentView(shouldUseTextureView()
+                ? R.layout.activity_player_textureview : R.layout.activity_player);
 
         if (Build.VERSION.SDK_INT >= 31) {
             Window window = getWindow();
@@ -13161,7 +13171,15 @@ public class PlayerActivity extends Activity {
             // A new accent is baked into the whole window, not just the player: the same path that
             // restarts the screen on a dead decoder rebuilds it with the new theme, position kept.
             final Map<String, ?> after = mPrefs.snapshot();
-            if (before != null && !Objects.equals(before.get(Prefs.ACCENT_KEY), after.get(Prefs.ACCENT_KEY))) {
+            // Changing capture mode or tunneling can change SurfaceView vs TextureView.
+            // Rebuilding ExoPlayer on the old view would keep the wrong surface until
+            // the user force-stops the app. Recreate the screen, retaining playback
+            // and nested playlist state in the existing Activity restoration path.
+            final View currentVideoSurface = playerView != null ? playerView.getVideoSurfaceView() : null;
+            final boolean surfaceTypeChanged = currentVideoSurface != null
+                    && (currentVideoSurface instanceof TextureView) != shouldUseTextureView();
+            if (surfaceTypeChanged || (before != null
+                    && !Objects.equals(before.get(Prefs.ACCENT_KEY), after.get(Prefs.ACCENT_KEY)))) {
                 releasePlayer();
                 playerView.post(this::recreate);
                 return;
