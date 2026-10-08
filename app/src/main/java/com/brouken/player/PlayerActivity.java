@@ -426,7 +426,7 @@ public class PlayerActivity extends Activity {
     private volatile boolean forceHevcForDolbyVision;
     private boolean pendingStuckRecovery;
     // Generic HEVC recovery for devices that accept a stream in MediaCodec and then fail on the
-    // first buffers. 0 = normal, 1 = c2.android software, 2 = OMX.google alias, 3 = FFmpeg.
+    // first buffers. 0 = normal, 1 = c2.android software, 2 = OMX.google, 3 = NextLib, 4 = official 2.2.2 JNI FFmpeg.
     private volatile int forceHevcSoftwareStage;
     private boolean pendingHevcSoftwareRecovery;
     // Installed for this player build when Dolby Vision profile 7 is being rewritten as profile 8.1;
@@ -13571,19 +13571,25 @@ public class PlayerActivity extends Activity {
                 super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector,
                         enableDecoderFallback, eventHandler, eventListener,
                         allowedVideoJoiningTimeMs, out);
-                // Keep MediaCodec first for formats the device fully supports. NextLib/libavcodec is a
-                // second video renderer, so Media3 can select it when the platform renderer reports
-                // FORMAT_EXCEEDS_CAPABILITIES (notably HEVC Range Extensions profiles on devices whose
-                // hardware HEVC decoder accepts configuration but fails on the first buffer).
-                out.add(new io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegVideoRenderer(
-                        allowedVideoJoiningTimeMs, eventHandler, eventListener,
-                        MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
-                        Math.min(4, Runtime.getRuntime().availableProcessors()),
-                        /* numInputBuffers= */ 4, /* numOutputBuffers= */ 4));
-                // Official Just+ 2.2.2 native FFmpeg video renderer. Keep the verified
-                // NextLib path above as the first software recovery while both are tested.
-                // Neither decoder replaces the separate FFmpeg *audio* extension.
-                out.add(new FfmpegVideoRenderer(eventHandler, eventListener));
+                // Distinct, independently compiled video FFmpeg implementations:
+                // ARX NextLib remains the first fallback for compatibility with working builds;
+                // stage 4 is reached ONLY after NextLib has failed on a real HEVC stream.
+                // Then prefer the official 2.2.2 JNI renderer while continuing to retain
+                // the NextLib instance as an emergency alternative.
+                final Renderer arxNextLibRenderer =
+                        new io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegVideoRenderer(
+                                allowedVideoJoiningTimeMs, eventHandler, eventListener,
+                                MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY,
+                                Math.min(4, Runtime.getRuntime().availableProcessors()),
+                                /* numInputBuffers= */ 4, /* numOutputBuffers= */ 4);
+                final Renderer officialVideoRenderer = new FfmpegVideoRenderer(eventHandler, eventListener);
+                if (forceHevcSoftwareStage == 4) {
+                    out.add(officialVideoRenderer);
+                    out.add(arxNextLibRenderer);
+                } else {
+                    out.add(arxNextLibRenderer);
+                    out.add(officialVideoRenderer);
+                }
                 // The same dav1d renderer the base class just built, with its pipeline opened up. The
                 // base class can only reach the four-argument constructor by reflection, and that one
                 // takes DEFAULT_MAX_FRAME_DELAY = 2: two frames in flight, whatever the device has.
@@ -15969,7 +15975,7 @@ public class PlayerActivity extends Activity {
     private boolean recoverHevcSoftwareDecoder(@Nullable final Format failingFormat) {
         if (player == null || failingFormat == null
                 || !MimeTypes.VIDEO_H265.equals(failingFormat.sampleMimeType)
-                || forceHevcSoftwareStage >= 3) {
+                || forceHevcSoftwareStage >= 4) {
             return false;
         }
         if (forceHevcSoftwareStage == 0) {
@@ -16015,7 +16021,7 @@ public class PlayerActivity extends Activity {
             } else {
                 return false;
             }
-        } else {
+        } else if (forceHevcSoftwareStage == 2) {
             if (!io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary.isAvailable()
                     || !io.github.anilbeesetti.nextlib.media3ext.ffdecoder.FfmpegLibrary
                             .supportsFormat(MimeTypes.VIDEO_H265)) {
@@ -16025,6 +16031,17 @@ public class PlayerActivity extends Activity {
             sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
             Utils.log("rebuild: HEVC " + failingFormat.codecs
                     + " with NextLib FFmpeg/libavcodec video decoder");
+        } else if (forceHevcSoftwareStage == 3) {
+            // A real failure of the verified ARX software renderer is the only
+            // reason to switch to the upstream 2.2.2 JNI video decoder. Never
+            // drop the existing HEVC recovery paths pre-emptively.
+            if (!FfmpegVideoDecoder.isAvailable()) {
+                return false;
+            }
+            forceHevcSoftwareStage = 4;
+            sessionFfmpegVideoFormats.add(videoFormatKey(failingFormat));
+            Utils.log("rebuild: HEVC " + failingFormat.codecs
+                    + " with native Just+ 2.2.2 FFmpeg video decoder");
         }
 
         pendingHevcSoftwareRecovery = true;
