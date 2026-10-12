@@ -1,0 +1,42 @@
+name: Diagnose unusual MP4 and intermittent audio from TorrServer
+
+on:
+  push:
+    branches:
+      - diagnostics/mp4-audio-dropout-20261013
+    paths:
+      - '.github/workflows/diagnose-mp4-audio.yml'
+      - '.github/scripts/diagnose-mp4-audio.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ffmpeg-mp4-investigation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 27
+    env:
+      STREAM_URL: 'http://213.171.26.189:2367/stream/%D0%9C%D1%8B%D1%88%D1%8C%205%20%D1%81%D0%B5%D1%80%D0%B8%D1%8F.mp4?link=db96dda9c3a1e6b1bbc38402378ea822d009fbf4&index=4&play'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install probe and multimedia tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffprobe && command -v ffmpeg || {
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          }
+          ffmpeg -version | head -3
+      - name: Probe headers, MP4 atoms, audio packet PTS and decode
+        shell: bash
+        run: bash .github/scripts/diagnose-mp4-audio.sh
+      - name: Upload bounded media diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mp4-audio-diagnostics
+          path: mp4-audio-diagnostics/
+          retention-days: 7
+          if-no-files-found: warn
