@@ -149,6 +149,7 @@ class Prefs {
     private static final String PREF_KEY_SKIP_COUNTDOWN = "skipCountdown";
     private static final String PREF_KEY_SHOW_CLOCK = "showClock"; // legacy boolean migration
     private static final String PREF_KEY_CLOCK_MODE = "clockOverlayMode";
+    private static final String PREF_KEY_CLOCK_MODE_MIGRATED = "clockOverlayModeMigrated";
     private static final String PREF_KEY_END_TIME_MODE = "endTimeOverlayMode";
     private static final String PREF_KEY_LIVE_MODE = "liveOverlayMode";
     private static final String PREF_KEY_TIME_REMAINING = "timeRemaining";
@@ -612,9 +613,24 @@ class Prefs {
         skipHideWhenLocked = mSharedPreferences.getBoolean(PREF_KEY_SKIP_HIDE_LOCKED, skipHideWhenLocked);
         skipCountdown = migrateWithdrawnValues(mSharedPreferences);
         showClock = mSharedPreferences.getBoolean(PREF_KEY_SHOW_CLOCK, showClock);
-        // The previous switch meant always visible; preserve that choice on upgrade.
-        clockOverlayMode = mSharedPreferences.getString(PREF_KEY_CLOCK_MODE,
-                showClock ? OVERLAY_ALWAYS : OVERLAY_PAUSED);
+        // PreferenceManager.setDefaultValues() writes new ListPreference defaults *before*
+        // Prefs loads. A simple getString(..., showClock ? ALWAYS : PAUSED) would therefore
+        // forget the viewer's former enabled switch, because the new key already says paused.
+        final boolean migratedOverlay = mSharedPreferences.getBoolean(
+                PREF_KEY_CLOCK_MODE_MIGRATED, false);
+        final String storedClock = mSharedPreferences.getString(
+                PREF_KEY_CLOCK_MODE, OVERLAY_PAUSED);
+        if (!migratedOverlay && showClock && OVERLAY_PAUSED.equals(storedClock)) {
+            clockOverlayMode = OVERLAY_ALWAYS;
+            mSharedPreferences.edit()
+                    .putString(PREF_KEY_CLOCK_MODE, OVERLAY_ALWAYS)
+                    .putBoolean(PREF_KEY_CLOCK_MODE_MIGRATED, true)
+                    .apply();
+        } else {
+            clockOverlayMode = storedClock;
+            if (!migratedOverlay) mSharedPreferences.edit()
+                    .putBoolean(PREF_KEY_CLOCK_MODE_MIGRATED, true).apply();
+        }
         endTimeOverlayMode = mSharedPreferences.getString(PREF_KEY_END_TIME_MODE, OVERLAY_PAUSED);
         liveOverlayMode = mSharedPreferences.getString(PREF_KEY_LIVE_MODE, OVERLAY_PAUSED);
         timeRemaining = mSharedPreferences.getBoolean(PREF_KEY_TIME_REMAINING, timeRemaining);

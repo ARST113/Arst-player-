@@ -6985,7 +6985,9 @@ public class PlayerActivity extends Activity {
     private boolean overlayModeVisible(String mode) {
         return !inPip && !Prefs.OVERLAY_OFF.equals(mode)
                 && (Prefs.OVERLAY_ALWAYS.equals(mode)
-                        || player == null || !player.isPlaying());
+                        // Buffering and decoder reselection are not pauses by the viewer.
+                        || player == null || !player.getPlayWhenReady()
+                        || player.getPlaybackState() == Player.STATE_ENDED);
     }
 
     private boolean wantsOverlayTimeDetails() {
