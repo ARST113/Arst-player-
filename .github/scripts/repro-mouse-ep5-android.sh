@@ -8,11 +8,16 @@ URL="$(sed -n "s/^      STREAM_URL: '//p" .github/workflows/diagnose-mp4-audio.y
 APK="$(find app/build/outputs/apk -name '*debug*.apk' -type f | head -n1)"
 test -s "$APK" || { find app/build -name '*.apk'; exit 1; }
 adb install -r "$APK"
+# Prevent Android 15 first-time immersive-mode tutorial swallowing all seek controls.
+adb shell settings put secure immersive_mode_confirmations confirmed || true
 adb logcat -c
 adb shell am force-stop "$PKG" || true
 adb shell "am start -W -n $PKG/$ACTIVITY -a android.intent.action.VIEW -t video/mp4 -d '$URL'" \
   > "$OUT/launch.txt"
-sleep 12
+sleep 14
+# Dismiss possible late system popup at confirmed UI bounds (2400x1080).
+adb shell input tap 1700 500 || true
+sleep 2
 adb logcat -d -v threadtime > "$OUT/first-30s.log"
 adb shell uiautomator dump /sdcard/first-window.xml >/dev/null 2>&1 || true
 adb pull /sdcard/first-window.xml "$OUT/first-window.xml" >/dev/null 2>&1 || true
@@ -76,7 +81,7 @@ else
 fi
 adb logcat -d -v threadtime > "$OUT/after-seek-action.log"
 
-sleep 65
+sleep 43
 adb logcat -d -v threadtime > "$OUT/after-seek.log"
 adb shell dumpsys media.audio_flinger > "$OUT/audio-flinger.txt" || true
 adb shell dumpsys media.codec > "$OUT/media-codec.txt" || true
