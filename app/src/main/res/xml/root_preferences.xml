@@ -698,13 +698,6 @@
                     app:summary="@string/pref_all_versions_summary"
                     app:title="@string/pref_all_versions"/>
             </PreferenceCategory>
-            <PreferenceCategory>
-                <Preference
-                    app:key="aboutDeco"
-                    app:layout="@layout/preference_about_deco"
-                    app:persistent="false"
-                    app:selectable="false"/>
-            </PreferenceCategory>
         </PreferenceScreen>
     </PreferenceCategory>
 </PreferenceScreen>

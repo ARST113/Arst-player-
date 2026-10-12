@@ -715,13 +715,6 @@ public class SettingsActivity extends AppCompatActivity
                 crashReporting.setVisible(false);
             }
 
-            final Preference stand = findPreference("aboutDeco");
-            if (stand != null && Utils.isTvBox(requireContext())) {
-                // The badge is the last thing on the screen and does nothing, so a remote would stop at
-                // the row above it and never scroll far enough to show it. Selectable on a television
-                // for the same reason the decoder warning is: a D-pad only reaches what it can land on.
-                stand.setSelectable(true);
-            }
 
             Preference sendAppLog = findPreference("sendAppLog");
             if (sendAppLog != null) {
@@ -793,8 +786,7 @@ public class SettingsActivity extends AppCompatActivity
                 return;
             }
             // About is a reading, not a set of settings: the one switch on it belongs to the updater,
-            // and a reset row there would stand under the badge that is meant to be the last thing on
-            // the screen. What it holds is reset with everything else, from the root.
+            // and a reset row there would follow informational controls, which need no reset. What it holds is reset with everything else, from the root.
             if (!holdsSettings(screen) || "aboutScreen".equals(screen.getKey())) {
                 return;
             }
