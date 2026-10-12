@@ -6953,6 +6953,27 @@ public class PlayerActivity extends Activity {
      * above any live window and well below any feature; a genuinely short recording served without an
      * end tag is the one thing this reads wrongly, and all it costs there is a label.
      */
+    /**
+     * MediaTek devices appear as Amazon/FIre TV or OEM device manufacturers; use SoC identity
+     * rather than the retail brand. Only the system's own reported decoder is considered.
+     */
+    private static boolean hasMediaTekVideoCodec() {
+        final String platform = (Build.HARDWARE + " " + Build.BOARD)
+                .toLowerCase(Locale.ROOT);
+        if (platform.contains("mediatek") || platform.contains("mtk")
+                || platform.matches(".*mt[0-9]{4,}.*")) return true;
+        return Build.VERSION.SDK_INT >= 31
+                && Build.SOC_MANUFACTURER != null
+                && Build.SOC_MANUFACTURER.toLowerCase(Locale.ROOT).contains("mediatek");
+    }
+
+    private static boolean isMediaTekDecoder(String codecName) {
+        if (codecName == null) return false;
+        final String name = codecName.toLowerCase(Locale.ROOT);
+        return name.contains(".mtk.") || name.contains("mediatek")
+                || name.startsWith("omx.mtk.");
+    }
+
     private boolean isLiveStream() {
         if (player == null || !player.isCurrentMediaItemLive()) {
             return false;
@@ -14184,7 +14205,8 @@ public class PlayerActivity extends Activity {
                 // reads back as "exceeds capabilities" — which plays, but drops those renditions out of
                 // the quality list. The refusal means no Dolby Vision anywhere, so mapping it is free.
                 .setMapDV7ToHevc(mPrefs.mapDV7ToHevc || mPrefs.refuseDolbyVision);
-        if (forceHevcForDolbyVision || forceHevcSoftwareStage > 0 || isTvBox) {
+        if (forceHevcForDolbyVision || forceHevcSoftwareStage > 0 || isTvBox
+                || hasMediaTekVideoCodec()) {
             // One combined codec selector for two independent needs:
             // - heavy MKV audio on a TV: no platform decoder for those codecs, so they passthrough (if
             //   the sink supports it) or fall back to ffmpeg (see above).
@@ -14209,6 +14231,21 @@ public class PlayerActivity extends Activity {
                     infos.addAll(MediaCodecSelector.DEFAULT.getDecoderInfos(
                             mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
                     return infos;
+                }
+                if (!forceHevcForDolbyVision && hasMediaTekVideoCodec()
+                        && MimeTypes.VIDEO_DOLBY_VISION.equals(mimeType)) {
+                    // Fire TV and other MediaTek devices may advertise a vendor Dolby Vision codec
+                    // while the connected television omits Dolby Vision from EDID capabilities.
+                    // Query the codec directly and prefer its advertised DV decoder rather than
+                    // assuming a plain HEVC path from display capability alone.
+                    final List<MediaCodecInfo> candidates = new ArrayList<>(
+                            MediaCodecSelector.DEFAULT.getDecoderInfos(
+                                    mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
+                    if (!candidates.isEmpty()) {
+                        candidates.sort((left, right) -> Boolean.compare(
+                                !isMediaTekDecoder(left.name), !isMediaTekDecoder(right.name)));
+                        return candidates;
+                    }
                 }
                 if (forceHevcSoftwareStage > 0 && forceHevcSoftwareStage < 3
                         && MimeTypes.VIDEO_H265.equals(mimeType)
