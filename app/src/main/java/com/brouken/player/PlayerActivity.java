@@ -8657,10 +8657,13 @@ public class PlayerActivity extends Activity {
                 // take, because exceedRendererCapabilitiesIfNecessary is on by default - calling that one
                 // undecodable would deny a track the viewer can hear, and strip its tick while it plays.
                 choices.add(new AudioChoice(text[0], text[1], trackGroup, i, group.isTrackSelected(i),
-                        Utils.toIso3Language(format.language),
+                        TrackOrder.language(format, trackName(format)),
                         group.isTrackSupported(i, /* allowExceedsCapabilities= */ true)));
             }
         }
+        final List<String> preferred = Utils.splitLanguages(mPrefs.languageAudio);
+        choices.sort((a, b) -> TrackOrder.compareAudio(
+                a.language, a.label, b.language, b.label, preferred));
         return choices;
     }
 
@@ -9965,6 +9968,16 @@ public class PlayerActivity extends Activity {
         return b.toString();
     }
 
+    private static final class SubtitleMenuChoice {
+        final Format format;
+        final Dialogs.MenuItem item;
+
+        SubtitleMenuChoice(Format format, Dialogs.MenuItem item) {
+            this.format = format;
+            this.item = item;
+        }
+    }
+
     // Subtitle picker in the same native side panel as audio/quality (replaces the Media3 built-in popup).
     private void showSubtitleDialog() {
         if (player == null) {
@@ -9976,6 +9989,7 @@ public class PlayerActivity extends Activity {
         final Uri fileOnly = subtitleWithoutTrack();
         final boolean painting = paintedSubtitleUri != null;
         final List<Dialogs.MenuItem> items = new ArrayList<>();
+        final List<SubtitleMenuChoice> subtitleChoices = new ArrayList<>();
         // Three kinds of row live in this one panel — a doorway into another list, the choices for this
         // line, and an action — so each gets a register of its own rather than an icon to be told apart
         // by. The doorway leads: its summary names what the second line is showing, so that state reads
@@ -10028,13 +10042,23 @@ public class PlayerActivity extends Activity {
                 final int index = i;
                 // !painting: an embedded track can stay selected while the file is painted over it
                 // (SubtitleOffset drops the renderer's cues), and two ticked rows is a lie.
-                items.add(new Dialogs.MenuItem(text[0], text[1],
-                        textEnabled && !painting && group.isTrackSelected(i),
-                        () -> {
-                            rememberNestedViewerSubtitle(trackGroup, index);
-                            applySubtitle(trackGroup, index);
-                        }));
+                subtitleChoices.add(new SubtitleMenuChoice(format,
+                        new Dialogs.MenuItem(text[0], text[1],
+                                textEnabled && !painting && group.isTrackSelected(i),
+                                () -> {
+                                    rememberNestedViewerSubtitle(trackGroup, index);
+                                    applySubtitle(trackGroup, index);
+                                })));
             }
+        }
+        final List<String> subtitlePriorities = Utils.splitLanguages(mPrefs.languageSubtitle);
+        TrackOrder.addLanguageIfMissing(subtitlePriorities,
+                Utils.toIso3Language(Locale.getDefault().getLanguage()));
+        TrackOrder.addLanguageIfMissing(subtitlePriorities, "eng");
+        subtitleChoices.sort((a, b) -> TrackOrder.compareSubtitle(
+                a.format, trackName(a.format), b.format, trackName(b.format), subtitlePriorities));
+        for (SubtitleMenuChoice choice : subtitleChoices) {
+            items.add(choice.item);
         }
         // Last, and with no tick: it is an action rather than a track, so it sits under a rule of its
         // own. Offered whatever the automatic search's switch says — pressing it is the consent that
