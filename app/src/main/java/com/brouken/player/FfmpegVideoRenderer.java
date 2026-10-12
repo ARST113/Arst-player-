@@ -32,7 +32,14 @@ final class FfmpegVideoRenderer extends DecoderVideoRenderer {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
         }
         String mime = format.sampleMimeType;
-        if (!"video/hevc".equals(mime) && !"video/mp4v-es".equals(mime)) {
+        // AVI files may publish the MP4V fourcc in Format.codecs while declaring an
+        // absent/unknown sample MIME; the native MPEG-4 Visual decoder still accepts
+        // their compressed frames. The fourcc must be explicit, never guessed from AVI.
+        final String codecs = format.codecs == null ? ""
+                : format.codecs.toLowerCase(java.util.Locale.ROOT);
+        final boolean mp4v = "video/mp4v-es".equals(mime)
+                || codecs.equals("mp4v") || codecs.startsWith("mp4v.");
+        if (!"video/hevc".equals(mime) && !mp4v) {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
         }
         if (format.cryptoType != C.CRYPTO_TYPE_NONE) {
