@@ -700,6 +700,11 @@
                     app:persistent="false"
                     app:summary="@string/about_github_repo"
                     app:title="@string/pref_about_source"/>
+                <Preference
+                    app:key="aboutUpstream"
+                    app:persistent="false"
+                    app:summary="@string/about_upstream_summary"
+                    app:title="@string/pref_about_upstream"/>
             </PreferenceCategory>
             <PreferenceCategory
                 app:key="updateCategory"
