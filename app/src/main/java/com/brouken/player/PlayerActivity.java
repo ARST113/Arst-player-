@@ -9512,9 +9512,11 @@ public class PlayerActivity extends Activity {
                         trackSelector.setParameters(trackSelector.buildUponParameters()
                                 .setRendererDisabled(renderer, false));
                 }
-                player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
-                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build());
+                if (forcedOnlyAutoSelected || !wasOff) {
+                    player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build());
+                }
             }
             return;
         }
@@ -9552,7 +9554,18 @@ public class PlayerActivity extends Activity {
             if (!forcedOnlyAutoOff) {
                 forcedOnlyAutoOff = true;
                 forcedOnlyAutoSelected = false;
-                disableSubtitles();
+                // Only the primary line is suppressed. disableSubtitles() would also erase
+                // a user-selected secondary line, which the forced-only mode does not own.
+                mainLineOff = true;
+                final int primary = textRendererIndex(1);
+                if (primary >= 0 && trackSelector != null) {
+                    trackSelector.setParameters(trackSelector.buildUponParameters()
+                            .setRendererDisabled(primary, true));
+                } else {
+                    player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build());
+                }
+                if (subtitleOffset != null) subtitleOffset.hide();
             }
             return;
         }
@@ -15239,6 +15252,9 @@ public class PlayerActivity extends Activity {
             playerView.removeCallbacks(rebufferArmRunnable);
             audioReleasedForBackground = false;
             videoReleasedForBackground = false;
+            audioAutomaticallyChosenByName = false;
+            forcedOnlyAutoOff = false;
+            forcedOnlyAutoSelected = false;
             audioRestartPending = false;
             audioRestartInFlight = false;
             audioRestartSettling = false;
