@@ -9414,57 +9414,58 @@ public class PlayerActivity extends Activity {
      */
     private boolean selectSubtitleByName() {
         if (player == null || paintedSubtitleUri != null || mPrefs.subtitleTrackId != null
-                || hasOverrideType(C.TRACK_TYPE_TEXT) || mainLineDisabled()) {
+                || forcedOnlyManualForItem || hasOverrideType(C.TRACK_TYPE_TEXT)
+                || mainLineDisabled() || isForcedOnlyApplicable()) {
             return false;
         }
-        final Tracks tracks = player.getCurrentTracks();
-        // The first line's own track, not any text track: the second line has one of those whenever a
-        // hint is playing, and reading it as "subtitles are already on" is what stopped this line from
-        // ever being filled by name while a hint was up.
-        if (mainLineTrackSelected()) {
-            return false;
-        }
-        if (isForcedOnlyApplicable()) return false;
         final List<String> preferred = Utils.splitLanguages(mPrefs.languageSubtitle);
-        if (preferred.isEmpty()) {
-            return false;
-        }
-        int best = preferred.size();
-        boolean bestForced = true;
-        TrackGroup bestGroup = null;
-        int bestIndex = 0;
+        if (preferred.isEmpty()) return false;
+        final Tracks tracks = player.getCurrentTracks();
+
+        // A tagged fallback can already be selected while the top-priority language has only
+        // a name. Compare both tracks rather than refusing to act whenever *any* track plays.
+        // Full subtitles outrank forced tracks, and within each group language priority wins.
+        int selectedScore = Integer.MAX_VALUE;
+        final Format secondary = secondaryTextTrack.get();
         for (Tracks.Group group : tracks.getGroups()) {
-            if (group.getType() != C.TRACK_TYPE_TEXT) {
-                continue;
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSelected(i)) continue;
+                final Format format = group.getTrackFormat(i);
+                if (secondary != null && secondary.equals(format)) continue;
+                final String language = TrackOrder.language(format, trackName(format));
+                final int rank = preferred.indexOf(language);
+                final boolean forced = TrackOrder.forced(format, trackName(format));
+                selectedScore = Math.min(selectedScore, (forced ? 10000 : 0)
+                        + (rank < 0 ? preferred.size() + 1 : rank));
             }
+        }
+
+        TrackGroup bestGroup = null;
+        int bestIndex = -1;
+        int bestScore = selectedScore;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
             for (int i = 0; i < group.length; i++) {
                 final Format format = group.getTrackFormat(i);
-                // A tagged track is the selector's business, and it has already had its say on it.
                 if (!group.isTrackSupported(i) || isPhantomClosedCaption(format)
-                        || Utils.toIso3Language(format.language) != null) {
-                    continue;
-                }
+                        || Utils.toIso3Language(format.language) != null) continue;
                 final int rank = preferred.indexOf(
-                        Utils.languageInName(trackName(format), preferred));
-                if (rank < 0) {
-                    continue;
-                }
-                final boolean forced = TrackOrder.forced(format, trackName(format));
-                if ((bestForced && !forced) || (bestForced == forced && rank < best)) {
-                    best = rank;
-                    bestForced = forced;
+                        TrackOrder.language(format, trackName(format)));
+                if (rank < 0) continue;
+                final int score = (TrackOrder.forced(format, trackName(format)) ? 10000 : 0)
+                        + rank;
+                if (score < bestScore) {
                     bestGroup = group.getMediaTrackGroup();
                     bestIndex = i;
+                    bestScore = score;
                 }
             }
         }
-        if (bestGroup == null) {
-            return false;
-        }
+        if (bestGroup == null) return false;
         applySubtitle(bestGroup, bestIndex);
         return true;
     }
-
 
     private Format selectedAudioForForcedOnly() {
         if (player == null) return null;
