@@ -27,7 +27,6 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - uses: android-actions/setup-android@v3
       - name: Build unsigned and signed release
         run: |
           chmod +x ./gradlew
