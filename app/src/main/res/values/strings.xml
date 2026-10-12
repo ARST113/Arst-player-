@@ -651,4 +651,11 @@
     <string name="update_versions_loading">Loading release history…</string>
     <string name="update_versions_empty">Release history is unavailable. Try again later.</string>
     <string name="update_versions_close">Close</string>
+    <string name="pref_overlay_group">Over the video</string>
+    <string name="pref_overlay_clock">Clock</string>
+    <string name="pref_overlay_ends">End time</string>
+    <string name="pref_overlay_live">LIVE indicator</string>
+    <string name="pref_overlay_off">Off</string>
+    <string name="pref_overlay_paused">When paused</string>
+    <string name="pref_overlay_always">Always</string>
 </resources>

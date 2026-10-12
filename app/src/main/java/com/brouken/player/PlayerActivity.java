@@ -860,6 +860,7 @@ public class PlayerActivity extends Activity {
     private TextView statsView;
     private TextView transferView;
     private OutlineTextClock overlayClock;
+    private TextView overlayTimeDetail;
     private OutlineTextClock headerClock;
     private ImageButton buttonPlaylist;
     private TextView buttonQuality;
@@ -1600,7 +1601,7 @@ public class PlayerActivity extends Activity {
             // so it rides this one rather than starting a second timer.
             updateStats();
             updateTransfer();
-            if (controllerVisible) {
+            if (controllerVisible || wantsOverlayTimeDetails()) {
                 playerView.postDelayed(this, 1000);
             }
         }
@@ -2329,6 +2330,18 @@ public class PlayerActivity extends Activity {
         overlayClock.setVisibility(View.GONE);
         coordinatorLayout.addView(overlayClock);
 
+        // The end time or LIVE badge can remain visible when the controller is hidden.
+        // Its position is synchronised with the in-header label, just like the clock.
+        overlayTimeDetail = new TextView(this);
+        overlayTimeDetail.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
+        overlayTimeDetail.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textCaption());
+        final CoordinatorLayout.LayoutParams overlayTimeLp = new CoordinatorLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        overlayTimeLp.gravity = Gravity.TOP | Gravity.START;
+        overlayTimeDetail.setLayoutParams(overlayTimeLp);
+        overlayTimeDetail.setVisibility(View.GONE);
+        coordinatorLayout.addView(overlayTimeDetail);
+
         // Live playback stats, opened from the overflow menu. It rides the controls (updated by
         // endsAtRunnable, hidden by stopEndsAtUpdates), so it is never left sitting over the video, and it
         // carries no touch handling of its own — the left half of the screen is the brightness swipe zone.
@@ -2856,7 +2869,11 @@ public class PlayerActivity extends Activity {
                     startEndsAtUpdates();
                     playerView.post(PlayerActivity.this::updateSubtitleButton);
                 } else {
-                    stopEndsAtUpdates();
+                    if (wantsOverlayTimeDetails()) {
+                        startEndsAtUpdates();
+                    } else {
+                        stopEndsAtUpdates();
+                    }
                 }
                 updateOverlayClock();
                 scheduleHideControllerOnPause();
@@ -6907,8 +6924,22 @@ public class PlayerActivity extends Activity {
         return duration == C.TIME_UNSET || duration < LIVE_WINDOW_MAX_MS;
     }
 
+    private boolean overlayModeVisible(String mode) {
+        return !inPip && !Prefs.OVERLAY_OFF.equals(mode)
+                && (Prefs.OVERLAY_ALWAYS.equals(mode)
+                        || player == null || !player.isPlaying());
+    }
+
+    private boolean wantsOverlayTimeDetails() {
+        if (player == null) {
+            return false;
+        }
+        return overlayModeVisible(isLiveStream() ? mPrefs.liveOverlayMode : mPrefs.endTimeOverlayMode);
+    }
+
     void updateEndsAt() {
         if (player == null || endsAtView == null) {
+            if (overlayTimeDetail != null) overlayTimeDetail.setVisibility(View.GONE);
             return;
         }
         final boolean live = isLiveStream();
@@ -6916,10 +6947,6 @@ public class PlayerActivity extends Activity {
         // a few seconds long, and standing still at the live edge. The total goes; the slot in front of
         // it stays and says how long this has been watched instead (see the progress listener).
         setDurationVisible(!live);
-        if (!controllerVisible) {
-            endsAtView.setVisibility(View.GONE);
-            return;
-        }
         // A broadcast has no end to name. The clock time computed below would be the end of whatever
         // window the stream is offering right now — a minute from now, and about nothing.
         if (live) {
@@ -6927,13 +6954,15 @@ public class PlayerActivity extends Activity {
             // Red, and not the accent: on air is a meaning of its own, and the thirty other accent
             // themes would each have said it in their own hue. See @color/live_red.
             endsAtView.setTextColor(ContextCompat.getColor(this, R.color.live_red));
-            endsAtView.setVisibility(View.VISIBLE);
+            endsAtView.setVisibility(controllerVisible ? View.VISIBLE : View.GONE);
+            updateOverlayTimeDetail(true);
             return;
         }
         endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
         final long duration = player.getDuration();
         if (duration == C.TIME_UNSET || duration <= 0) {
             endsAtView.setVisibility(View.GONE);
+            if (overlayTimeDetail != null) overlayTimeDetail.setVisibility(View.GONE);
             return;
         }
         final long remaining = Math.max(0, duration - player.getCurrentPosition());
@@ -6944,7 +6973,21 @@ public class PlayerActivity extends Activity {
         final long endMs = System.currentTimeMillis() + (long) (remaining / speed);
         final String time = DateFormat.getTimeFormat(this).format(new Date(endMs));
         endsAtView.setText(getString(R.string.time_ends_at, time));
-        endsAtView.setVisibility(View.VISIBLE);
+        endsAtView.setVisibility(controllerVisible ? View.VISIBLE : View.GONE);
+        updateOverlayTimeDetail(false);
+    }
+
+    private void updateOverlayTimeDetail(boolean live) {
+        if (overlayTimeDetail == null) return;
+        final boolean show = !controllerVisible && overlayModeVisible(
+                live ? mPrefs.liveOverlayMode : mPrefs.endTimeOverlayMode);
+        if (show) {
+            overlayTimeDetail.setText(endsAtView.getText());
+            overlayTimeDetail.setTextColor(ContextCompat.getColor(this,
+                    live ? R.color.live_red : R.color.ink_secondary));
+            syncOverlayClockPosition();
+        }
+        overlayTimeDetail.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
     /** The released 2.1.3 plate has only elapsed and duration slots; no separator view. */
@@ -6962,7 +7005,7 @@ public class PlayerActivity extends Activity {
         if (overlayClock == null) {
             return;
         }
-        final boolean show = mPrefs.showClock && !inPip;
+        final boolean show = overlayModeVisible(mPrefs.clockOverlayMode);
         if (headerClock != null) {
             headerClock.setAlpha(show ? 0f : 1f);
         }
@@ -6991,6 +7034,19 @@ public class PlayerActivity extends Activity {
             lp.leftMargin = left;
             lp.topMargin = top;
             overlayClock.setLayoutParams(lp);
+        }
+        if (endsAtView != null && overlayTimeDetail != null && endsAtView.getWidth() > 0) {
+            final int[] detailLoc = new int[2];
+            endsAtView.getLocationInWindow(detailLoc);
+            final ViewGroup.MarginLayoutParams detailParams =
+                    (ViewGroup.MarginLayoutParams) overlayTimeDetail.getLayoutParams();
+            final int detailLeft = detailLoc[0] - rootLoc[0];
+            final int detailTop = detailLoc[1] - rootLoc[1];
+            if (detailParams.leftMargin != detailLeft || detailParams.topMargin != detailTop) {
+                detailParams.leftMargin = detailLeft;
+                detailParams.topMargin = detailTop;
+                overlayTimeDetail.setLayoutParams(detailParams);
+            }
         }
     }
 
@@ -13219,6 +13275,7 @@ public class PlayerActivity extends Activity {
             applyVolumeMode();
             updateSubtitleStyle(this);
             updateOverlayClock();
+            updateEndsAt();
             updateStats();
             resetDim();
             // Coming back from the settings screen no longer rebuilds the player by itself (see onStop),
@@ -15052,6 +15109,9 @@ public class PlayerActivity extends Activity {
         if (overlayClock != null) {
             overlayClock.setVisibility(View.GONE);
         }
+        if (overlayTimeDetail != null) {
+            overlayTimeDetail.setVisibility(View.GONE);
+        }
         setEpisodeNavLoading(false);
         Glide.with(getApplicationContext()).clear(posterView);
         posterSlot.setVisibility(View.GONE);
@@ -15526,6 +15586,13 @@ public class PlayerActivity extends Activity {
                 playerView.postDelayed(rebufferArmRunnable, REBUFFER_ARM_MS);
             }
             resetDim();
+            updateOverlayClock();
+            updateEndsAt();
+            if (controllerVisible || wantsOverlayTimeDetails()) {
+                startEndsAtUpdates();
+            } else {
+                stopEndsAtUpdates();
+            }
 
             if (Utils.isPiPSupported(PlayerActivity.this)) {
                 if (isPlaying) {

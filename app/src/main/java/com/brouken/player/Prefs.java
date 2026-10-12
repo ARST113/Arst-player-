@@ -146,7 +146,10 @@ class Prefs {
     private static final String PREF_KEY_SKIP_UNDO = "skipUndo";
     private static final String PREF_KEY_SKIP_HIDE_LOCKED = "skipHideWhenLocked";
     private static final String PREF_KEY_SKIP_COUNTDOWN = "skipCountdown";
-    private static final String PREF_KEY_SHOW_CLOCK = "showClock";
+    private static final String PREF_KEY_SHOW_CLOCK = "showClock"; // legacy boolean migration
+    private static final String PREF_KEY_CLOCK_MODE = "clockOverlayMode";
+    private static final String PREF_KEY_END_TIME_MODE = "endTimeOverlayMode";
+    private static final String PREF_KEY_LIVE_MODE = "liveOverlayMode";
     private static final String PREF_KEY_TIME_REMAINING = "timeRemaining";
     private static final String PREF_KEY_SHOW_STATS = "showStats";
     private static final String PREF_KEY_SHOW_TRANSFER = "showTransfer";
@@ -385,7 +388,13 @@ class Prefs {
     public String skipCountdown = SKIP_COUNTDOWN_RING;
     public boolean skipFetchOnline = true;
     public String skipUndo = SKIP_UNDO_ALL;
-    public boolean showClock = false;
+    public static final String OVERLAY_OFF = "off";
+    public static final String OVERLAY_PAUSED = "paused";
+    public static final String OVERLAY_ALWAYS = "always";
+    public String clockOverlayMode = OVERLAY_PAUSED;
+    public String endTimeOverlayMode = OVERLAY_PAUSED;
+    public String liveOverlayMode = OVERLAY_PAUSED;
+    public boolean showClock = false; // legacy only
     /** Bottom bar counts down what is left instead of showing the total duration. */
     public boolean timeRemaining = false;
     public boolean showStats = false;
@@ -600,6 +609,11 @@ class Prefs {
         skipHideWhenLocked = mSharedPreferences.getBoolean(PREF_KEY_SKIP_HIDE_LOCKED, skipHideWhenLocked);
         skipCountdown = migrateWithdrawnValues(mSharedPreferences);
         showClock = mSharedPreferences.getBoolean(PREF_KEY_SHOW_CLOCK, showClock);
+        // The previous switch meant always visible; preserve that choice on upgrade.
+        clockOverlayMode = mSharedPreferences.getString(PREF_KEY_CLOCK_MODE,
+                showClock ? OVERLAY_ALWAYS : OVERLAY_PAUSED);
+        endTimeOverlayMode = mSharedPreferences.getString(PREF_KEY_END_TIME_MODE, OVERLAY_PAUSED);
+        liveOverlayMode = mSharedPreferences.getString(PREF_KEY_LIVE_MODE, OVERLAY_PAUSED);
         timeRemaining = mSharedPreferences.getBoolean(PREF_KEY_TIME_REMAINING, timeRemaining);
         showStats = mSharedPreferences.getBoolean(PREF_KEY_SHOW_STATS, showStats);
         showTransfer = mSharedPreferences.getBoolean(PREF_KEY_SHOW_TRANSFER, showTransfer);

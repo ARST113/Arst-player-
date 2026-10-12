@@ -58,12 +58,29 @@
                     app:key="loadingScreenMode"
                     app:title="@string/pref_loading_screen"
                     app:useSimpleSummaryProvider="true"/>
-                <SwitchPreferenceCompat
-                    app:defaultValue="false"
-                    app:key="showClock"
-                    app:summaryOff="@string/pref_show_clock_off"
-                    app:summaryOn="@string/pref_show_clock_on"
-                    app:title="@string/pref_show_clock"/>
+                <PreferenceCategory app:title="@string/pref_overlay_group">
+                    <ListPreference
+                        app:defaultValue="paused"
+                        app:entries="@array/overlay_mode_entries"
+                        app:entryValues="@array/overlay_mode_values"
+                        app:key="clockOverlayMode"
+                        app:title="@string/pref_overlay_clock"
+                        app:useSimpleSummaryProvider="true"/>
+                    <ListPreference
+                        app:defaultValue="paused"
+                        app:entries="@array/overlay_mode_entries"
+                        app:entryValues="@array/overlay_mode_values"
+                        app:key="endTimeOverlayMode"
+                        app:title="@string/pref_overlay_ends"
+                        app:useSimpleSummaryProvider="true"/>
+                    <ListPreference
+                        app:defaultValue="paused"
+                        app:entries="@array/overlay_mode_entries"
+                        app:entryValues="@array/overlay_mode_values"
+                        app:key="liveOverlayMode"
+                        app:title="@string/pref_overlay_live"
+                        app:useSimpleSummaryProvider="true"/>
+                </PreferenceCategory>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
                     app:key="timeRemaining"
