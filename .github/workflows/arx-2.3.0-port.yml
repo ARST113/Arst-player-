@@ -44,7 +44,7 @@ jobs:
           test -s "$apk"
           aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
           signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
-          "$aapt" dump badging "$apk" | grep -F "versionName='2.3.0-arx1'"
+          "$aapt" dump badging "$apk" | grep -F "versionName='2.3.0-arx2'"
           "$signer" verify --print-certs "$apk"
           for abi in arm64-v8a armeabi-v7a; do
             unzip -Z1 "$apk" | grep -Fx "lib/$abi/libffmpegJNI.so"
