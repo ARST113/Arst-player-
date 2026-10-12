@@ -170,6 +170,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p arx-230-tv-fixtures arx-230-tv-evidence
+          command -v ffmpeg || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc2=size=854x480:rate=24" \
             -f lavfi -i "sine=frequency=440:sample_rate=48000" \
             -t 60 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -b:a 96k \
