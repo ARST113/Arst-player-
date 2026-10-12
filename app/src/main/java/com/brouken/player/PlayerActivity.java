@@ -934,6 +934,9 @@ public class PlayerActivity extends Activity {
     // Set while the audio track type is disabled for a trip to the background (see onStop), so onStart
     // knows to put it back.
     private boolean audioReleasedForBackground;
+    // A sleeping TV must not hold an exclusive hardware video decoder for hours.
+    // Video is restored disabled->enabled on the next onStart, with playback still paused.
+    private boolean videoReleasedForBackground;
     private final Runnable keepAwakeGiveUpRunnable = () -> holdScreen(false);
     // Set while a Down press is opening the controls, so focus lands on the time bar instead of play/pause.
     private boolean focusTimeBarOnShow;
@@ -3066,10 +3069,16 @@ public class PlayerActivity extends Activity {
             heldAfterError = null;
             // The audio track type onStop disabled to hand the receiver's route back. The track this builds
             // is unstarted, since the player is paused; the latch the pause armed recreates it on play.
-            if (audioReleasedForBackground) {
+            if (audioReleasedForBackground || videoReleasedForBackground) {
+                final TrackSelectionParameters.Builder restore =
+                        player.getTrackSelectionParameters().buildUpon();
+                if (audioReleasedForBackground) restore.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false);
+                if (videoReleasedForBackground) restore.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false);
+                Utils.log("background: restore audio=" + audioReleasedForBackground
+                        + " video=" + videoReleasedForBackground);
                 audioReleasedForBackground = false;
-                player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build());
+                videoReleasedForBackground = false;
+                player.setTrackSelectionParameters(restore.build());
             }
             // Only a session that had started before we left. A VIEW intent delivered to a stopped screen
             // reaches onNewIntent before onStart, so the player here may be one built a moment ago for new
@@ -3184,6 +3193,29 @@ public class PlayerActivity extends Activity {
             audioReleasedForBackground = true;
             player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build());
+        }
+        // A TV entering sleep must give back the hardware video decoder as well as the passthrough
+        // audio route. Only during genuine screen-off: Settings, HOME and external pickers also call
+        // onStop, and need not dismantle a healthy decoder. Toggling this track type releases
+        // MediaCodecVideoRenderer through onDisabled, leaving the source, timeline and progress intact.
+        final android.os.PowerManager power =
+                (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        if (isTvBox && power != null && !power.isInteractive()) {
+            // Known Realtek Dolby Vision drivers fail reopening the same MediaCodec instance after
+            // screen-off (0x80001000). Leave this path to the system's process reclamation until
+            // an actual hardware validation proves the replacement safe on those boxes.
+            final String hardware = (Build.HARDWARE + " " + Build.BOARD + " " + Build.MANUFACTURER)
+                    .toLowerCase(Locale.ROOT);
+            final Format currentVideo = player.getVideoFormat();
+            final boolean realtekDolbyVision = (hardware.contains("realtek") || hardware.contains("rtd"))
+                    && currentVideo != null
+                    && MimeTypes.VIDEO_DOLBY_VISION.equals(currentVideo.sampleMimeType);
+            if (!realtekDolbyVision) {
+                videoReleasedForBackground = true;
+                player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build());
+                Utils.log("sleep: released hardware video decoder");
+            }
         }
         // The load watchdog only ever ran while the activity was on screen by accident: nothing cancelled it
         // on this path, so an item still buffering when the user left would time out in the background —
@@ -7275,7 +7307,11 @@ public class PlayerActivity extends Activity {
             return getString(R.string.stats_stream, getString(R.string.quality_bitrate, video.bitrate / 1_000_000f));
         }
         final float overall = overallBitrate();
-        return overall > 0 ? getString(R.string.stats_overall, getString(R.string.quality_bitrate, overall)) : null;
+        // Unknown-length streams can have a tiny provisional Content-Length, which formats
+        // as "file average 0.0 Mbps". That is not a meaningful file bitrate.
+        return overall >= 0.05f
+                ? getString(R.string.stats_overall, getString(R.string.quality_bitrate, overall))
+                : null;
     }
 
 
@@ -15201,6 +15237,7 @@ public class PlayerActivity extends Activity {
             playerView.removeCallbacks(reselectWedgeRunnable);
             playerView.removeCallbacks(rebufferArmRunnable);
             audioReleasedForBackground = false;
+            videoReleasedForBackground = false;
             audioRestartPending = false;
             audioRestartInFlight = false;
             audioRestartSettling = false;
