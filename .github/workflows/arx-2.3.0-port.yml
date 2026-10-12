@@ -45,6 +45,12 @@ jobs:
             unzip -Z1 "$apk" | grep -Fx "lib/$abi/libffmpegJNI.so"
             unzip -Z1 "$apk" | grep -Fx "lib/$abi/libffvideoJNI.so"
           done
+          # Compare with exact native libraries extracted from official Just+ Player 2.3.0.
+          test "$(unzip -p "$apk" lib/arm64-v8a/libffmpegJNI.so | sha256sum | cut -d' ' -f1)" = "7c50ed7526e2a78fe9c61bf3059f887f2610e23a9ecd92cedb0041c1489f0536"
+          test "$(unzip -p "$apk" lib/armeabi-v7a/libffmpegJNI.so | sha256sum | cut -d' ' -f1)" = "1e54c5b39726a9a907eb797099edfd5bc84dfbc152b10653eb5637bbc562c14b"
+          test "$(unzip -p "$apk" lib/arm64-v8a/libffvideoJNI.so | sha256sum | cut -d' ' -f1)" = "9a98e6c9ee6e53ca301910a30839ef6bd91f6b4d6103a325855ef28cdbeb34ec"
+          test "$(unzip -p "$apk" lib/armeabi-v7a/libffvideoJNI.so | sha256sum | cut -d' ' -f1)" = "836665bd468eeb2bf5ad91e0e69ac871b8ce587998a59d286dc9a85756a0ee5b"
+          echo "Native FFmpeg audio/video libraries match official 2.3.0 on both ARM ABIs."
           sha256sum "$apk"
       - name: Verify branding and banner removal
         run: |
