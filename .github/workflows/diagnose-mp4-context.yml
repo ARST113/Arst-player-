@@ -1,0 +1,30 @@
+name: TorrServer AAC state and continuous playback validation
+on:
+  push:
+    branches: [diagnostics/mp4-audio-dropout-20261013]
+    paths:
+      - '.github/workflows/diagnose-mp4-context.yml'
+      - '.github/scripts/diagnose-mp4-context.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  aac-context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install codec diagnostic binaries
+        shell: bash
+        run: |
+          command -v ffmpeg || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
+      - name: Decode with different AAC preroll contexts
+        shell: bash
+        run: bash .github/scripts/diagnose-mp4-context.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mp4-context-audio
+          path: mp4-context-audio/
+          retention-days: 7
+          if-no-files-found: warn
