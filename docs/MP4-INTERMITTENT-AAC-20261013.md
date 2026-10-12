@@ -67,3 +67,18 @@ The user's \`web+torrs://db96dda9c3a1e6b1bbc38402378ea822d009fbf4\` and magnet i
 - The server *currently* fetched data much faster than needed. This neither proves the original fault was on the client nor excludes an intermittent peer/HTTP delivery problem at the original time.
 
 **Current conclusion:** normal H.264/AAC MP4 with \`moov\` likely near end, unusual torrent file order, and a **real but unrepeated** FFmpeg failure that dropped 99 AAC frames once. There is no demonstrated recurring media corruption or general insufficient torrent throughput. No ARX engine change until the failure can be correlated with HTTP sample bytes, Android decoder/AudioSink logs or server piece errors. Test both original Just+ and ARX 2.4.1 with the same 5th episode, especially around 4:56–5:20 and after a longer pause/seek.
+
+
+## Android 15 ARX emulator field playback (2026-10-13)
+
+Used the already validated \`ARX-2.4.1-preview-build-apks\` debug APK from GitHub run 38276420080 (Media3 1.11.1; software Google emulator AAC decoder \`c2.android.aac.decoder\`). Playback of the user's **real MP4 stream** by direct \`VIEW\` intent confirmed \`first frame rendered\`, \`state READY\`, \`playing=true\`, an initialized AAC decoder (48 kHz stereo) and audio track. See three emulator logs and screenshots:
+
+- [Run 38317769714](https://github.com/ARST113/Arst-player-/actions/runs/38317769714): first frame and audio decoder initialized; no app crash or detected audio renderer errors. Android first-time fullscreen tutorial overlaid the player, blocking UI seek.
+- [Run 38318266156](https://github.com/ARST113/Arst-player-/actions/runs/38318266156): remained in READY/playing during the sample, without codec errors. Transient BUFFERING/READY transitions observed at approximately \`pos=54159\`, \`55189\`, and \`59306\` milliseconds. Total individual stalls were sub-second; these are **not** the original 2.112s AAC decoder loss.
+- [Run 38318717690](https://github.com/ARST113/Arst-player-/actions/runs/38318717690): Android secure \`immersive_mode_confirmations=confirmed\` cleared the tutorial; successful playback again, including one ~0.42s BUFFERING transition at 28.1 seconds, without decoder errors or underruns.
+
+### Emulator limitation
+
+Android's immersive tutorial interfered with the seek attempts in early runs. The third run confirmed the overlay was removed, but custom player controls did **not** expose an accessible Android SeekBar, and simulated DPAD_RIGHT events did not demonstrably seek to 300 seconds. The furthest confirmed position in these emulator logs was ~60 s, *not 5 min*. Therefore the ~4:56–5:20 suspect time window has **not** been tested in actual ARX playback by emulator; FFmpeg did scan this interval. The emulator runs with \`-noaudio\`, so sound is not physically audible; they validate renderer logs and playback state, not listening quality. \`AudioTrack: getTimestamp_l...device stall time corrected\` notices are present in these virtual-audio logs, but no \`AudioRenderer error\`, \`AudioSink WriteException\`, \`ERROR_CODE_\` from player, or crash was present.
+
+**No ARX fix or production merge.** To validate the original user symptom, physically play the scene on Android TV / original Just+ and ARX, or add a debug seek-intent to controlled builds for accurate 300,000 ms automated testing. Do not equate automated workflow success with audible AAC continuity.
