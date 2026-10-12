@@ -1,0 +1,77 @@
+name: ARX 2.3.0 Android TV remote and lifecycle smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - arx/v2.3.0-port
+    paths:
+      - '.github/workflows/arx-2.3.0-tv-emulator.yml'
+      - '.github/scripts/arx-230-tv-smoke.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  tv-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Compile debug player and validate TV script
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:assembleLatestUniversalDebug
+          bash -n .github/scripts/arx-230-tv-smoke.sh
+      - name: Generate the self-contained TV playback fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p arx-230-tv-fixtures arx-230-tv-evidence
+          command -v ffmpeg || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "testsrc2=size=854x480:rate=24" \
+            -f lavfi -i "sine=frequency=440:sample_rate=48000" \
+            -t 60 -c:v libx264 -preset ultrafast -pix_fmt yuv420p \
+            -c:a aac -b:a 96k -movflags +faststart \
+            arx-230-tv-fixtures/tv-h264.mp4
+          setsid python3 -m http.server 8765 --bind 127.0.0.1 \
+            --directory arx-230-tv-fixtures \
+            </dev/null > arx-230-tv-evidence/http-server.txt 2>&1 &
+          for i in {1..15}; do
+            curl -fsSI http://127.0.0.1:8765/tv-h264.mp4 && break
+            sleep 1
+          done
+
+      - name: Enable emulator KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Run Android TV x86 image with D-pad and sleep/wake checks
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/arx-230-tv-smoke.sh
+
+      - name: Keep TV remote, screenshot and decoder evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARX-2.3.0-TV-emulator-evidence
+          path: arx-230-tv-evidence/
+          retention-days: 14
+          if-no-files-found: warn
