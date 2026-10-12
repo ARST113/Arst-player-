@@ -113,11 +113,16 @@ adb logcat -c
 adb shell am start -W -n "$PKG/$SETTINGS" > "$OUT/settings-launch.txt" 2>&1 || true
 sleep 3
 capture settings-root
+# The player forces landscape on this emulator (2400x1080). The old test swiped
+# from y=1500, *outside the display*, so Settings never scrolled to About.
+size="$(adb shell wm size | tr -d '\r' | grep -oE '[0-9]+x[0-9]+' | tail -n1)"
+IFS=x read -r display_w display_h <<< "$size"
+swipe_x=$((display_w / 2))
+swipe_from=$((display_h * 85 / 100))
+swipe_to=$((display_h * 22 / 100))
+printf 'display=%s, swipe=(%d,%d)->(%d,%d)\n' "$size" "$swipe_x" "$swipe_from" "$swipe_x" "$swipe_to" > "$OUT/settings-scroll-diagnostics.txt"
 about_found=0
-for n in $(seq 1 16); do
-  if [[ -s "$OUT/settings-root.xml" ]]; then
-    cp "$OUT/settings-root.xml" "$OUT/settings-current.xml"
-  fi
+for n in $(seq 1 18); do
   adb shell uiautomator dump /sdcard/arx-window.xml >/dev/null 2>&1 || true
   adb pull /sdcard/arx-window.xml "$OUT/settings-current.xml" >/dev/null 2>&1 || true
   coords="$(python3 - "$OUT/settings-current.xml" <<'PY'
@@ -140,7 +145,7 @@ PY
     about_found=1
     break
   fi
-  adb shell input swipe 520 1500 520 350 330 || true
+  adb shell input swipe "$swipe_x" "$swipe_from" "$swipe_x" "$swipe_to" 330 || true
   sleep 1
 done
 sleep 2
