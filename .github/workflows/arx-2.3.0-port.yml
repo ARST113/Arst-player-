@@ -31,6 +31,11 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon assembleLatestUniversalRelease :app:testLatestUniversalDebugUnitTest
+      - name: Print unit-test failure details
+        if: failure()
+        shell: bash
+        run: |
+          find app/build/test-results -name '*.xml' -type f -maxdepth 5 -print -exec sed -n '1,140p' {} \; || true
       - name: Verify signed APK, ABI libraries and package version
         shell: bash
         run: |

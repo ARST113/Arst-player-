@@ -159,6 +159,9 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
     lint {
         disable 'MissingTranslation'
         // The mirror of the line above, and Weblate's to reconcile either way: a string deleted here
