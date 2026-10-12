@@ -31,6 +31,21 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon assembleLatestUniversalRelease
+      - name: Verify signed APK, ABI libraries and package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/latestUniversal/release -maxdepth 1 -name '*.apk' | head -n1)"
+          test -s "$apk"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          "$aapt" dump badging "$apk" | grep -F "versionName='2.3.0-arx1'"
+          "$signer" verify --print-certs "$apk"
+          for abi in arm64-v8a armeabi-v7a; do
+            unzip -Z1 "$apk" | grep -Fx "lib/$abi/libffmpegJNI.so"
+            unzip -Z1 "$apk" | grep -Fx "lib/$abi/libffvideoJNI.so"
+          done
+          sha256sum "$apk"
       - name: Verify branding and banner removal
         run: |
           ! grep -R -E 'aboutDeco|stand_ukraine|deco_line_[12]|STAND WITH|UKRAINE' \
