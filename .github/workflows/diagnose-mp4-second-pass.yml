@@ -1,0 +1,38 @@
+name: TorrServer MP4 second pass - exact AAC faults and byte stability
+
+on:
+  push:
+    branches:
+      - diagnostics/mp4-audio-dropout-20261013
+    paths:
+      - '.github/workflows/diagnose-mp4-second-pass.yml'
+      - '.github/scripts/diagnose-mp4-second-pass.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  second-pass:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FFmpeg and FFprobe
+        shell: bash
+        run: |
+          command -v ffprobe && command -v ffmpeg || {
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          }
+      - name: Repeated decoding and HTTP range comparison
+        shell: bash
+        run: bash .github/scripts/diagnose-mp4-second-pass.sh
+      - name: Save detailed evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mp4-second-pass
+          path: mp4-second-pass/
+          retention-days: 7
+          if-no-files-found: warn
