@@ -35,6 +35,13 @@ final class TrackOrder {
             return null;
         }
         final String text = label.toLowerCase(Locale.ROOT);
+        // A language-less MKV often has only the studio's name in its track label.
+        // Names here are specific to long-standing dubbing teams, not general words like
+        // "DUB" or "VOICE" that cannot reveal the actual language.
+        if (containsAny(text, "postmodern", "так треба продакшн", "цікава ідея",
+                "le-doyen", "українською")) return "ukr";
+        if (containsAny(text, "lostfilm", "newstudio", "кубик в кубе",
+                "alexfilm", "колобок", "байбако", "дубляж red head sound")) return "rus";
         if (containsAny(text, "русск", "російсь", "russian")) return "rus";
         if (containsAny(text, "україн", "украин", "ukrainian")) return "ukr";
         if (containsAny(text, "англий", "англій", "english")) return "eng";
@@ -63,8 +70,11 @@ final class TrackOrder {
             return false;
         }
         final String text = label.toLowerCase(Locale.ROOT);
-        return containsAny(text, "forced", "signs", "sign & song",
-                "надписи", "написи", "форсирован", "форсован");
+        // Include explicit signs-only tracks without the Matroska forced selection flag.
+        // Match English keywords on token boundaries: "unforced" is not a forced track.
+        return text.matches(".*(^|[^a-z])(forced|signs|foreign[ -]?parts?)([^a-z]|$).*")
+                || containsAny(text, "sign & song", "надписи", "написи",
+                        "форсирован", "форсован");
     }
 
     static int compareAudio(String langA, String nameA, String langB, String nameB,

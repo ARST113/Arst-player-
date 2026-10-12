@@ -861,6 +861,7 @@ public class PlayerActivity extends Activity {
     private TextView transferView;
     private OutlineTextClock overlayClock;
     private TextView overlayTimeDetail;
+    private boolean audioAutomaticallyChosenByName;
     private boolean forcedOnlyManualForItem;
     private boolean forcedOnlyAutoOff;
     private boolean forcedOnlyAutoSelected;
@@ -6709,6 +6710,7 @@ public class PlayerActivity extends Activity {
         containerTracksUri = uri;
         requestDisplayModeEarly();
         resolveTrackNames();
+        selectAudioByName();
         updateMediaInfo();
         // Matroska names reach us here rather than through Format.label, and this can land after
         // onTracksChanged — so a language that lives in a name is only now readable. A track turned on
@@ -8724,6 +8726,63 @@ public class PlayerActivity extends Activity {
         choices.sort((a, b) -> TrackOrder.compareAudio(
                 a.language, a.label, b.language, b.label, preferred));
         return choices;
+    }
+
+    /**
+     * Media3 selects initial audio using the declared Format.language. A number of Matroska
+     * releases have the correct language written only in the track name, so a tagged English
+     * track could win over an untagged preferred Russian/Ukrainian dub. Correct only a strictly
+     * higher-priority *untagged* candidate; preserve explicit viewer/Lampa overrides and do
+     * not replace a track with equal priority.
+     */
+    private boolean selectAudioByName() {
+        if (player == null || mPrefs.audioTrackId != null || audioAutomaticallyChosenByName
+                || hasOverrideType(C.TRACK_TYPE_AUDIO) ||
+                (nestedPlaylistSession && nestedEffectiveTrackRequest(false) != null)) {
+            return false;
+        }
+        final List<String> preferred = Utils.splitLanguages(mPrefs.languageAudio);
+        if (preferred.isEmpty()) return false;
+        int selectedRank = preferred.size() + 1;
+        TrackGroup bestGroup = null;
+        int bestIndex = -1;
+        int bestRank = selectedRank;
+        final Tracks tracks = player.getCurrentTracks();
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+            for (int i = 0; i < group.length; i++) {
+                final Format format = group.getTrackFormat(i);
+                if (group.isTrackSelected(i)) {
+                    final String actualLanguage = TrackOrder.language(format, trackName(format));
+                    final int rank = preferred.indexOf(actualLanguage);
+                    selectedRank = rank < 0 ? preferred.size() + 1 : rank;
+                }
+            }
+        }
+        bestRank = selectedRank;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+            for (int i = 0; i < group.length; i++) {
+                final Format format = group.getTrackFormat(i);
+                if (!group.isTrackSupported(i, true) || group.isTrackSelected(i)
+                        || Utils.toIso3Language(format.language) != null) continue;
+                final int rank = preferred.indexOf(TrackOrder.language(format, trackName(format)));
+                if (rank >= 0 && rank < bestRank) {
+                    bestGroup = group.getMediaTrackGroup();
+                    bestIndex = i;
+                    bestRank = rank;
+                }
+            }
+        }
+        if (bestGroup == null) return false;
+        audioAutomaticallyChosenByName = true;
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setOverrideForType(new TrackSelectionOverride(
+                        bestGroup, Collections.singletonList(bestIndex))).build());
+        Utils.log("audio: selected untagged preferred language, rank=" + bestRank);
+        return true;
     }
 
     private PlaylistApi.Item currentNestedItem() {
@@ -15445,6 +15504,11 @@ public class PlayerActivity extends Activity {
                 modeMatchPending = true;
             }
             if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+                if (audioAutomaticallyChosenByName && player != null) {
+                    audioAutomaticallyChosenByName = false;
+                    player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_AUDIO).build());
+                }
                 if (forcedOnlyAutoOff) mainLineOff = false;
                 if (forcedOnlyAutoSelected && player != null) {
                     player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
@@ -15570,6 +15634,7 @@ public class PlayerActivity extends Activity {
             // labels are matched against the same human-readable names the menu shows.
             resolveTrackNames();
             applyNestedTrackRequests(tracks);
+            selectAudioByName();
             applyForcedOnlyAutomaticSelection(tracks);
             updateMediaInfo();
             // In-stream renditions are known only now, so the quality button's visibility can change.
