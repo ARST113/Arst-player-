@@ -121,6 +121,23 @@ public final class Notice {
             return;
         }
         bar.show();
+        // After attach, Material applies its snackbar insets. Recalculate against the *current*
+        // root insets so a reset confirmation on the Settings screen cannot end up under the
+        // status bar after the preference fragment has been rebuilt.
+        final View plate = bar.getView();
+        plate.post(() -> {
+            if (!plate.isAttachedToWindow()) return;
+            final ViewGroup.LayoutParams params = plate.getLayoutParams();
+            if (!(params instanceof ViewGroup.MarginLayoutParams)) return;
+            final ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) params;
+            final ViewGroup host = activity.findViewById(android.R.id.content);
+            if (host == null) return;
+            final int expected = topLine(host);
+            if (margins.topMargin != expected) {
+                margins.topMargin = expected;
+                plate.setLayoutParams(margins);
+            }
+        });
     }
 
     /** The same plate, handed back unshown, for the one notice that carries an action. */
@@ -174,7 +191,19 @@ public final class Notice {
 
     private static int topInset(final View host) {
         final WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(host);
-        return insets == null ? 0 : insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()).top;
+        if (insets != null) {
+            return insets.getInsets(WindowInsetsCompat.Type.systemBars()
+                    | WindowInsetsCompat.Type.displayCutout()).top;
+        }
+        // The host may have been rebuilt and not attached when a reset confirmation is
+        // requested. Use the window's last known platform insets rather than pretending the
+        // status bar is zero pixels high.
+        final android.view.WindowInsets root = host.getRootView().getRootWindowInsets();
+        if (root == null) return 0;
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            return root.getInsets(android.view.WindowInsets.Type.systemBars()
+                    | android.view.WindowInsets.Type.displayCutout()).top;
+        }
+        return root.getSystemWindowInsetTop();
     }
 }
