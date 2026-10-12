@@ -1,0 +1,22 @@
+name: Purge transient unsanitized torrent diagnostic artifact
+on:
+  push:
+    branches: [diagnostics/mp4-audio-dropout-20261013]
+    paths:
+      - '.github/workflows/cleanup-torrent-diagnostic-artifact.yml'
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Remove raw API metadata artifact containing third-party profile URLs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -X DELETE repos/ARST113/Arst-player-/actions/artifacts/11777925939
+          echo 'Removed raw API artifact; retain sanitized only.'
