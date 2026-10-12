@@ -1,0 +1,28 @@
+name: Track TorrServer piece cache during live-paced AAC playback
+on:
+  push:
+    branches: [diagnostics/mp4-audio-dropout-20261013]
+    paths:
+      - '.github/workflows/monitor-torr-cache.yml'
+      - '.github/scripts/monitor-torr-cache.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cache-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install FFmpeg
+        run: |
+          command -v ffmpeg || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
+      - name: Observe cache during realtime playback read
+        run: bash .github/scripts/monitor-torr-cache.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: torrent-live-cache-observation
+          path: torrent-live-cache-observation/
+          retention-days: 7
+          if-no-files-found: warn
