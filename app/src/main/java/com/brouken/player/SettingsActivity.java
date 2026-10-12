@@ -748,6 +748,22 @@ public class SettingsActivity extends AppCompatActivity
                     return true;
                 });
             }
+            Preference upstream = findPreference("aboutUpstream");
+            if (upstream != null) {
+                upstream.setOnPreferenceClickListener(preference -> {
+                    final Activity activity = getActivity();
+                    if (activity == null) return true;
+                    final String url = getString(R.string.about_upstream_url);
+                    if (Utils.isTvBox(activity)) {
+                        if (!showQr(activity, url)) copy(url);
+                    } else {
+                        final Intent open = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        if (canHandle(activity, open)) startActivity(open);
+                        else copy(url);
+                    }
+                    return true;
+                });
+            }
 
             // Only the group: About itself stands in every build, because what it says first -
             // what this is and which version is running - is true with or without an updater.
