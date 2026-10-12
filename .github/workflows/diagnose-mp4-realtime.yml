@@ -1,0 +1,30 @@
+name: Reproduce MP4 AAC errors with identical FFmpeg command and realtime input
+on:
+  push:
+    branches: [diagnostics/mp4-audio-dropout-20261013]
+    paths:
+      - '.github/workflows/diagnose-mp4-realtime.yml'
+      - '.github/scripts/diagnose-mp4-realtime.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  strict-repro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare FFmpeg
+        shell: bash
+        run: |
+          command -v ffmpeg && command -v ffprobe || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
+      - name: Exact replay, wall-clock input and byte checks
+        shell: bash
+        run: bash .github/scripts/diagnose-mp4-realtime.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mp4-realtime-repro
+          path: mp4-realtime-repro/
+          retention-days: 7
+          if-no-files-found: warn
