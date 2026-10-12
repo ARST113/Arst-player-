@@ -11,7 +11,7 @@ implemented source changes from checks on actual hardware.
 
 - [x] Remove the About political banner and its dedicated layout, strings and flag colors.
 - [x] ARX developer/source/release feed separated from Just+, with an upstream-author credit and link.
-- [x] ARX update tags, versionCode 2003001, versionName 2.3.0-arx1.
+- [x] ARX update tags, versionCode 2003002, versionName 2.3.0-arx2.
 - [x] Preserve the original and preferred-language audio menu ordering, with name-based language inference.
 - [x] Prefer recognized, untagged audio over a lower-priority tagged fallback, without overriding an explicit Lampa/viewer choice.
 - [x] Sort subtitles by preferred language, device language and English; forced tracks first within a language.
@@ -24,7 +24,7 @@ implemented source changes from checks on actual hardware.
 - [x] Prefer the system-provided MediaTek DV decoder on compatible Fire TV and MediaTek hardware.
 - [x] Recognize explicit `mp4v` / `mp4v.*` codec tags when the MPEG-4 Visual MIME is absent in an AVI track.
 - [x] GitHub CI compiles a signed ARM APK, checks version/signature and verifies that the four native FFmpeg library SHA-256 hashes match the official 2.3.0 APK.
-- [x] Add JVM regression tests for language inference, preference ordering and forced-track names (test runtime check in progress).
+- [x] Pass JVM regression tests for language inference, preference ordering and forced-track names (with Android SDK stub defaults).
 
 ## Outstanding work needed for claimed 1:1 parity
 
