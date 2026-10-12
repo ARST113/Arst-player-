@@ -242,4 +242,5 @@ dependencies {
     implementation "io.sentry:sentry-android:$sentry_version"
     implementation project(path: ':doubletapplayerview')
     implementation fileTree(dir: "libs", include: ["lib-*.aar"])
+    testImplementation 'junit:junit:4.13.2'
 }

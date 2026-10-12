@@ -30,7 +30,7 @@ jobs:
       - name: Build unsigned and signed release
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon assembleLatestUniversalRelease
+          ./gradlew --no-daemon assembleLatestUniversalRelease :app:testLatestUniversalDebugUnitTest
       - name: Verify signed APK, ABI libraries and package version
         shell: bash
         run: |
