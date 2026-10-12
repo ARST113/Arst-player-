@@ -12,37 +12,70 @@ adb logcat -c
 adb shell am force-stop "$PKG" || true
 adb shell "am start -W -n $PKG/$ACTIVITY -a android.intent.action.VIEW -t video/mp4 -d '$URL'" \
   > "$OUT/launch.txt"
-sleep 30
+sleep 12
 adb logcat -d -v threadtime > "$OUT/first-30s.log"
-
-# Attempt to expose controller and find a SeekBar. If custom controller lacks
-# an accessible seekbar, inject DPAD_RIGHT seek commands but do not claim target.
-adb shell input tap 520 880 || true
+adb shell uiautomator dump /sdcard/first-window.xml >/dev/null 2>&1 || true
+adb pull /sdcard/first-window.xml "$OUT/first-window.xml" >/dev/null 2>&1 || true
+python3 - <<'PY' > "$OUT/dismiss-command.txt"
+import xml.etree.ElementTree as ET
+import re
+from pathlib import Path
+p=Path('mp4-android-emulator/first-window.xml')
+if not p.exists():
+ print('none');raise SystemExit
+for node in ET.parse(p).getroot().iter('node'):
+ if node.attrib.get('resource-id')=='android:id/ok' or node.attrib.get('text')=='Got it':
+  vals=list(map(int,re.findall(r'\d+',node.attrib.get('bounds',''))))
+  if len(vals)==4:
+   print(str((vals[0]+vals[2])//2)+":"+str((vals[1]+vals[3])//2))
+   break
+else:print('none')
+PY
+button="$(cat "$OUT/dismiss-command.txt")"
+if [[ "$button" != "none" ]]; then
+  IFS=: read -r bx by <<< "$button"
+  adb shell input tap "$bx" "$by" || true
+  echo 'Dismissed Android immersive-mode tutorial' > "$OUT/dismissed.txt"
+fi
+sleep 2
+adb shell input tap 1200 520 || true
+sleep 2
 adb shell uiautomator dump /sdcard/arx-window.xml >/dev/null 2>&1 || true
 adb pull /sdcard/arx-window.xml "$OUT/window.xml" >/dev/null 2>&1 || true
 python3 - <<'PY' > "$OUT/seek-command.txt"
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
-s=Path("mp4-android-emulator/window.xml").read_text(errors='replace') if Path("mp4-android-emulator/window.xml").exists() else ''
-found=re.findall(r'<node[^>]*(?:class="android.widget.SeekBar"[^>]*bounds="(\[\d+,\d+\]\[\d+,\d+\])"|bounds="(\[\d+,\d+\]\[\d+,\d+\])"[^>]*class="android.widget.SeekBar")',s)
-if found:
- bounds=next(x for x in found[0] if x)
- nums=list(map(int,re.findall(r'\d+',bounds)))
- x1,y1,x2,y2=nums
- # 300s/3783s = 0.0793. Use x1+0.08 width, allowing thumb margin.
- x=int(x1+.08*(x2-x1));y=(y1+y2)//2
- print(f'tap:{x}:{y}')
+p=Path("mp4-android-emulator/window.xml")
+if not p.exists():
+ print("dpad-fallback:30:seek-target-unverified");raise SystemExit
+root=ET.parse(p).getroot()
+candidates=[]
+for node in root.iter('node'):
+ a=node.attrib
+ role=a.get('class','')
+ rid=a.get('resource-id','')
+ if role in ('android.widget.SeekBar','android.widget.ProgressBar') or 'exo_progress' in rid or 'time_bar' in rid or 'TimeBar' in role:
+  vals=list(map(int,re.findall(r'\d+',a.get('bounds',''))))
+  if len(vals)==4:
+   x1,y1,x2,y2=vals
+   if x2-x1>300:
+    candidates.append((x2-x1,(x1,y1,x2,y2),role,rid))
+if candidates:
+ _,(x1,y1,x2,y2),role,rid=max(candidates,key=lambda a:a[0])
+ x=int(x1+.0793*(x2-x1));y=(y1+y2)//2
+ print(f'tap:{x}:{y}:{role}:{rid}')
 else:
  print('dpad-fallback:30:seek-target-unverified')
 PY
 if grep -q '^tap:' "$OUT/seek-command.txt"; then
-  IFS=: read -r act x y < "$OUT/seek-command.txt"
-  adb shell input tap "$x" "$y"
+ IFS=: read -r act x y role rid < "$OUT/seek-command.txt"
+ adb shell input tap "$x" "$y"
 else
-  for i in $(seq 1 30); do
-    adb shell input keyevent KEYCODE_DPAD_RIGHT
-  done
+ for i in $(seq 1 30); do adb shell input keyevent KEYCODE_DPAD_RIGHT; done
 fi
+adb logcat -d -v threadtime > "$OUT/after-seek-action.log"
+
 sleep 65
 adb logcat -d -v threadtime > "$OUT/after-seek.log"
 adb shell dumpsys media.audio_flinger > "$OUT/audio-flinger.txt" || true
