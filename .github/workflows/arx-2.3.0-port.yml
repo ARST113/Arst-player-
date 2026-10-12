@@ -57,6 +57,31 @@ jobs:
           test "$(unzip -p "$apk" lib/armeabi-v7a/libffvideoJNI.so | sha256sum | cut -d' ' -f1)" = "836665bd468eeb2bf5ad91e0e69ac871b8ce587998a59d286dc9a85756a0ee5b"
           echo "Native FFmpeg audio/video libraries match official 2.3.0 on both ARM ABIs."
           sha256sum "$apk"
+      - name: Verify in-place upgrade eligibility from ARX 2.2.2-arx3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p arx-upgrade-evidence
+          curl -fL --retry 3 --retry-all-errors --connect-timeout 20 \
+            'https://github.com/ARST113/Arst-player-/releases/download/arx-v2.2.2-arx3/ARX.TPlayer.v2.2.2-arx3-release.apk' \
+            -o /tmp/arx-previous-release.apk
+          old=/tmp/arx-previous-release.apk
+          new="$(find app/build/outputs/apk/latestUniversal/release -maxdepth 1 -name '*.apk' | head -n1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          "$signer" verify --print-certs "$old" > arx-upgrade-evidence/old-cert.txt
+          "$signer" verify --print-certs "$new" > arx-upgrade-evidence/new-cert.txt
+          "$aapt" dump badging "$old" | head -n1 > arx-upgrade-evidence/old-package.txt
+          "$aapt" dump badging "$new" | head -n1 > arx-upgrade-evidence/new-package.txt
+          old_code="$(sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" arx-upgrade-evidence/old-package.txt)"
+          new_code="$(sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p" arx-upgrade-evidence/new-package.txt)"
+          old_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' arx-upgrade-evidence/old-cert.txt)"
+          new_cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' arx-upgrade-evidence/new-cert.txt)"
+          test -n "$old_cert" && test "$old_cert" = "$new_cert"
+          test "$new_code" -gt "$old_code"
+          grep -Fq "name='com.justplus.player'" arx-upgrade-evidence/old-package.txt
+          grep -Fq "name='com.justplus.player'" arx-upgrade-evidence/new-package.txt
+          echo "Upgrade eligible: same package and signing certificate; versionCode $old_code -> $new_code"
       - name: Verify branding and banner removal
         run: |
           ! grep -R -E 'aboutDeco|stand_ukraine|deco_line_[12]|STAND WITH|UKRAINE' \
