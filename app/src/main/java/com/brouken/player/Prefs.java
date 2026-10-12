@@ -110,6 +110,7 @@ class Prefs {
     private static final String PREF_KEY_REFUSE_DOLBY_VISION = "refuseDolbyVision";
     private static final String PREF_KEY_LANGUAGE_AUDIO = "languageAudio";
     private static final String PREF_KEY_LANGUAGE_SUBTITLE = "languageSubtitle";
+    private static final String PREF_KEY_FORCED_SUBTITLE_ONLY = "forcedSubtitleOnly";
     private static final String PREF_KEY_LANGUAGE_SUBTITLE_SECONDARY = "languageSubtitleSecondary";
     // Online subtitle search, all of it behind one row on the settings screen. These used to be
     // checkboxes inside the language-priority dialog, which hid the feature behind a row that never
@@ -338,6 +339,7 @@ class Prefs {
     // Preferred subtitle languages, same shape as languageAudio. Empty means no preference, which is
     // what every install starts from: unlike audio, a subtitle nobody asked for is in the way.
     public String languageSubtitle = "";
+    public boolean forcedSubtitleOnly = false;
     // The same list again, for the second line. Its own, because the two lines want opposite things:
     // the first is the language being learned, the second the one already known. Empty — the default —
     // means no second line unless one is picked by hand.
@@ -571,6 +573,7 @@ class Prefs {
         languageAudio = getLanguageAudio(mContext);
         askPreferAudio = mSharedPreferences.getBoolean(PREF_KEY_ASK_PREFER_AUDIO, askPreferAudio);
         languageSubtitle = getLanguageSubtitle(mContext);
+        forcedSubtitleOnly = mSharedPreferences.getBoolean(PREF_KEY_FORCED_SUBTITLE_ONLY, false);
         languageSubtitleSecondary = getLanguageSubtitleSecondary(mContext);
         final String searchMode = getSubtitleSearchMode(mContext);
         subtitleSearch = !SEARCH_OFF.equals(searchMode);

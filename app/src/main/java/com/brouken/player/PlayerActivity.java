@@ -861,6 +861,9 @@ public class PlayerActivity extends Activity {
     private TextView transferView;
     private OutlineTextClock overlayClock;
     private TextView overlayTimeDetail;
+    private boolean forcedOnlyManualForItem;
+    private boolean forcedOnlyAutoOff;
+    private boolean forcedOnlyAutoSelected;
     private OutlineTextClock headerClock;
     private ImageButton buttonPlaylist;
     private TextView buttonQuality;
@@ -9326,6 +9329,7 @@ public class PlayerActivity extends Activity {
         if (mainLineTrackSelected()) {
             return false;
         }
+        if (isForcedOnlyApplicable()) return false;
         final List<String> preferred = Utils.splitLanguages(mPrefs.languageSubtitle);
         if (preferred.isEmpty()) {
             return false;
@@ -9350,7 +9354,7 @@ public class PlayerActivity extends Activity {
                 if (rank < 0) {
                     continue;
                 }
-                final boolean forced = (format.selectionFlags & C.SELECTION_FLAG_FORCED) != 0;
+                final boolean forced = TrackOrder.forced(format, trackName(format));
                 if ((bestForced && !forced) || (bestForced == forced && rank < best)) {
                     best = rank;
                     bestForced = forced;
@@ -9364,6 +9368,102 @@ public class PlayerActivity extends Activity {
         }
         applySubtitle(bestGroup, bestIndex);
         return true;
+    }
+
+
+    private Format selectedAudioForForcedOnly() {
+        if (player == null) return null;
+        final Format format = player.getAudioFormat();
+        if (format != null) return format;
+        for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+            for (int i = 0; i < group.length; i++)
+                if (group.isTrackSelected(i)) return group.getTrackFormat(i);
+        }
+        return null;
+    }
+
+    private boolean isForcedOnlyApplicable() {
+        if (!mPrefs.forcedSubtitleOnly) return false;
+        final Format audio = selectedAudioForForcedOnly();
+        if (audio == null) return false;
+        final String language = TrackOrder.language(audio, trackName(audio));
+        if (language == null) return false;
+        final List<String> preferred = Utils.splitLanguages(mPrefs.languageAudio);
+        if (preferred.isEmpty())
+            TrackOrder.addLanguageIfMissing(preferred,
+                    Utils.toIso3Language(Locale.getDefault().getLanguage()));
+        return preferred.contains(language);
+    }
+
+    /**
+     * Automatic forced subtitles yield to manual selections and explicit Lampa track requests.
+     * The opt-in preference is off by default; automatic suppression is restored on the next item.
+     */
+    private void applyForcedOnlyAutomaticSelection(Tracks tracks) {
+        if (player == null || forcedOnlyManualForItem || mPrefs.subtitleTrackId != null
+                || paintedSubtitleUri != null || (nestedPlaylistSession
+                && nestedEffectiveTrackRequest(true) != null)) return;
+        if (!isForcedOnlyApplicable()) {
+            if (forcedOnlyAutoOff || forcedOnlyAutoSelected) {
+                final boolean wasOff = forcedOnlyAutoOff;
+                forcedOnlyAutoOff = false;
+                forcedOnlyAutoSelected = false;
+                if (wasOff) {
+                    mainLineOff = false;
+                    final int renderer = textRendererIndex(1);
+                    if (renderer >= 0 && trackSelector != null)
+                        trackSelector.setParameters(trackSelector.buildUponParameters()
+                                .setRendererDisabled(renderer, false));
+                }
+                player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build());
+            }
+            return;
+        }
+        if (mainLineOff && !forcedOnlyAutoOff) return;
+        final List<String> languages = Utils.splitLanguages(mPrefs.languageSubtitle);
+        TrackOrder.addLanguageIfMissing(languages,
+                Utils.toIso3Language(Locale.getDefault().getLanguage()));
+        final Format audio = selectedAudioForForcedOnly();
+        if (audio != null)
+            TrackOrder.addLanguageIfMissing(languages,
+                    TrackOrder.language(audio, trackName(audio)));
+        TrackGroup chosenGroup = null;
+        int chosenIndex = -1;
+        int bestRank = Integer.MAX_VALUE;
+        boolean selected = false;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+            for (int i = 0; i < group.length; i++) {
+                final Format text = group.getTrackFormat(i);
+                if (!group.isTrackSupported(i) || isPhantomClosedCaption(text)
+                        || !TrackOrder.forced(text, trackName(text))) continue;
+                final String language = TrackOrder.language(text, trackName(text));
+                final int rank = language == null ? languages.size()
+                        : languages.indexOf(language) >= 0
+                        ? languages.indexOf(language) : languages.size() + 1;
+                if (rank < bestRank) {
+                    chosenGroup = group.getMediaTrackGroup();
+                    chosenIndex = i;
+                    bestRank = rank;
+                    selected = group.isTrackSelected(i);
+                }
+            }
+        }
+        if (chosenGroup == null) {
+            if (!forcedOnlyAutoOff) {
+                forcedOnlyAutoOff = true;
+                forcedOnlyAutoSelected = false;
+                disableSubtitles();
+            }
+            return;
+        }
+        if (selected && !mainLineOff) return;
+        forcedOnlyAutoOff = false;
+        forcedOnlyAutoSelected = true;
+        applySubtitle(chosenGroup, chosenIndex);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -10064,6 +10164,7 @@ public class PlayerActivity extends Activity {
         }
         items.add(new Dialogs.MenuItem(getString(R.string.subtitle_off), null, !textEnabled && !painting,
                 () -> {
+                    forcedOnlyManualForItem = true;
                     rememberNestedViewerSubtitleOff();
                     disableSubtitles();
                 }));
@@ -10102,6 +10203,7 @@ public class PlayerActivity extends Activity {
                         new Dialogs.MenuItem(text[0], text[1],
                                 textEnabled && !painting && group.isTrackSelected(i),
                                 () -> {
+                                    forcedOnlyManualForItem = true;
                                     rememberNestedViewerSubtitle(trackGroup, index);
                                     applySubtitle(trackGroup, index);
                                 })));
@@ -15342,6 +15444,16 @@ public class PlayerActivity extends Activity {
             if (!videoLoading && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                 modeMatchPending = true;
             }
+            if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+                if (forcedOnlyAutoOff) mainLineOff = false;
+                if (forcedOnlyAutoSelected && player != null) {
+                    player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT).build());
+                }
+                forcedOnlyAutoSelected = false;
+                forcedOnlyAutoOff = false;
+                forcedOnlyManualForItem = false;
+            }
             // A burst in progress belonged to the item that just ended: its target and the place Back
             // would undo to are offsets into a file nobody is watching any more. releasePlayer says the
             // same thing for the path it covers, but an auto-advance and seekToNextMediaItem never
@@ -15458,6 +15570,7 @@ public class PlayerActivity extends Activity {
             // labels are matched against the same human-readable names the menu shows.
             resolveTrackNames();
             applyNestedTrackRequests(tracks);
+            applyForcedOnlyAutomaticSelection(tracks);
             updateMediaInfo();
             // In-stream renditions are known only now, so the quality button's visibility can change.
             updateQualityButton();
@@ -15486,10 +15599,10 @@ public class PlayerActivity extends Activity {
             // Both searches wait for this moment, and the cheap one goes first: a file lying next to the
             // media costs one request and no quota, and finding it can leave the online search with
             // nothing to look for.
-            startSubtitleGuess();
+            if (!isForcedOnlyApplicable()) startSubtitleGuess();
             // The track list is what decides whether anything is missing, so this is the first moment
             // the question can be asked at all.
-            maybeSearchSubtitlesOnline(tracks);
+            if (!isForcedOnlyApplicable()) maybeSearchSubtitlesOnline(tracks);
             // Apply sticky launcher-source choices only after the new item and its tracks are settled.
             // Voice goes first because it may replace the source entirely; quality then applies inside
             // the chosen voice.

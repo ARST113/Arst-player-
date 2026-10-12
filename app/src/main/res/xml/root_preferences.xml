@@ -330,6 +330,11 @@
             <Preference
                 app:key="languageSubtitle"
                 app:title="@string/pref_language_subtitle"/>
+            <SwitchPreferenceCompat
+                app:defaultValue="false"
+                app:key="forcedSubtitleOnly"
+                app:summary="@string/pref_forced_subtitle_only_summary"
+                app:title="@string/pref_forced_subtitle_only"/>
             <PreferenceScreen
                 app:key="subtitleSecondaryScreen"
                 app:title="@string/pref_subtitle_secondary_header">

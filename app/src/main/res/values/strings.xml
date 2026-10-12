@@ -658,4 +658,6 @@
     <string name="pref_overlay_off">Off</string>
     <string name="pref_overlay_paused">When paused</string>
     <string name="pref_overlay_always">Always</string>
+    <string name="pref_forced_subtitle_only">Forced subtitles only with preferred audio</string>
+    <string name="pref_forced_subtitle_only_summary">When the soundtrack uses a preferred language, select only forced subtitles for signs and songs. Manual selections take priority.</string>
 </resources>
