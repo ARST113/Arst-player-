@@ -1,3 +1,11 @@
+# ARX TPlayer — независимая реконструкция Just+ Player
+
+ARX TPlayer — отдельная сборка с собственными исправлениями, интерфейсом и механизмом обновления через [ARX Releases](https://github.com/ARST113/Arst-player-/releases). Основа: публичные исходники Just+ Player и совместимая реализация функций последних выпусков. Происхождение проекта и авторство оригинальных компонентов сохраняются.
+
+**Ветка `arx/v2.3.0-port`: работа над совместимостью с Just+ Player v2.3.0. Фактическая готовность функций фиксируется в `docs/ARX-2.3.0-port.md`; версия не является полной реализацией до завершения проверки.**
+
+---
+
 # Just+ Player
 
 [![Latest release](https://img.shields.io/github/v/release/just-plus-player/just-plus-player?logo=github&logoColor=white&cacheSeconds=3600)](https://github.com/just-plus-player/just-plus-player/releases/latest)

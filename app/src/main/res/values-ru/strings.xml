@@ -615,4 +615,13 @@
     <string name="update_versions_loading">Загрузка истории версий…</string>
     <string name="update_versions_empty">Не удалось загрузить историю версий. Попробуйте позднее.</string>
     <string name="update_versions_close">Закрыть</string>
+    <string name="pref_overlay_group">Поверх видео</string>
+    <string name="pref_overlay_clock">Часы</string>
+    <string name="pref_overlay_ends">Время окончания</string>
+    <string name="pref_overlay_live">Индикатор прямого эфира</string>
+    <string name="pref_overlay_off">Выключено</string>
+    <string name="pref_overlay_paused">При паузе</string>
+    <string name="pref_overlay_always">Всегда</string>
+    <string name="pref_forced_subtitle_only">Только принудительные субтитры при предпочтительной озвучке</string>
+    <string name="pref_forced_subtitle_only_summary">Когда аудиодорожка на выбранном языке, показывать только надписи, песни и принудительные реплики. Ручной выбор имеет приоритет.</string>
 </resources>

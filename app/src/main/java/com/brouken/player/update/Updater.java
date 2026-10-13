@@ -57,12 +57,14 @@ public final class Updater {
     private Updater() {}
 
     private static final String RELEASES_URL =
-            "https://api.github.com/repos/just-plus-player/just-plus-player/releases";
+            "https://api.github.com/repos/ARST113/Arst-player-/releases";
     /** How often a launch may ask; shared by the player and the browser so one launch never asks twice. */
     public static final long CHECK_INTERVAL_MS = 60 * 60 * 1000L;
 
     private static final String APK_FILE_NAME = "update.apk";
     private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)");
+    private static final Pattern ARX_VERSION_PATTERN = Pattern.compile(
+            "arx-v(\\d+)\\.(\\d+)\\.(\\d+)-arx(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -207,14 +209,18 @@ public final class Updater {
         if (tag == null) {
             return 0;
         }
-        final Matcher matcher = VERSION_PATTERN.matcher(tag);
-        if (!matcher.find()) {
+        final Matcher arxMatcher = ARX_VERSION_PATTERN.matcher(tag);
+        final boolean isArx = arxMatcher.matches();
+        final Matcher matcher = isArx ? arxMatcher : VERSION_PATTERN.matcher(tag);
+        if (!isArx && !matcher.find()) {
             return 0;
         }
         try {
-            return Integer.parseInt(matcher.group(1)) * 1_000_000
+            final int base = Integer.parseInt(matcher.group(1)) * 1_000_000
                     + Integer.parseInt(matcher.group(2)) * 1_000
                     + Integer.parseInt(matcher.group(3));
+            // APK versionCode 2003001 corresponds to arx-v2.3.0-arx1.
+            return isArx ? base + Math.min(999, Integer.parseInt(matcher.group(4))) : base;
         } catch (NumberFormatException e) {
             return 0;
         }

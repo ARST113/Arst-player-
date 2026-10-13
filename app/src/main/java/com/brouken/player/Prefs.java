@@ -110,6 +110,7 @@ class Prefs {
     private static final String PREF_KEY_REFUSE_DOLBY_VISION = "refuseDolbyVision";
     private static final String PREF_KEY_LANGUAGE_AUDIO = "languageAudio";
     private static final String PREF_KEY_LANGUAGE_SUBTITLE = "languageSubtitle";
+    private static final String PREF_KEY_FORCED_SUBTITLE_ONLY = "forcedSubtitleOnly";
     private static final String PREF_KEY_LANGUAGE_SUBTITLE_SECONDARY = "languageSubtitleSecondary";
     // Online subtitle search, all of it behind one row on the settings screen. These used to be
     // checkboxes inside the language-priority dialog, which hid the feature behind a row that never
@@ -146,7 +147,11 @@ class Prefs {
     private static final String PREF_KEY_SKIP_UNDO = "skipUndo";
     private static final String PREF_KEY_SKIP_HIDE_LOCKED = "skipHideWhenLocked";
     private static final String PREF_KEY_SKIP_COUNTDOWN = "skipCountdown";
-    private static final String PREF_KEY_SHOW_CLOCK = "showClock";
+    private static final String PREF_KEY_SHOW_CLOCK = "showClock"; // legacy boolean migration
+    private static final String PREF_KEY_CLOCK_MODE = "clockOverlayMode";
+    private static final String PREF_KEY_CLOCK_MODE_MIGRATED = "clockOverlayModeMigrated";
+    private static final String PREF_KEY_END_TIME_MODE = "endTimeOverlayMode";
+    private static final String PREF_KEY_LIVE_MODE = "liveOverlayMode";
     private static final String PREF_KEY_TIME_REMAINING = "timeRemaining";
     private static final String PREF_KEY_SHOW_STATS = "showStats";
     private static final String PREF_KEY_SHOW_TRANSFER = "showTransfer";
@@ -335,6 +340,7 @@ class Prefs {
     // Preferred subtitle languages, same shape as languageAudio. Empty means no preference, which is
     // what every install starts from: unlike audio, a subtitle nobody asked for is in the way.
     public String languageSubtitle = "";
+    public boolean forcedSubtitleOnly = false;
     // The same list again, for the second line. Its own, because the two lines want opposite things:
     // the first is the language being learned, the second the one already known. Empty — the default —
     // means no second line unless one is picked by hand.
@@ -385,7 +391,13 @@ class Prefs {
     public String skipCountdown = SKIP_COUNTDOWN_RING;
     public boolean skipFetchOnline = true;
     public String skipUndo = SKIP_UNDO_ALL;
-    public boolean showClock = false;
+    public static final String OVERLAY_OFF = "off";
+    public static final String OVERLAY_PAUSED = "paused";
+    public static final String OVERLAY_ALWAYS = "always";
+    public String clockOverlayMode = OVERLAY_PAUSED;
+    public String endTimeOverlayMode = OVERLAY_PAUSED;
+    public String liveOverlayMode = OVERLAY_PAUSED;
+    public boolean showClock = false; // legacy only
     /** Bottom bar counts down what is left instead of showing the total duration. */
     public boolean timeRemaining = false;
     public boolean showStats = false;
@@ -562,6 +574,7 @@ class Prefs {
         languageAudio = getLanguageAudio(mContext);
         askPreferAudio = mSharedPreferences.getBoolean(PREF_KEY_ASK_PREFER_AUDIO, askPreferAudio);
         languageSubtitle = getLanguageSubtitle(mContext);
+        forcedSubtitleOnly = mSharedPreferences.getBoolean(PREF_KEY_FORCED_SUBTITLE_ONLY, false);
         languageSubtitleSecondary = getLanguageSubtitleSecondary(mContext);
         final String searchMode = getSubtitleSearchMode(mContext);
         subtitleSearch = !SEARCH_OFF.equals(searchMode);
@@ -600,6 +613,26 @@ class Prefs {
         skipHideWhenLocked = mSharedPreferences.getBoolean(PREF_KEY_SKIP_HIDE_LOCKED, skipHideWhenLocked);
         skipCountdown = migrateWithdrawnValues(mSharedPreferences);
         showClock = mSharedPreferences.getBoolean(PREF_KEY_SHOW_CLOCK, showClock);
+        // PreferenceManager.setDefaultValues() writes new ListPreference defaults *before*
+        // Prefs loads. A simple getString(..., showClock ? ALWAYS : PAUSED) would therefore
+        // forget the viewer's former enabled switch, because the new key already says paused.
+        final boolean migratedOverlay = mSharedPreferences.getBoolean(
+                PREF_KEY_CLOCK_MODE_MIGRATED, false);
+        final String storedClock = mSharedPreferences.getString(
+                PREF_KEY_CLOCK_MODE, OVERLAY_PAUSED);
+        if (!migratedOverlay && showClock && OVERLAY_PAUSED.equals(storedClock)) {
+            clockOverlayMode = OVERLAY_ALWAYS;
+            mSharedPreferences.edit()
+                    .putString(PREF_KEY_CLOCK_MODE, OVERLAY_ALWAYS)
+                    .putBoolean(PREF_KEY_CLOCK_MODE_MIGRATED, true)
+                    .apply();
+        } else {
+            clockOverlayMode = storedClock;
+            if (!migratedOverlay) mSharedPreferences.edit()
+                    .putBoolean(PREF_KEY_CLOCK_MODE_MIGRATED, true).apply();
+        }
+        endTimeOverlayMode = mSharedPreferences.getString(PREF_KEY_END_TIME_MODE, OVERLAY_PAUSED);
+        liveOverlayMode = mSharedPreferences.getString(PREF_KEY_LIVE_MODE, OVERLAY_PAUSED);
         timeRemaining = mSharedPreferences.getBoolean(PREF_KEY_TIME_REMAINING, timeRemaining);
         showStats = mSharedPreferences.getBoolean(PREF_KEY_SHOW_STATS, showStats);
         showTransfer = mSharedPreferences.getBoolean(PREF_KEY_SHOW_TRANSFER, showTransfer);

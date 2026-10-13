@@ -546,7 +546,7 @@
     <string name="pref_about_device">Device info</string>
 
     <string name="about_github" translatable="false">GitHub</string>
-    <string name="about_github_url" translatable="false">https://github.com/just-plus-player/just-plus-player</string>
+    <string name="about_github_url" translatable="false">https://github.com/ARST113/Arst-player-</string>
 
     <string name="about_github_qr">Scan with a phone camera to open the project page.</string>
 
@@ -554,13 +554,8 @@
     <string name="pref_about_developer">Developer</string>
     <string name="pref_about_source">Source code</string>
 
-    <string name="about_developer" translatable="false">@levende</string>
-    <string name="about_github_repo" translatable="false">github.com/just-plus-player/just-plus-player</string>
-
-
-    <!-- The badge is lettered in English wherever the app is read. -->
-    <string name="stand_with" translatable="false">STAND WITH</string>
-    <string name="stand_ukraine" translatable="false">UKRAINE</string>
+    <string name="about_developer" translatable="false">@ARST113</string>
+    <string name="about_github_repo" translatable="false">github.com/ARST113/Arst-player-</string>
 
     <plurals name="browse_videos">
         <item quantity="one">%d video</item>
@@ -651,9 +646,21 @@
     <string name="playlist_start_over_action">Start over</string>
     <string name="pref_all_versions">All versions</string>
     <string name="pref_all_versions_summary">Release notes of every version</string>
-    <string name="deco_line_1" translatable="false">STAND WITH</string>
-    <string name="deco_line_2" translatable="false">UKRAINE</string>
+
+
     <string name="update_versions_loading">Loading release history…</string>
     <string name="update_versions_empty">Release history is unavailable. Try again later.</string>
     <string name="update_versions_close">Close</string>
+    <string name="pref_overlay_group">Over the video</string>
+    <string name="pref_overlay_clock">Clock</string>
+    <string name="pref_overlay_ends">End time</string>
+    <string name="pref_overlay_live">LIVE indicator</string>
+    <string name="pref_overlay_off">Off</string>
+    <string name="pref_overlay_paused">When paused</string>
+    <string name="pref_overlay_always">Always</string>
+    <string name="pref_forced_subtitle_only">Forced subtitles only with preferred audio</string>
+    <string name="pref_forced_subtitle_only_summary">When the soundtrack uses a preferred language, select only forced subtitles for signs and songs. Manual selections take priority.</string>
+    <string name="pref_about_upstream">Original project</string>
+    <string name="about_upstream_summary" translatable="false">Just+ Player by @levende</string>
+    <string name="about_upstream_url" translatable="false">https://github.com/just-plus-player/just-plus-player</string>
 </resources>

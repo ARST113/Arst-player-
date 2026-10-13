@@ -552,4 +552,13 @@
     <string name="pref_mask_reports">Приховувати посилання у звітах</string>
     <string name="pref_mask_reports_on">Посилання на відео скорочуються до сервера й шляху, локальні файли — до типу</string>
     <string name="pref_mask_reports_off">Звіти містять повні посилання на відео разом із токенами. Вивантажений звіт публічний</string>
+    <string name="pref_overlay_group">Поверх відео</string>
+    <string name="pref_overlay_clock">Годинник</string>
+    <string name="pref_overlay_ends">Час завершення</string>
+    <string name="pref_overlay_live">Індикатор прямого ефіру</string>
+    <string name="pref_overlay_off">Вимкнено</string>
+    <string name="pref_overlay_paused">Під час паузи</string>
+    <string name="pref_overlay_always">Завжди</string>
+    <string name="pref_forced_subtitle_only">Лише примусові субтитри для пріоритетного аудіо</string>
+    <string name="pref_forced_subtitle_only_summary">Якщо звукова доріжка має пріоритетну мову, показувати лише написи, пісні й примусові репліки. Ручний вибір має пріоритет.</string>
 </resources>

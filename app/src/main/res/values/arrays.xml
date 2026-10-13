@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+  <string-array name="overlay_mode_entries">
+    <item>@string/pref_overlay_off</item>
+    <item>@string/pref_overlay_paused</item>
+    <item>@string/pref_overlay_always</item>
+  </string-array>
+  <string-array name="overlay_mode_values">
+    <item>off</item>
+    <item>paused</item>
+    <item>always</item>
+  </string-array>
   <string-array name="hold_speed_entries">
     <item>@string/pref_hold_speed_adjust</item>
     <item>@string/pref_hold_speed_fixed</item>

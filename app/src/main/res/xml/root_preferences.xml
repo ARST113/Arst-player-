@@ -58,12 +58,29 @@
                     app:key="loadingScreenMode"
                     app:title="@string/pref_loading_screen"
                     app:useSimpleSummaryProvider="true"/>
-                <SwitchPreferenceCompat
-                    app:defaultValue="false"
-                    app:key="showClock"
-                    app:summaryOff="@string/pref_show_clock_off"
-                    app:summaryOn="@string/pref_show_clock_on"
-                    app:title="@string/pref_show_clock"/>
+                <PreferenceCategory app:title="@string/pref_overlay_group">
+                    <ListPreference
+                        app:defaultValue="paused"
+                        app:entries="@array/overlay_mode_entries"
+                        app:entryValues="@array/overlay_mode_values"
+                        app:key="clockOverlayMode"
+                        app:title="@string/pref_overlay_clock"
+                        app:useSimpleSummaryProvider="true"/>
+                    <ListPreference
+                        app:defaultValue="paused"
+                        app:entries="@array/overlay_mode_entries"
+                        app:entryValues="@array/overlay_mode_values"
+                        app:key="endTimeOverlayMode"
+                        app:title="@string/pref_overlay_ends"
+                        app:useSimpleSummaryProvider="true"/>
+                    <ListPreference
+                        app:defaultValue="paused"
+                        app:entries="@array/overlay_mode_entries"
+                        app:entryValues="@array/overlay_mode_values"
+                        app:key="liveOverlayMode"
+                        app:title="@string/pref_overlay_live"
+                        app:useSimpleSummaryProvider="true"/>
+                </PreferenceCategory>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
                     app:key="timeRemaining"
@@ -313,6 +330,11 @@
             <Preference
                 app:key="languageSubtitle"
                 app:title="@string/pref_language_subtitle"/>
+            <SwitchPreferenceCompat
+                app:defaultValue="false"
+                app:key="forcedSubtitleOnly"
+                app:summary="@string/pref_forced_subtitle_only_summary"
+                app:title="@string/pref_forced_subtitle_only"/>
             <PreferenceScreen
                 app:key="subtitleSecondaryScreen"
                 app:title="@string/pref_subtitle_secondary_header">
@@ -678,6 +700,11 @@
                     app:persistent="false"
                     app:summary="@string/about_github_repo"
                     app:title="@string/pref_about_source"/>
+                <Preference
+                    app:key="aboutUpstream"
+                    app:persistent="false"
+                    app:summary="@string/about_upstream_summary"
+                    app:title="@string/pref_about_upstream"/>
             </PreferenceCategory>
             <PreferenceCategory
                 app:key="updateCategory"
@@ -697,13 +724,6 @@
                     app:persistent="false"
                     app:summary="@string/pref_all_versions_summary"
                     app:title="@string/pref_all_versions"/>
-            </PreferenceCategory>
-            <PreferenceCategory>
-                <Preference
-                    app:key="aboutDeco"
-                    app:layout="@layout/preference_about_deco"
-                    app:persistent="false"
-                    app:selectable="false"/>
             </PreferenceCategory>
         </PreferenceScreen>
     </PreferenceCategory>

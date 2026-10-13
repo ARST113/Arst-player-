@@ -860,6 +860,11 @@ public class PlayerActivity extends Activity {
     private TextView statsView;
     private TextView transferView;
     private OutlineTextClock overlayClock;
+    private TextView overlayTimeDetail;
+    private boolean audioAutomaticallyChosenByName;
+    private boolean forcedOnlyManualForItem;
+    private boolean forcedOnlyAutoOff;
+    private boolean forcedOnlyAutoSelected;
     private OutlineTextClock headerClock;
     private ImageButton buttonPlaylist;
     private TextView buttonQuality;
@@ -929,6 +934,9 @@ public class PlayerActivity extends Activity {
     // Set while the audio track type is disabled for a trip to the background (see onStop), so onStart
     // knows to put it back.
     private boolean audioReleasedForBackground;
+    // A sleeping TV must not hold an exclusive hardware video decoder for hours.
+    // Video is restored disabled->enabled on the next onStart, with playback still paused.
+    private boolean videoReleasedForBackground;
     private final Runnable keepAwakeGiveUpRunnable = () -> holdScreen(false);
     // Set while a Down press is opening the controls, so focus lands on the time bar instead of play/pause.
     private boolean focusTimeBarOnShow;
@@ -1600,7 +1608,7 @@ public class PlayerActivity extends Activity {
             // so it rides this one rather than starting a second timer.
             updateStats();
             updateTransfer();
-            if (controllerVisible) {
+            if (controllerVisible || wantsOverlayTimeDetails()) {
                 playerView.postDelayed(this, 1000);
             }
         }
@@ -2329,6 +2337,18 @@ public class PlayerActivity extends Activity {
         overlayClock.setVisibility(View.GONE);
         coordinatorLayout.addView(overlayClock);
 
+        // The end time or LIVE badge can remain visible when the controller is hidden.
+        // Its position is synchronised with the in-header label, just like the clock.
+        overlayTimeDetail = new TextView(this);
+        overlayTimeDetail.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
+        overlayTimeDetail.setTextSize(TypedValue.COMPLEX_UNIT_SP, ui.textCaption());
+        final CoordinatorLayout.LayoutParams overlayTimeLp = new CoordinatorLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        overlayTimeLp.gravity = Gravity.TOP | Gravity.START;
+        overlayTimeDetail.setLayoutParams(overlayTimeLp);
+        overlayTimeDetail.setVisibility(View.GONE);
+        coordinatorLayout.addView(overlayTimeDetail);
+
         // Live playback stats, opened from the overflow menu. It rides the controls (updated by
         // endsAtRunnable, hidden by stopEndsAtUpdates), so it is never left sitting over the video, and it
         // carries no touch handling of its own — the left half of the screen is the brightness swipe zone.
@@ -2856,7 +2876,11 @@ public class PlayerActivity extends Activity {
                     startEndsAtUpdates();
                     playerView.post(PlayerActivity.this::updateSubtitleButton);
                 } else {
-                    stopEndsAtUpdates();
+                    if (wantsOverlayTimeDetails()) {
+                        startEndsAtUpdates();
+                    } else {
+                        stopEndsAtUpdates();
+                    }
                 }
                 updateOverlayClock();
                 scheduleHideControllerOnPause();
@@ -3045,10 +3069,16 @@ public class PlayerActivity extends Activity {
             heldAfterError = null;
             // The audio track type onStop disabled to hand the receiver's route back. The track this builds
             // is unstarted, since the player is paused; the latch the pause armed recreates it on play.
-            if (audioReleasedForBackground) {
+            if (audioReleasedForBackground || videoReleasedForBackground) {
+                final TrackSelectionParameters.Builder restore =
+                        player.getTrackSelectionParameters().buildUpon();
+                if (audioReleasedForBackground) restore.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false);
+                if (videoReleasedForBackground) restore.setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false);
+                Utils.log("background: restore audio=" + audioReleasedForBackground
+                        + " video=" + videoReleasedForBackground);
                 audioReleasedForBackground = false;
-                player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build());
+                videoReleasedForBackground = false;
+                player.setTrackSelectionParameters(restore.build());
             }
             // Only a session that had started before we left. A VIEW intent delivered to a stopped screen
             // reaches onNewIntent before onStart, so the player here may be one built a moment ago for new
@@ -3163,6 +3193,29 @@ public class PlayerActivity extends Activity {
             audioReleasedForBackground = true;
             player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build());
+        }
+        // A TV entering sleep must give back the hardware video decoder as well as the passthrough
+        // audio route. Only during genuine screen-off: Settings, HOME and external pickers also call
+        // onStop, and need not dismantle a healthy decoder. Toggling this track type releases
+        // MediaCodecVideoRenderer through onDisabled, leaving the source, timeline and progress intact.
+        final android.os.PowerManager power =
+                (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        if (isTvBox && power != null && !power.isInteractive()) {
+            // Known Realtek Dolby Vision drivers fail reopening the same MediaCodec instance after
+            // screen-off (0x80001000). Leave this path to the system's process reclamation until
+            // an actual hardware validation proves the replacement safe on those boxes.
+            final String hardware = (Build.HARDWARE + " " + Build.BOARD + " " + Build.MANUFACTURER)
+                    .toLowerCase(Locale.ROOT);
+            final Format currentVideo = player.getVideoFormat();
+            final boolean realtekDolbyVision = (hardware.contains("realtek") || hardware.contains("rtd"))
+                    && currentVideo != null
+                    && MimeTypes.VIDEO_DOLBY_VISION.equals(currentVideo.sampleMimeType);
+            if (!realtekDolbyVision) {
+                videoReleasedForBackground = true;
+                player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build());
+                Utils.log("sleep: released hardware video decoder");
+            }
         }
         // The load watchdog only ever ran while the activity was on screen by accident: nothing cancelled it
         // on this path, so an item still buffering when the user left would time out in the background —
@@ -6689,6 +6742,7 @@ public class PlayerActivity extends Activity {
         containerTracksUri = uri;
         requestDisplayModeEarly();
         resolveTrackNames();
+        selectAudioByName();
         updateMediaInfo();
         // Matroska names reach us here rather than through Format.label, and this can land after
         // onTracksChanged — so a language that lives in a name is only now readable. A track turned on
@@ -6899,6 +6953,27 @@ public class PlayerActivity extends Activity {
      * above any live window and well below any feature; a genuinely short recording served without an
      * end tag is the one thing this reads wrongly, and all it costs there is a label.
      */
+    /**
+     * MediaTek devices appear as Amazon/FIre TV or OEM device manufacturers; use SoC identity
+     * rather than the retail brand. Only the system's own reported decoder is considered.
+     */
+    private static boolean hasMediaTekVideoCodec() {
+        final String platform = (Build.HARDWARE + " " + Build.BOARD)
+                .toLowerCase(Locale.ROOT);
+        if (platform.contains("mediatek") || platform.contains("mtk")
+                || platform.matches(".*mt[0-9]{4,}.*")) return true;
+        return Build.VERSION.SDK_INT >= 31
+                && Build.SOC_MANUFACTURER != null
+                && Build.SOC_MANUFACTURER.toLowerCase(Locale.ROOT).contains("mediatek");
+    }
+
+    private static boolean isMediaTekDecoder(String codecName) {
+        if (codecName == null) return false;
+        final String name = codecName.toLowerCase(Locale.ROOT);
+        return name.contains(".mtk.") || name.contains("mediatek")
+                || name.startsWith("omx.mtk.");
+    }
+
     private boolean isLiveStream() {
         if (player == null || !player.isCurrentMediaItemLive()) {
             return false;
@@ -6907,8 +6982,24 @@ public class PlayerActivity extends Activity {
         return duration == C.TIME_UNSET || duration < LIVE_WINDOW_MAX_MS;
     }
 
+    private boolean overlayModeVisible(String mode) {
+        return !inPip && !Prefs.OVERLAY_OFF.equals(mode)
+                && (Prefs.OVERLAY_ALWAYS.equals(mode)
+                        // Buffering and decoder reselection are not pauses by the viewer.
+                        || player == null || !player.getPlayWhenReady()
+                        || player.getPlaybackState() == Player.STATE_ENDED);
+    }
+
+    private boolean wantsOverlayTimeDetails() {
+        if (player == null) {
+            return false;
+        }
+        return overlayModeVisible(isLiveStream() ? mPrefs.liveOverlayMode : mPrefs.endTimeOverlayMode);
+    }
+
     void updateEndsAt() {
         if (player == null || endsAtView == null) {
+            if (overlayTimeDetail != null) overlayTimeDetail.setVisibility(View.GONE);
             return;
         }
         final boolean live = isLiveStream();
@@ -6916,10 +7007,6 @@ public class PlayerActivity extends Activity {
         // a few seconds long, and standing still at the live edge. The total goes; the slot in front of
         // it stays and says how long this has been watched instead (see the progress listener).
         setDurationVisible(!live);
-        if (!controllerVisible) {
-            endsAtView.setVisibility(View.GONE);
-            return;
-        }
         // A broadcast has no end to name. The clock time computed below would be the end of whatever
         // window the stream is offering right now — a minute from now, and about nothing.
         if (live) {
@@ -6927,13 +7014,15 @@ public class PlayerActivity extends Activity {
             // Red, and not the accent: on air is a meaning of its own, and the thirty other accent
             // themes would each have said it in their own hue. See @color/live_red.
             endsAtView.setTextColor(ContextCompat.getColor(this, R.color.live_red));
-            endsAtView.setVisibility(View.VISIBLE);
+            endsAtView.setVisibility(controllerVisible ? View.VISIBLE : View.GONE);
+            updateOverlayTimeDetail(true);
             return;
         }
         endsAtView.setTextColor(ContextCompat.getColor(this, R.color.ink_secondary));
         final long duration = player.getDuration();
         if (duration == C.TIME_UNSET || duration <= 0) {
             endsAtView.setVisibility(View.GONE);
+            if (overlayTimeDetail != null) overlayTimeDetail.setVisibility(View.GONE);
             return;
         }
         final long remaining = Math.max(0, duration - player.getCurrentPosition());
@@ -6944,7 +7033,21 @@ public class PlayerActivity extends Activity {
         final long endMs = System.currentTimeMillis() + (long) (remaining / speed);
         final String time = DateFormat.getTimeFormat(this).format(new Date(endMs));
         endsAtView.setText(getString(R.string.time_ends_at, time));
-        endsAtView.setVisibility(View.VISIBLE);
+        endsAtView.setVisibility(controllerVisible ? View.VISIBLE : View.GONE);
+        updateOverlayTimeDetail(false);
+    }
+
+    private void updateOverlayTimeDetail(boolean live) {
+        if (overlayTimeDetail == null) return;
+        final boolean show = !controllerVisible && overlayModeVisible(
+                live ? mPrefs.liveOverlayMode : mPrefs.endTimeOverlayMode);
+        if (show) {
+            overlayTimeDetail.setText(endsAtView.getText());
+            overlayTimeDetail.setTextColor(ContextCompat.getColor(this,
+                    live ? R.color.live_red : R.color.ink_secondary));
+            syncOverlayClockPosition();
+        }
+        overlayTimeDetail.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
     /** The released 2.1.3 plate has only elapsed and duration slots; no separator view. */
@@ -6962,7 +7065,7 @@ public class PlayerActivity extends Activity {
         if (overlayClock == null) {
             return;
         }
-        final boolean show = mPrefs.showClock && !inPip;
+        final boolean show = overlayModeVisible(mPrefs.clockOverlayMode);
         if (headerClock != null) {
             headerClock.setAlpha(show ? 0f : 1f);
         }
@@ -6991,6 +7094,19 @@ public class PlayerActivity extends Activity {
             lp.leftMargin = left;
             lp.topMargin = top;
             overlayClock.setLayoutParams(lp);
+        }
+        if (endsAtView != null && overlayTimeDetail != null && endsAtView.getWidth() > 0) {
+            final int[] detailLoc = new int[2];
+            endsAtView.getLocationInWindow(detailLoc);
+            final ViewGroup.MarginLayoutParams detailParams =
+                    (ViewGroup.MarginLayoutParams) overlayTimeDetail.getLayoutParams();
+            final int detailLeft = detailLoc[0] - rootLoc[0];
+            final int detailTop = detailLoc[1] - rootLoc[1];
+            if (detailParams.leftMargin != detailLeft || detailParams.topMargin != detailTop) {
+                detailParams.leftMargin = detailLeft;
+                detailParams.topMargin = detailTop;
+                overlayTimeDetail.setLayoutParams(detailParams);
+            }
         }
     }
 
@@ -7214,7 +7330,11 @@ public class PlayerActivity extends Activity {
             return getString(R.string.stats_stream, getString(R.string.quality_bitrate, video.bitrate / 1_000_000f));
         }
         final float overall = overallBitrate();
-        return overall > 0 ? getString(R.string.stats_overall, getString(R.string.quality_bitrate, overall)) : null;
+        // Unknown-length streams can have a tiny provisional Content-Length, which formats
+        // as "file average 0.0 Mbps". That is not a meaningful file bitrate.
+        return overall >= 0.05f
+                ? getString(R.string.stats_overall, getString(R.string.quality_bitrate, overall))
+                : null;
     }
 
 
@@ -8657,11 +8777,71 @@ public class PlayerActivity extends Activity {
                 // take, because exceedRendererCapabilitiesIfNecessary is on by default - calling that one
                 // undecodable would deny a track the viewer can hear, and strip its tick while it plays.
                 choices.add(new AudioChoice(text[0], text[1], trackGroup, i, group.isTrackSelected(i),
-                        Utils.toIso3Language(format.language),
+                        TrackOrder.language(format, trackName(format)),
                         group.isTrackSupported(i, /* allowExceedsCapabilities= */ true)));
             }
         }
+        final List<String> preferred = Utils.splitLanguages(mPrefs.languageAudio);
+        choices.sort((a, b) -> TrackOrder.compareAudio(
+                a.language, a.label, b.language, b.label, preferred));
         return choices;
+    }
+
+    /**
+     * Media3 selects initial audio using the declared Format.language. A number of Matroska
+     * releases have the correct language written only in the track name, so a tagged English
+     * track could win over an untagged preferred Russian/Ukrainian dub. Correct only a strictly
+     * higher-priority *untagged* candidate; preserve explicit viewer/Lampa overrides and do
+     * not replace a track with equal priority.
+     */
+    private boolean selectAudioByName() {
+        if (player == null || mPrefs.audioTrackId != null || audioAutomaticallyChosenByName
+                || hasOverrideType(C.TRACK_TYPE_AUDIO) ||
+                (nestedPlaylistSession && nestedEffectiveTrackRequest(false) != null)) {
+            return false;
+        }
+        final List<String> preferred = Utils.splitLanguages(mPrefs.languageAudio);
+        if (preferred.isEmpty()) return false;
+        int selectedRank = preferred.size() + 1;
+        TrackGroup bestGroup = null;
+        int bestIndex = -1;
+        int bestRank = selectedRank;
+        final Tracks tracks = player.getCurrentTracks();
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+            for (int i = 0; i < group.length; i++) {
+                final Format format = group.getTrackFormat(i);
+                if (group.isTrackSelected(i)) {
+                    final String actualLanguage = TrackOrder.language(format, trackName(format));
+                    final int rank = preferred.indexOf(actualLanguage);
+                    selectedRank = rank < 0 ? preferred.size() + 1 : rank;
+                }
+            }
+        }
+        bestRank = selectedRank;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+            for (int i = 0; i < group.length; i++) {
+                final Format format = group.getTrackFormat(i);
+                if (!group.isTrackSupported(i, true) || group.isTrackSelected(i)
+                        || Utils.toIso3Language(format.language) != null) continue;
+                final int rank = preferred.indexOf(TrackOrder.language(format, trackName(format)));
+                if (rank >= 0 && rank < bestRank) {
+                    bestGroup = group.getMediaTrackGroup();
+                    bestIndex = i;
+                    bestRank = rank;
+                }
+            }
+        }
+        if (bestGroup == null) return false;
+        audioAutomaticallyChosenByName = true;
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setOverrideForType(new TrackSelectionOverride(
+                        bestGroup, Collections.singletonList(bestIndex))).build());
+        Utils.log("audio: selected untagged preferred language, rank=" + bestRank);
+        return true;
     }
 
     private PlaylistApi.Item currentNestedItem() {
@@ -9257,54 +9437,165 @@ public class PlayerActivity extends Activity {
      */
     private boolean selectSubtitleByName() {
         if (player == null || paintedSubtitleUri != null || mPrefs.subtitleTrackId != null
-                || hasOverrideType(C.TRACK_TYPE_TEXT) || mainLineDisabled()) {
-            return false;
-        }
-        final Tracks tracks = player.getCurrentTracks();
-        // The first line's own track, not any text track: the second line has one of those whenever a
-        // hint is playing, and reading it as "subtitles are already on" is what stopped this line from
-        // ever being filled by name while a hint was up.
-        if (mainLineTrackSelected()) {
+                || forcedOnlyManualForItem || hasOverrideType(C.TRACK_TYPE_TEXT)
+                || mainLineDisabled() || isForcedOnlyApplicable()) {
             return false;
         }
         final List<String> preferred = Utils.splitLanguages(mPrefs.languageSubtitle);
-        if (preferred.isEmpty()) {
-            return false;
-        }
-        int best = preferred.size();
-        boolean bestForced = true;
-        TrackGroup bestGroup = null;
-        int bestIndex = 0;
+        if (preferred.isEmpty()) return false;
+        final Tracks tracks = player.getCurrentTracks();
+
+        // A tagged fallback can already be selected while the top-priority language has only
+        // a name. Compare both tracks rather than refusing to act whenever *any* track plays.
+        // Full subtitles outrank forced tracks, and within each group language priority wins.
+        int selectedScore = Integer.MAX_VALUE;
+        final Format secondary = secondaryTextTrack.get();
         for (Tracks.Group group : tracks.getGroups()) {
-            if (group.getType() != C.TRACK_TYPE_TEXT) {
-                continue;
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+            for (int i = 0; i < group.length; i++) {
+                if (!group.isTrackSelected(i)) continue;
+                final Format format = group.getTrackFormat(i);
+                if (secondary != null && secondary.equals(format)) continue;
+                final String language = TrackOrder.language(format, trackName(format));
+                final int rank = preferred.indexOf(language);
+                final boolean forced = TrackOrder.forced(format, trackName(format));
+                selectedScore = Math.min(selectedScore, (forced ? 10000 : 0)
+                        + (rank < 0 ? preferred.size() + 1 : rank));
             }
+        }
+
+        TrackGroup bestGroup = null;
+        int bestIndex = -1;
+        int bestScore = selectedScore;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
             for (int i = 0; i < group.length; i++) {
                 final Format format = group.getTrackFormat(i);
-                // A tagged track is the selector's business, and it has already had its say on it.
                 if (!group.isTrackSupported(i) || isPhantomClosedCaption(format)
-                        || Utils.toIso3Language(format.language) != null) {
-                    continue;
-                }
+                        || Utils.toIso3Language(format.language) != null) continue;
                 final int rank = preferred.indexOf(
-                        Utils.languageInName(trackName(format), preferred));
-                if (rank < 0) {
-                    continue;
-                }
-                final boolean forced = (format.selectionFlags & C.SELECTION_FLAG_FORCED) != 0;
-                if ((bestForced && !forced) || (bestForced == forced && rank < best)) {
-                    best = rank;
-                    bestForced = forced;
+                        TrackOrder.language(format, trackName(format)));
+                if (rank < 0) continue;
+                final int score = (TrackOrder.forced(format, trackName(format)) ? 10000 : 0)
+                        + rank;
+                if (score < bestScore) {
                     bestGroup = group.getMediaTrackGroup();
                     bestIndex = i;
+                    bestScore = score;
                 }
             }
         }
-        if (bestGroup == null) {
-            return false;
-        }
+        if (bestGroup == null) return false;
         applySubtitle(bestGroup, bestIndex);
         return true;
+    }
+
+    private Format selectedAudioForForcedOnly() {
+        if (player == null) return null;
+        final Format format = player.getAudioFormat();
+        if (format != null) return format;
+        for (Tracks.Group group : player.getCurrentTracks().getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
+            for (int i = 0; i < group.length; i++)
+                if (group.isTrackSelected(i)) return group.getTrackFormat(i);
+        }
+        return null;
+    }
+
+    private boolean isForcedOnlyApplicable() {
+        if (!mPrefs.forcedSubtitleOnly) return false;
+        final Format audio = selectedAudioForForcedOnly();
+        if (audio == null) return false;
+        final String language = TrackOrder.language(audio, trackName(audio));
+        if (language == null) return false;
+        final List<String> preferred = Utils.splitLanguages(mPrefs.languageAudio);
+        if (preferred.isEmpty())
+            TrackOrder.addLanguageIfMissing(preferred,
+                    Utils.toIso3Language(Locale.getDefault().getLanguage()));
+        return preferred.contains(language);
+    }
+
+    /**
+     * Automatic forced subtitles yield to manual selections and explicit Lampa track requests.
+     * The opt-in preference is off by default; automatic suppression is restored on the next item.
+     */
+    private void applyForcedOnlyAutomaticSelection(Tracks tracks) {
+        if (player == null || forcedOnlyManualForItem || mPrefs.subtitleTrackId != null
+                || paintedSubtitleUri != null || (nestedPlaylistSession
+                && nestedEffectiveTrackRequest(true) != null)) return;
+        if (!isForcedOnlyApplicable()) {
+            if (forcedOnlyAutoOff || forcedOnlyAutoSelected) {
+                final boolean wasOff = forcedOnlyAutoOff;
+                forcedOnlyAutoOff = false;
+                forcedOnlyAutoSelected = false;
+                if (wasOff) {
+                    mainLineOff = false;
+                    final int renderer = textRendererIndex(1);
+                    if (renderer >= 0 && trackSelector != null)
+                        trackSelector.setParameters(trackSelector.buildUponParameters()
+                                .setRendererDisabled(renderer, false));
+                }
+                if (forcedOnlyAutoSelected || !wasOff) {
+                    player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build());
+                }
+            }
+            return;
+        }
+        if (mainLineOff && !forcedOnlyAutoOff) return;
+        final List<String> languages = Utils.splitLanguages(mPrefs.languageSubtitle);
+        TrackOrder.addLanguageIfMissing(languages,
+                Utils.toIso3Language(Locale.getDefault().getLanguage()));
+        final Format audio = selectedAudioForForcedOnly();
+        if (audio != null)
+            TrackOrder.addLanguageIfMissing(languages,
+                    TrackOrder.language(audio, trackName(audio)));
+        TrackGroup chosenGroup = null;
+        int chosenIndex = -1;
+        int bestRank = Integer.MAX_VALUE;
+        boolean selected = false;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() != C.TRACK_TYPE_TEXT) continue;
+            for (int i = 0; i < group.length; i++) {
+                final Format text = group.getTrackFormat(i);
+                if (!group.isTrackSupported(i) || isPhantomClosedCaption(text)
+                        || !TrackOrder.forced(text, trackName(text))) continue;
+                final String language = TrackOrder.language(text, trackName(text));
+                final int rank = language == null ? languages.size()
+                        : languages.indexOf(language) >= 0
+                        ? languages.indexOf(language) : languages.size() + 1;
+                if (rank < bestRank) {
+                    chosenGroup = group.getMediaTrackGroup();
+                    chosenIndex = i;
+                    bestRank = rank;
+                    selected = group.isTrackSelected(i);
+                }
+            }
+        }
+        if (chosenGroup == null) {
+            if (!forcedOnlyAutoOff) {
+                forcedOnlyAutoOff = true;
+                forcedOnlyAutoSelected = false;
+                // Only the primary line is suppressed. disableSubtitles() would also erase
+                // a user-selected secondary line, which the forced-only mode does not own.
+                mainLineOff = true;
+                final int primary = textRendererIndex(1);
+                if (primary >= 0 && trackSelector != null) {
+                    trackSelector.setParameters(trackSelector.buildUponParameters()
+                            .setRendererDisabled(primary, true));
+                } else {
+                    player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build());
+                }
+                if (subtitleOffset != null) subtitleOffset.hide();
+            }
+            return;
+        }
+        if (selected && !mainLineOff) return;
+        forcedOnlyAutoOff = false;
+        forcedOnlyAutoSelected = true;
+        applySubtitle(chosenGroup, chosenIndex);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -9965,6 +10256,16 @@ public class PlayerActivity extends Activity {
         return b.toString();
     }
 
+    private static final class SubtitleMenuChoice {
+        final Format format;
+        final Dialogs.MenuItem item;
+
+        SubtitleMenuChoice(Format format, Dialogs.MenuItem item) {
+            this.format = format;
+            this.item = item;
+        }
+    }
+
     // Subtitle picker in the same native side panel as audio/quality (replaces the Media3 built-in popup).
     private void showSubtitleDialog() {
         if (player == null) {
@@ -9976,6 +10277,7 @@ public class PlayerActivity extends Activity {
         final Uri fileOnly = subtitleWithoutTrack();
         final boolean painting = paintedSubtitleUri != null;
         final List<Dialogs.MenuItem> items = new ArrayList<>();
+        final List<SubtitleMenuChoice> subtitleChoices = new ArrayList<>();
         // Three kinds of row live in this one panel — a doorway into another list, the choices for this
         // line, and an action — so each gets a register of its own rather than an icon to be told apart
         // by. The doorway leads: its summary names what the second line is showing, so that state reads
@@ -9994,6 +10296,7 @@ public class PlayerActivity extends Activity {
         }
         items.add(new Dialogs.MenuItem(getString(R.string.subtitle_off), null, !textEnabled && !painting,
                 () -> {
+                    forcedOnlyManualForItem = true;
                     rememberNestedViewerSubtitleOff();
                     disableSubtitles();
                 }));
@@ -10028,13 +10331,24 @@ public class PlayerActivity extends Activity {
                 final int index = i;
                 // !painting: an embedded track can stay selected while the file is painted over it
                 // (SubtitleOffset drops the renderer's cues), and two ticked rows is a lie.
-                items.add(new Dialogs.MenuItem(text[0], text[1],
-                        textEnabled && !painting && group.isTrackSelected(i),
-                        () -> {
-                            rememberNestedViewerSubtitle(trackGroup, index);
-                            applySubtitle(trackGroup, index);
-                        }));
+                subtitleChoices.add(new SubtitleMenuChoice(format,
+                        new Dialogs.MenuItem(text[0], text[1],
+                                textEnabled && !painting && group.isTrackSelected(i),
+                                () -> {
+                                    forcedOnlyManualForItem = true;
+                                    rememberNestedViewerSubtitle(trackGroup, index);
+                                    applySubtitle(trackGroup, index);
+                                })));
             }
+        }
+        final List<String> subtitlePriorities = Utils.splitLanguages(mPrefs.languageSubtitle);
+        TrackOrder.addLanguageIfMissing(subtitlePriorities,
+                Utils.toIso3Language(Locale.getDefault().getLanguage()));
+        TrackOrder.addLanguageIfMissing(subtitlePriorities, "eng");
+        subtitleChoices.sort((a, b) -> TrackOrder.compareSubtitle(
+                a.format, trackName(a.format), b.format, trackName(b.format), subtitlePriorities));
+        for (SubtitleMenuChoice choice : subtitleChoices) {
+            items.add(choice.item);
         }
         // Last, and with no tick: it is an action rather than a track, so it sits under a rule of its
         // own. Offered whatever the automatic search's switch says — pressing it is the consent that
@@ -13195,6 +13509,7 @@ public class PlayerActivity extends Activity {
             applyVolumeMode();
             updateSubtitleStyle(this);
             updateOverlayClock();
+            updateEndsAt();
             updateStats();
             resetDim();
             // Coming back from the settings screen no longer rebuilds the player by itself (see onStop),
@@ -13892,7 +14207,8 @@ public class PlayerActivity extends Activity {
                 // reads back as "exceeds capabilities" — which plays, but drops those renditions out of
                 // the quality list. The refusal means no Dolby Vision anywhere, so mapping it is free.
                 .setMapDV7ToHevc(mPrefs.mapDV7ToHevc || mPrefs.refuseDolbyVision);
-        if (forceHevcForDolbyVision || forceHevcSoftwareStage > 0 || isTvBox) {
+        if (forceHevcForDolbyVision || forceHevcSoftwareStage > 0 || isTvBox
+                || hasMediaTekVideoCodec()) {
             // One combined codec selector for two independent needs:
             // - heavy MKV audio on a TV: no platform decoder for those codecs, so they passthrough (if
             //   the sink supports it) or fall back to ffmpeg (see above).
@@ -13917,6 +14233,21 @@ public class PlayerActivity extends Activity {
                     infos.addAll(MediaCodecSelector.DEFAULT.getDecoderInfos(
                             mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
                     return infos;
+                }
+                if (!forceHevcForDolbyVision && hasMediaTekVideoCodec()
+                        && MimeTypes.VIDEO_DOLBY_VISION.equals(mimeType)) {
+                    // Fire TV and other MediaTek devices may advertise a vendor Dolby Vision codec
+                    // while the connected television omits Dolby Vision from EDID capabilities.
+                    // Query the codec directly and prefer its advertised DV decoder rather than
+                    // assuming a plain HEVC path from display capability alone.
+                    final List<MediaCodecInfo> candidates = new ArrayList<>(
+                            MediaCodecSelector.DEFAULT.getDecoderInfos(
+                                    mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
+                    if (!candidates.isEmpty()) {
+                        candidates.sort((left, right) -> Boolean.compare(
+                                !isMediaTekDecoder(left.name), !isMediaTekDecoder(right.name)));
+                        return candidates;
+                    }
                 }
                 if (forceHevcSoftwareStage > 0 && forceHevcSoftwareStage < 3
                         && MimeTypes.VIDEO_H265.equals(mimeType)
@@ -14959,6 +15290,10 @@ public class PlayerActivity extends Activity {
             playerView.removeCallbacks(reselectWedgeRunnable);
             playerView.removeCallbacks(rebufferArmRunnable);
             audioReleasedForBackground = false;
+            videoReleasedForBackground = false;
+            audioAutomaticallyChosenByName = false;
+            forcedOnlyAutoOff = false;
+            forcedOnlyAutoSelected = false;
             audioRestartPending = false;
             audioRestartInFlight = false;
             audioRestartSettling = false;
@@ -15027,6 +15362,9 @@ public class PlayerActivity extends Activity {
         stopEndsAtUpdates();
         if (overlayClock != null) {
             overlayClock.setVisibility(View.GONE);
+        }
+        if (overlayTimeDetail != null) {
+            overlayTimeDetail.setVisibility(View.GONE);
         }
         setEpisodeNavLoading(false);
         Glide.with(getApplicationContext()).clear(posterView);
@@ -15258,6 +15596,21 @@ public class PlayerActivity extends Activity {
             if (!videoLoading && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                 modeMatchPending = true;
             }
+            if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+                if (audioAutomaticallyChosenByName && player != null) {
+                    audioAutomaticallyChosenByName = false;
+                    player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_AUDIO).build());
+                }
+                if (forcedOnlyAutoOff) mainLineOff = false;
+                if (forcedOnlyAutoSelected && player != null) {
+                    player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_TEXT).build());
+                }
+                forcedOnlyAutoSelected = false;
+                forcedOnlyAutoOff = false;
+                forcedOnlyManualForItem = false;
+            }
             // A burst in progress belonged to the item that just ended: its target and the place Back
             // would undo to are offsets into a file nobody is watching any more. releasePlayer says the
             // same thing for the path it covers, but an auto-advance and seekToNextMediaItem never
@@ -15374,6 +15727,8 @@ public class PlayerActivity extends Activity {
             // labels are matched against the same human-readable names the menu shows.
             resolveTrackNames();
             applyNestedTrackRequests(tracks);
+            selectAudioByName();
+            applyForcedOnlyAutomaticSelection(tracks);
             updateMediaInfo();
             // In-stream renditions are known only now, so the quality button's visibility can change.
             updateQualityButton();
@@ -15402,10 +15757,10 @@ public class PlayerActivity extends Activity {
             // Both searches wait for this moment, and the cheap one goes first: a file lying next to the
             // media costs one request and no quota, and finding it can leave the online search with
             // nothing to look for.
-            startSubtitleGuess();
+            if (!isForcedOnlyApplicable()) startSubtitleGuess();
             // The track list is what decides whether anything is missing, so this is the first moment
             // the question can be asked at all.
-            maybeSearchSubtitlesOnline(tracks);
+            if (!isForcedOnlyApplicable()) maybeSearchSubtitlesOnline(tracks);
             // Apply sticky launcher-source choices only after the new item and its tracks are settled.
             // Voice goes first because it may replace the source entirely; quality then applies inside
             // the chosen voice.
@@ -15502,6 +15857,13 @@ public class PlayerActivity extends Activity {
                 playerView.postDelayed(rebufferArmRunnable, REBUFFER_ARM_MS);
             }
             resetDim();
+            updateOverlayClock();
+            updateEndsAt();
+            if (controllerVisible || wantsOverlayTimeDetails()) {
+                startEndsAtUpdates();
+            } else {
+                stopEndsAtUpdates();
+            }
 
             if (Utils.isPiPSupported(PlayerActivity.this)) {
                 if (isPlaying) {
