@@ -230,4 +230,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "ARX TPlayer 2.4.1-arx1 (mainline)" \
             --notes "Mainline ARX TPlayer 2.4.1-arx1. Open reconstructed source from main and ARX branding; audio JNI matches vendor 2.4.1 SHA-pinned binaries. Automated Android 15 and TV emulator tests passed. NOT full functional parity with vendor Just+ 2.4.1: new EQ, PCM-to-Dolby encoding, DRM, picture controls, Ambient Light and HTTPS resume repair are still pending. Physical ATV tests and hardware passthrough/DV remain unverified. See docs/ARX-2.4.1-port.md. Signed with existing ARX certificate and versionCode 2004002 to support updating existing ARX installations."
-          echo "Published preview: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published mainline: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
