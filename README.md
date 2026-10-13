@@ -1,19 +1,18 @@
-# ARX TPlayer — независимая реконструкция Just+ Player
+# ARX TPlayer — открытая реконструкция Just+ Player
 
-ARX TPlayer — отдельная сборка с собственными исправлениями, интерфейсом и механизмом обновления через [ARX Releases](https://github.com/ARST113/Arst-player-/releases). Основа: публичные исходники Just+ Player и совместимая реализация функций последних выпусков. Происхождение проекта и авторство оригинальных компонентов сохраняются.
+[![Latest ARX release](https://img.shields.io/github/v/release/ARST113/Arst-player-?label=ARX%20TPlayer&logo=github)](https://github.com/ARST113/Arst-player-/releases/latest)
 
-**Ветка `arx/v2.3.0-port`: работа над совместимостью с Just+ Player v2.3.0. Фактическая готовность функций фиксируется в `docs/ARX-2.3.0-port.md`; версия не является полной реализацией до завершения проверки.**
+**Актуальная ветка:** [master](https://github.com/ARST113/Arst-player-/tree/master) · **Загрузить:** [последний релиз ARX](https://github.com/ARST113/Arst-player-/releases/latest) · [исходный код](https://github.com/ARST113/Arst-player-).
+
+ARX TPlayer — независимая сборка видеоплеера для Android и Android TV с открытым реконструируемым кодом, собственным оформлением, исправлениями, интеграцией Lampa и каналом обновлений. Происхождение от Just+ Player и Just (Video) Player сохраняется в разделе Credits.
+
+**Важно о выпуске 2.4.1-arx1:** подтверждены сборка, базовое воспроизведение, субтитры, AVI, управление на эмуляторе Android TV и обновление FFmpeg audio JNI. Однако новые возможности оригинального Just+ 2.4.x (встроенный эквалайзер, DD/DD+ encoding, управление параметрами изображения, Ambient Light и DRM) **ещё не портированы полностью**. Не следует считать ARX побайтовой или функциональной копией исходного APK. Подробности: [трекер соответствия 2.4.1](docs/ARX-2.4.1-port.md).
 
 ---
 
-# Just+ Player
+## Основа проекта: Just+ Player
 
-[![Latest release](https://img.shields.io/github/v/release/just-plus-player/just-plus-player?logo=github&logoColor=white&cacheSeconds=3600)](https://github.com/just-plus-player/just-plus-player/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/just-plus-player/just-plus-player/total?logo=github&logoColor=white&label=downloads&cacheSeconds=3600)](https://github.com/just-plus-player/just-plus-player/releases)
 [![Media3](https://img.shields.io/badge/Media3-1.11.1-007ec6?cacheSeconds=3600)](https://github.com/androidx/media/releases/tag/1.11.1)
-
-> [!NOTE]
-> Starting with 2.1.1, this repository publishes releases only — the APKs and their release notes — and not the source code. The source here stays at 2.0.11.
 
 Video player and file browser for Android phones, tablets and Android TV, built on [Media3](https://github.com/androidx/media) (formerly [ExoPlayer](https://github.com/google/ExoPlayer)). Android 6.0 or later, one APK for all form factors.
 
@@ -21,15 +20,19 @@ It is a fork of [Just (Video) Player](https://github.com/moneytoo/Player) by Mar
 
 <img src="fastlane/metadata/android/en-US/images/readmeScreenshots/player.jpg" width="880">
 
-## Install
+## Установка
 
-[![Download the APK](https://img.shields.io/badge/Download%20the%20APK-latest%20release-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/just-plus-player/just-plus-player/releases/latest) [![Downloader code 1183424](https://img.shields.io/badge/Downloader%20code-1183424-FF9900?style=for-the-badge&logo=amazonfiretv&logoColor=white)](https://www.aftvnews.com/downloader/)
+[![Скачать ARX APK](https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-ARX%20APK-3DDC84?style=for-the-badge&logo=android)](https://github.com/ARST113/Arst-player-/releases/latest)
 
-**Phone, tablet, TV box** — download the APK and open it. **Android TV / Fire TV** — no keyboard needed: install [Downloader](https://www.aftvnews.com/downloader/) and enter the code above.
+- **Android / Android TV / Fire TV:** скачайте APK с [ARX Releases](https://github.com/ARST113/Arst-player-/releases/latest), откройте на устройстве и разрешите установку из этого источника.
+- **Обновление предыдущей ARX:** установите новый APK поверх старого без удаления приложения, чтобы сохранить данные и настройки. Сборки ARX подписаны единым ключом.
+- **Оригинальный Just+:** это отдельная сборка, подписанная другим ключом. Обновить оригинальный APK поверх без удаления нельзя.
+- Подробности версии, ограничения и результаты тестов опубликованы в [релизах ARX](https://github.com/ARST113/Arst-player-/releases).
 
-Sideloaded builds check for updates themselves, show what changed and install the new version through the system installer, without going through a store.
 
-## What Just+ adds
+## Возможности базового проекта Just+
+
+Ниже сохранено описание функций исходного семейства Just+. Реальная поддержка каждой функции в ARX зависит от степени её переноса; для отличий актуальной версии см. [документ соответствия](docs/ARX-2.4.1-port.md).
 
 **Files and network folders**
 
