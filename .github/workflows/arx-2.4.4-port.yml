@@ -126,12 +126,39 @@ jobs:
           cache: gradle
       - name: Import pinned FFmpeg native binaries
         run: bash .github/scripts/arx-241-import-native.sh
-      - name: Compile and run unit tests
-        run: ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+      - name: Set partial-port preview version for CI APKs only
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle')
+          text=p.read_text()
+          assert 'versionCode 2004002' in text
+          assert 'versionName "2.4.1-arx1"' in text
+          text=text.replace('versionCode 2004002', 'versionCode 2004003', 1)
+          text=text.replace('versionName "2.4.1-arx1"', 'versionName "2.4.4-arx1-preview"', 1)
+          p.write_text(text)
+          PY
+      - name: Compile signed preview APK, debug APK and run JVM tests
+        run: ./gradlew --no-daemon :app:assembleLatestUniversalRelease :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+      - name: Verify preview package version and signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p preview-apk
+          apk="$(find app/build/outputs/apk/latestUniversal/release -maxdepth 1 -type f -name '*.apk' | head -n1)"
+          test -s "$apk"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          "$aapt" dump badging "$apk" | grep -F "versionCode='2004003' versionName='2.4.4-arx1-preview'"
+          "$signer" verify --print-certs "$apk"
+          cp "$apk" preview-apk/ARX.TPlayer.v2.4.4-arx1-preview.apk
+          sha256sum preview-apk/*.apk | tee preview-apk/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ARX-2.4.4-port-debug-build
-          path: app/build/outputs/apk/latestUniversal/debug/*.apk
-          retention-days: 7
+          name: ARX-2.4.4-partial-preview-signed-apk
+          path: |
+            preview-apk/
+            app/build/outputs/apk/latestUniversal/debug/*.apk
+          retention-days: 14
           if-no-files-found: warn
