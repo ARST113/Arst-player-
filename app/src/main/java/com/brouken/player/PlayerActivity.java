@@ -3194,27 +3194,27 @@ public class PlayerActivity extends Activity {
             player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build());
         }
-        // A TV entering sleep must give back the hardware video decoder as well as the passthrough
-        // audio route. Only during genuine screen-off: Settings, HOME and external pickers also call
-        // onStop, and need not dismantle a healthy decoder. Toggling this track type releases
-        // MediaCodecVideoRenderer through onDisabled, leaving the source, timeline and progress intact.
-        final android.os.PowerManager power =
-                (android.os.PowerManager) getSystemService(POWER_SERVICE);
-        if (isTvBox && power != null && !power.isInteractive()) {
-            // Known Realtek Dolby Vision drivers fail reopening the same MediaCodec instance after
-            // screen-off (0x80001000). Leave this path to the system's process reclamation until
-            // an actual hardware validation proves the replacement safe on those boxes.
+        // Just+ 2.4.4: some Android TV MediaCodec decoders cannot retain their output when
+        // the SurfaceView is destroyed while this activity is in the background. When returning
+        // they can report READY/first-frame but show old or corrupt pixels until a keyframe.
+        // Detach the VIDEO track at every real TV background transition: onStart restores it
+        // and MediaCodecVideoRenderer constructs a fresh codec for the newly attached surface.
+        // Unlike releasePlayer(), this preserves source buffers, playlist and timecode.
+        //
+        // Keep the tested Realtek + Dolby Vision exception: those drivers can reject a second
+        // codec init (0x80001000), so the full-screen recovery path handles their failures.
+        if (isTvBox && !isChangingConfigurations()) {
             final String hardware = (Build.HARDWARE + " " + Build.BOARD + " " + Build.MANUFACTURER)
                     .toLowerCase(Locale.ROOT);
             final Format currentVideo = player.getVideoFormat();
             final boolean realtekDolbyVision = (hardware.contains("realtek") || hardware.contains("rtd"))
                     && currentVideo != null
                     && MimeTypes.VIDEO_DOLBY_VISION.equals(currentVideo.sampleMimeType);
-            if (!realtekDolbyVision) {
+            if (currentVideo != null && !realtekDolbyVision) {
                 videoReleasedForBackground = true;
                 player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                         .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build());
-                Utils.log("sleep: released hardware video decoder");
+                Utils.log("background: released TV video decoder for clean surface return");
             }
         }
         // The load watchdog only ever ran while the activity was on screen by accident: nothing cancelled it
