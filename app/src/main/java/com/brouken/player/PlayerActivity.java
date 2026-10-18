@@ -3043,6 +3043,8 @@ public class PlayerActivity extends Activity {
             arxEqualizerProcessor.setBands(ArxEqualizerDialog.enabled(this),
                     ArxEqualizerDialog.bands(this));
         }
+        pictureAppliedHash = Integer.MIN_VALUE;
+        applyArxPicture();
         if (Build.VERSION.SDK_INT >= 31) {
             playerView.removeCallbacks(barsHider);
             Utils.toggleSystemUi(this, playerView, true);
@@ -13756,6 +13758,7 @@ public class PlayerActivity extends Activity {
     }
 
     public void initializePlayer() {
+        pictureAppliedHash = Integer.MIN_VALUE;
         // Before anything asks where this file was left: another screen may have written that since
         // this activity was created, and on a torrent server another device may have.
         mPrefs.reloadPositions();
