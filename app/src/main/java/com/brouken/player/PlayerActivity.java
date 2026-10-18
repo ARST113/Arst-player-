@@ -1248,6 +1248,7 @@ public class PlayerActivity extends Activity {
     private Boolean centreBoostSession;
     private DynamicRangeProcessor dynamicRangeProcessor;
     private ArxEqualizerProcessor arxEqualizerProcessor;
+    private int pictureAppliedHash = Integer.MIN_VALUE;
     // How this session offers segments, or null to follow the settings. One value for both kinds,
     // because the viewer mid-film holds one intention and not two — "stop interrupting me in this
     // series" — and two rows of it were two rows of the same answer. Same life as the offset above and
@@ -12479,6 +12480,33 @@ public class PlayerActivity extends Activity {
      * carry a row called "More" that opened the real settings screen: one glyph, two destinations, and
      * three names between them.
      */
+    private void applyArxPicture() {
+        if (player == null) return;
+        final int[] settings = ArxPictureDialog.values(this);
+        final int hash = java.util.Arrays.hashCode(settings);
+        if (hash == pictureAppliedHash) return;
+        final Format video = player.getVideoFormat();
+        final boolean protectedVideo = ArxDrm.isProtected(player.getCurrentMediaItem());
+        final boolean dolbyVision = video != null
+                && MimeTypes.VIDEO_DOLBY_VISION.equals(video.sampleMimeType);
+        final boolean softwareVideo = forceHevcSoftwareStage == 3
+                || (videoDecoderName != null && videoDecoderName.toLowerCase(Locale.ROOT).contains("ffmpeg"));
+        if (protectedVideo || dolbyVision || softwareVideo) {
+            // Never route protected buffers, Dolby Vision or native fallback through a GL editor.
+            if (pictureAppliedHash != Integer.MIN_VALUE)
+                player.setVideoEffects(Collections.emptyList());
+            pictureAppliedHash = Integer.MIN_VALUE;
+            return;
+        }
+        pictureAppliedHash = hash;
+        try {
+            player.setVideoEffects(ArxPictureDialog.effects(this));
+        } catch (RuntimeException error) {
+            pictureAppliedHash = Integer.MIN_VALUE;
+            Utils.log("picture effects unavailable: " + error);
+        }
+    }
+
     private void showMoreMenu() {
         final List<Dialogs.MenuItem> items = new ArrayList<>();
         // The bands are divided by the rules below rather than by captions: a caption over the first of
@@ -12494,6 +12522,14 @@ public class PlayerActivity extends Activity {
             items.add(new Dialogs.MenuItem(R.drawable.ic_audiotrack_24dp, "Equalizer · 10 bands",
                     ArxEqualizerDialog.enabled(this) ? "Enabled" : "Off", false,
                     () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
+            if (!ArxDrm.isProtected(player.getCurrentMediaItem())) {
+                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Picture",
+                        ArxPictureDialog.active(this) ? "Adjusted" : "Neutral", false,
+                        () -> ArxPictureDialog.show(this, () -> {
+                            pictureAppliedHash = Integer.MIN_VALUE;
+                            applyArxPicture();
+                        })));
+            }
         }
         // Only with subtitles on: there is nothing to shift otherwise. One row for both lines — the
         // panel behind it carries a slider each, and which is which is answered there.
@@ -15965,6 +16001,7 @@ public class PlayerActivity extends Activity {
             setEndControlsVisible(haveMedia && (state == Player.STATE_ENDED || isNearEnd));
 
             if (state == Player.STATE_READY) {
+                applyArxPicture();
                 // Audio-only items do not produce onRenderedFirstFrame().
                 if (player.getVideoFormat() == null) {
                     hideStartupSplash(true);
