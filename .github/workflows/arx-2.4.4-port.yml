@@ -114,6 +114,10 @@ jobs:
             done
             echo "==== 2.4.4 Java AC3 Encoder ===="
             sed -n '1,360p' audit-out/decompiled-244/sources/com/brouken/player/Ac3Encoder.java
+            echo "==== 2.4.4 wrapper a.java ===="
+            sed -n '1,310p' audit-out/decompiled-244/sources/com/brouken/player/a.java
+            echo "==== 2.4.4 wrapper b.java ===="
+            sed -n '1,310p' audit-out/decompiled-244/sources/com/brouken/player/b.java
           } > audit-out/vendor-dolby.txt
           head -n 150 audit-out/vendor-dolby.txt
           {
