@@ -118,7 +118,7 @@ jobs:
           head -n 150 audit-out/vendor-dolby.txt
           {
             echo "=== References to Ac3Encoder in vendor DEX ==="
-            grep -R -n -F 'Ac3Encoder.' audit-out/decompiled-244/sources/com \
+            grep -R -n -E '(Ac3Encoder|\.nPull\(|\.nPush\()' audit-out/decompiled-244/sources \
               | head -n 120 || true
             echo "=== Exported JNI encoder methods ==="
             unzip -p vendor-apk/244.apk lib/arm64-v8a/libffmpegJNI.so > /tmp/arx-vendor-ffmpegJNI.so
