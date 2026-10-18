@@ -15682,6 +15682,12 @@ public class PlayerActivity extends Activity {
 
         @Override
         public void onMediaItemTransition(MediaItem mediaItem, int reason) {
+            pictureAppliedHash = Integer.MIN_VALUE;
+            // Disable GPU grading BEFORE a protected episode starts, rather than waiting
+            // until READY (when an OEM secure decoder may already be handed a GL surface).
+            if (player != null && ArxDrm.isProtected(mediaItem)) {
+                player.setVideoEffects(Collections.emptyList());
+            }
             // The link rides the trace so the app log names the file too, masked as the setting says.
             Utils.log("item transition reason=" + reason
                     + (player != null ? " index=" + player.getCurrentMediaItemIndex() : "")
