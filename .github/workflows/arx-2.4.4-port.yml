@@ -103,6 +103,19 @@ jobs:
                       for j in range(max(0,i-3),min(len(lines),i+8)):
                           print(str(j+1)+': '+lines[j][:250])
           PY
+      - name: Inspect vendor Dolby encoder ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            for v in 241 244; do
+              echo "==== NATIVE LIBRARIES $v ===="
+              unzip -Z1 "vendor-apk/$v.apk" | grep '^lib/' || true
+            done
+            echo "==== 2.4.4 Java AC3 Encoder ===="
+            sed -n '1,360p' audit-out/decompiled-244/sources/com/brouken/player/Ac3Encoder.java
+          } > audit-out/vendor-dolby.txt
+          head -n 150 audit-out/vendor-dolby.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -111,6 +124,7 @@ jobs:
             audit-out/apk-summary.txt
             audit-out/decompiled-diff-summary.txt
             audit-out/targeted-code-evidence.txt
+            audit-out/vendor-dolby.txt
             audit-out/jadx-*.log
           retention-days: 14
 
