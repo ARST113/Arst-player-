@@ -14230,6 +14230,13 @@ public class PlayerActivity extends Activity {
                 } else {
                     builder = new DefaultAudioSink.Builder(context);
                 }
+                if (!forceCapabilities && mPrefs.audioPassthrough
+                        && ArxDolbyProvider.mode(context) > 0) {
+                    // The encoder sees PCM after EQ, dialogue gain and night-mode processors.
+                    // On force-capabilities mode the custom provider cannot replace the
+                    // force-configured sink, so leave its existing behavior untouched.
+                    builder.setAudioOutputProvider(new ArxDolbyProvider(context, routeChannels));
+                }
                 builder.setEnableFloatOutput(enableFloatOutput)
                         .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                         // Night mode after the boost, so it sees what the boost and the dialogue
