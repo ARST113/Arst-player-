@@ -635,6 +635,7 @@ public class PlayerActivity extends Activity {
     // Re-reads spent on network source errors this session (see recoverFromSourceError), reset per player
     // build so a chronically bad stream costs a bounded number of re-prepares instead of one per resume.
     private int sourceRetries;
+    private int torrIncompleteSkips;
     // The stream the budget above was spent on, so a rebuild of the same one does not refill it.
     private String sourceRetriesUri;
     private static final int MAX_SOURCE_RETRIES = 3;
@@ -16497,6 +16498,27 @@ public class PlayerActivity extends Activity {
             return false;
         }
         if (sourceRetries >= MAX_SOURCE_RETRIES) {
+            // 2.4.2: an unfinished TorrServer MKV may contain a gap in an as-yet
+            // unavailable piece. Once normal re-reads have failed, skip that
+            // small corrupted span rather than leave the viewer on a black screen.
+            final Uri source = currentMediaUri();
+            final String path = source == null ? null : source.getPath();
+            final boolean torrent = source != null && (TorrFiles.speaks(source)
+                    || (path != null && path.contains("/stream/")));
+            if (torrent && isMatroskaMedia() && isBadBytes(error)
+                    && torrIncompleteSkips < 3 && player.isCurrentMediaItemSeekable()) {
+                final long position = player.getCurrentPosition();
+                final long duration = player.getDuration();
+                if (duration == C.TIME_UNSET || position + 3_000L < duration) {
+                    ++torrIncompleteSkips;
+                    sourceRetries = 0;
+                    Utils.log("incomplete torrent MKV: skipping 2 seconds past missing piece");
+                    player.seekTo(position + 2_000L);
+                    updateLoading(true);
+                    playerView.postDelayed(sourceRetryRunnable, 500L);
+                    return true;
+                }
+            }
             return false;
         }
         // The position is gone from the window, so re-preparing there would only reproduce the error until
