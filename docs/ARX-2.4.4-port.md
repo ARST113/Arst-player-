@@ -24,15 +24,43 @@ The new 2.4.4 `PlayerActivity` DEX builds a playlist callback snapshot and, for 
 - **2.4.2 subtitle ordering**: preferred languages keep their explicit priority; all other subtitle tracks sort by their top-line displayed name rather than by language code. Regression unit tests cover this and preferred-track precedence.
 - **APK audit**: SHA-verified comparison and DEX inspection preserved in CI artifacts, not committed vendor APKs or recompiled decompiled vendor code.
 
-## Deliberately not claimed as transferred
+## New in this experimental 2.4.4 preview
 
-- 2.4.0: ten-band EQ, Dolby Digital / Dolby Digital Plus encoding, picture controls, Ambient Light and DRM are still missing from the ARX baseline.
-- 2.4.1: vendor HTTPS pause/resume and protected-picture fixes need independent implementation/validation.
-- 2.4.2: revised automatic refresh-rate modes, incomplete TorrServer MKV skip logic, Ambient Light liveness and crop/zoom reconnect handling need separate code-level porting.
-- 2.4.3–2.4.4: exact OEM decoder-specific behavior cannot be considered verified until tested on real Android TV equipment.
+- **Ten-band PCM EQ**: software biquads at 31–16,000 Hz with six locally configured presets, ±12 dB, and immediate control from More or Settings. Bypasses direct encoded passthrough.
+- **Experimental Dolby Digital / Dolby Digital Plus encoder**: restored the vendor's exact `Ac3Encoder` native JNI interface (`nAvailable/nOpen/nPush/nPull/nDelay/nFinish/nRelease`) and attached an `AudioOutputProvider` wrapper *after* Media3's EQ, volume and night-mode processors. A Dolby bitstream is attempted for 48 kHz decoded PCM with 3–8 channels, only when the receiver reports passthrough support. Off by default. Modes: Off / Automatic / Always, bitrate 448 or 640 kbit/s. This branch compiles, but **bitstream correctness, 5.1 speaker ordering, synchronization, 7.1 handling, FFmpeg native ABI and 448/640 options all require physical-receiver validation**. Turn Off if sound is absent or out of sync. Forced passthrough capabilities intentionally skip the experimental provider until validated.
+- **Picture editor**: five persistent GPU parameters, Brightness, Contrast, Saturation, Warmth and Lightness, five presets. Media3 GPU video effects; no processing for DRM, Dolby Vision or native software-decoded video. Exact vendor gamma/shadows/sharpness controls are **not** yet replicated.
+- **Ambient Light**: four modes Glow/Cinema/Echo/Mirror plus Off, edge sampling from a 32×18 bitmap via PixelCopy or TextureView, adjustable reach, brightness and refresh speed, adaptive sampling backoff, automatically disabled for protected or Dolby Vision playback. TV placement/letterboxing must be checked on hardware.
+- **Widevine and ClearKey manifest/explicit licence**: Media3 DRM configuration accepted via launcher bundles or URI parameters; disables picture and Ambient UI for DRM streams. Header mapping and DRM URL support are incomplete relative to all possible licence-server protocols.
+- **Refresh-rate matching selector**: Legacy, Off, Automatic, Same, Double and Highest; earlier preferences survive via Legacy. Resolution match remains optional.
+- **Incomplete MKV on TorrServer**: bounded recovery skips a 2-second hole after ordinary re-read attempts are exhausted, at most three times per item. Needs field validation before calling it equivalent to the vendor solution.
+- **TV Resize/Zoom**: existing crop/aspect picker exposed in the More menu.
+- **2.4.4 callbacks, TV decoder restoration and 2.4.2 subtitle ordering**, documented above.
+
+## Known omissions and risks
+
+- Picture **gamma, shadows, sharpness**: dedicated GPU controls absent.
+- DRM licence formats outside the implemented Widevine/ClearKey configuration, including custom POST bodies and licence transforms, have not been verified.
+- The HTTPS >30-second pause fix and exact vendor refresh-rate/OEM recovery paths need on-device regression tests.
+- Ambient Light on atypical TV surface layouts and HDR paths requires hardware validation.
+- Dolby encoder is experimental: the native ABI matches the reference but no real HDMI audio has yet been heard or captured. It is off by default.
+- Original 2.4.4 is a closed APK with obfuscated R8 output; compilation and feature-similar implementation are **not proof of complete functional parity**.
 
 ## Verification and release policy
 
 GitHub Actions on the feature branch runs APK checksum comparison, source compilation and JVM unit tests. A successful emulator or compiler does not establish hardware decoder, HDMI passthrough, Dolby Vision or TorrServer parity.
 
 Do **not** merge or publish this branch as a fully compatible Just+ 2.4.4 replacement solely on the basis of a successful Gradle run. Test Lampa nested playlists (callback interval + final result), TV HOME/settings/sleep/return, seek and stream switching, DV profiles, AC3/EAC3/DTS output and TorrServer incomplete MKV on real hardware. Stable `master` remains on its existing ARX baseline until validated.
+
+
+## Suggested first hands-on test sequence
+
+1. Install signed `ARX.TPlayer.v2.4.4-arx1-preview.apk` over previous ARX without uninstalling, confirm settings survive. This APK is **experimental**.
+2. Play the same Lampa playlist as before. Verify loading splash and post-buffer first frame, audio/subtitle/quality selections, switching episode, progress callback every requested interval, Back/final callback.
+3. Open More > Equalizer. Toggle it and test a voice preset on an AAC file. With native DTS/AC3 passthrough, EQ should bypass.
+4. Open More > Picture and Ambient Light, test wide-screen letterbox, bright and dark scenes, remote focus, video seek, and navigation back to the player.
+5. Test Settings > match refresh rate with 24/25/30/60 FPS clips, then disable before trying unusual resolutions.
+6. Test HOME/Settings/standby/return on Android TV, HEVC/HDR10/Dolby Vision including Realtek if available.
+7. Only if connected to a receiver known to decode DD/DD+: enable experimental Dolby encode and test a 48 kHz multichannel source. If audio is missing, distorted or out of sync, immediately turn the mode Off. Collect model, Android version and a logcat trace.
+8. Test seeking inside partially downloaded TorrServer MKV; report any loop, jump, or missing subtitles.
+
+Do not promote this PR to stable until these regressions have been checked and outstanding discrepancies decided explicitly.
