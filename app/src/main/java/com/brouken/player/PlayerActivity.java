@@ -5745,6 +5745,7 @@ public class PlayerActivity extends Activity {
             final MediaItem.Builder itemBuilder = new MediaItem.Builder()
                     .setUri(uri)
                     .setMediaMetadata(metadataBuilder.build());
+            ArxDrm.configure(itemBuilder, uri, playlist);
 
             final List<MediaItem.SubtitleConfiguration> itemSubs =
                     buildNestedSubtitleConfigurations(item.activeSubtitles());
@@ -6293,6 +6294,7 @@ public class PlayerActivity extends Activity {
             final MediaItem.Builder itemBuilder = new MediaItem.Builder()
                     .setUri(uri)
                     .setMediaMetadata(metadataBuilder.build());
+            ArxDrm.configure(itemBuilder, uri, bundle);
             // Per-episode external subtitles. They have to ride on the item itself: a playlist replaces the
             // single media item wholesale, so the apiSubs of a lone video never reach it.
             final List<MediaItem.SubtitleConfiguration> itemSubs = readPlaylistSubtitles(subtitles, i);
@@ -14609,6 +14611,8 @@ public class PlayerActivity extends Activity {
             MediaItem.Builder mediaItemBuilder = new MediaItem.Builder()
                     .setUri(mPrefs.mediaUri)
                     .setMimeType(mPrefs.mediaType);
+            ArxDrm.configure(mediaItemBuilder, mPrefs.mediaUri,
+                    getIntent() == null ? null : getIntent().getExtras());
             String title;
             if (apiTitle != null) {
                 title = apiTitle;
