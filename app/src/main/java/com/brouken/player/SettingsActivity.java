@@ -438,6 +438,14 @@ public class SettingsActivity extends AppCompatActivity
 
             bindBrowser();
 
+            final Preference equalizer = findPreference("arxEqualizer");
+            if (equalizer != null) {
+                equalizer.setOnPreferenceClickListener(preference -> {
+                    ArxEqualizerDialog.show(requireContext(), null);
+                    return true;
+                });
+            }
+
             final Preference language = findPreference("appLanguage");
             if (language != null) {
                 language.setSummary(AppLanguage.summary(requireContext()));
