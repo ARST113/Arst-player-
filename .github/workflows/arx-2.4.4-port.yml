@@ -1,0 +1,114 @@
+name: ARX 2.4.4 APK audit and port validation
+
+on:
+  push:
+    branches:
+      - arx/v2.4.4-port
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Download and SHA-256 verify vendor 2.4.1 and 2.4.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor-apk audit-out
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.4.1/JustPlus.Player.v2.4.1.apk -o vendor-apk/241.apk
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.4.4/JustPlus.Player.v2.4.4.apk -o vendor-apk/244.apk
+          echo "7739082ceb67bb4665ad0c17a32d9fa70f032e818bada881b1d1e3868651a09d  vendor-apk/241.apk" | sha256sum --check
+          echo "c4c955bd69d48272f43066b028dd54a370545bf6aaca2a0720ca57e3f99dff0d  vendor-apk/244.apk" | sha256sum --check
+      - name: Compare archive resources native libraries and DEX
+        shell: bash
+        run: |
+          python3 - <<'PY' | tee audit-out/apk-summary.txt
+          import zipfile, hashlib
+          a,b=(zipfile.ZipFile('vendor-apk/'+x+'.apk') for x in ('241','244'))
+          da={i.filename:hashlib.sha256(a.read(i.filename)).hexdigest() for i in a.infolist()}
+          db={i.filename:hashlib.sha256(b.read(i.filename)).hexdigest() for i in b.infolist()}
+          changed=[x for x in sorted(da.keys()|db.keys()) if da.get(x)!=db.get(x)]
+          print('2.4.1 archive entries',len(da),'2.4.4 entries',len(db),'changed entries',len(changed))
+          for x in changed:
+              print(x, 'ADDED' if x not in da else 'REMOVED' if x not in db else 'MODIFIED',da.get(x,'-')[:16],db.get(x,'-')[:16])
+          PY
+          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          for v in 241 244; do "$aapt" dump badging "vendor-apk/$v.apk" | head -n3; done
+      - name: Disassemble DEX with JADX and report relevant Java changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/skylot/jadx/releases/download/v1.5.3/jadx-1.5.3.zip -o /tmp/jadx.zip
+          mkdir -p /tmp/arx-jadx
+          unzip -q /tmp/jadx.zip -d /tmp/arx-jadx
+          chmod +x /tmp/arx-jadx/bin/jadx
+          for v in 241 244; do
+            /tmp/arx-jadx/bin/jadx --no-res --no-debug-info --threads-count 3 \
+              -d "audit-out/decompiled-$v" "vendor-apk/$v.apk" > "audit-out/jadx-$v.log" 2>&1 || true
+          done
+          python3 - <<'PY' | tee audit-out/decompiled-diff-summary.txt
+          from pathlib import Path
+          import difflib,re
+          a=Path('audit-out/decompiled-241/sources')
+          b=Path('audit-out/decompiled-244/sources')
+          old={p.relative_to(a):p for p in a.rglob('*.java')}
+          new={p.relative_to(b):p for p in b.rglob('*.java')}
+          changed=[p for p in old.keys()|new.keys() if p not in old or p not in new or old[p].read_bytes()!=new[p].read_bytes()]
+          print('Changed decompiled Java classes:',len(changed),'of',len(new))
+          key=re.compile(r'(brouken|player|exoplayer|media3)',re.I)
+          relevant=[p for p in changed if key.search(str(p))]
+          print('Relevant changed class names (first 120):')
+          for p in sorted(relevant)[:120]:print('  ',p)
+          candidates=[p for p in relevant if re.search('PlayerActivity|CustomPlayerView|Prefs|TrackOrder|Mkv|Surface|MediaCodec|Extractor',str(p),re.I)]
+          for p in sorted(candidates)[:16]:
+              if p not in old or p not in new: continue
+              x=old[p].read_text(errors='replace').splitlines()
+              y=new[p].read_text(errors='replace').splitlines()
+              d=list(difflib.unified_diff(x,y,fromfile='2.4.1/'+str(p),tofile='2.4.4/'+str(p),n=3))
+              print('\n=== DIFF',p,'lines',len(d),'===')
+              for line in d[:310]:print(line[:450])
+          PY
+          head -n 140 audit-out/decompiled-diff-summary.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ARX-2.4.4-apk-audit
+          path: |
+            audit-out/apk-summary.txt
+            audit-out/decompiled-diff-summary.txt
+            audit-out/jadx-*.log
+          retention-days: 14
+
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Import pinned FFmpeg native binaries
+        run: bash .github/scripts/arx-241-import-native.sh
+      - name: Compile and run unit tests
+        run: ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ARX-2.4.4-port-debug-build
+          path: app/build/outputs/apk/latestUniversal/debug/*.apk
+          retention-days: 7
+          if-no-files-found: warn
