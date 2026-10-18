@@ -190,3 +190,28 @@ jobs:
             app/build/outputs/apk/latestUniversal/debug/*.apk
           retention-days: 14
           if-no-files-found: warn
+
+  preview-release:
+    if: contains(github.event.head_commit.message, 'publish-preview:')
+    needs: [compile, apk-audit]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ARX-2.4.4-partial-preview-signed-apk
+          path: dist
+      - name: Publish signed test APK as prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="arx-v2.4.4-preview-${GITHUB_SHA:0:8}"
+          apk="dist/preview-apk/ARX.TPlayer.v2.4.4-arx1-preview.apk"
+          test -s "$apk"
+          gh release create "$tag" "$apk" "dist/preview-apk/SHA256SUMS.txt" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "ARX TPlayer 2.4.4 experimental test" \
+            --notes "Experimental ARX 2.4.4 port for hands-on testing. Do not treat as full vendor feature parity. This release is a partial reconstruction. Dolby encoding and several picture controls are still under review. See PR #7 and docs/ARX-2.4.4-port.md."
