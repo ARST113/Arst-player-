@@ -6155,7 +6155,7 @@ public class PlayerActivity extends Activity {
 
     // 2.4.4 restores progress snapshots requested by the external launcher through
     // playlist.result_callback and playlist.report_interval. Keep the existing final
-    // "user"/"completion" callbacks unchanged: periodic snapshots are only "progress".
+    // "user"/"completion" callbacks unchanged: periodic snapshots use "interval", as in 2.4.4.
     // The parser clamps report_interval to at least 30 seconds; do not invent
     // unsolicited broadcasts when a launcher opted out.
     private final Runnable nestedReportRunnable = new Runnable() {
@@ -6166,7 +6166,7 @@ public class PlayerActivity extends Activity {
                 return;
             }
             touchNestedJournal();
-            sendNestedPlaylistCallback(buildNestedPlaylistResult("progress"));
+            sendNestedPlaylistCallback(buildNestedPlaylistResult("interval"));
             playerView.postDelayed(this, nestedReportIntervalMs);
         }
     };
