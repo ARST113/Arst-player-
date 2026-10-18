@@ -119,7 +119,7 @@ jobs:
             echo "==== 2.4.4 wrapper b.java ===="
             sed -n '1,310p' audit-out/decompiled-244/sources/com/brouken/player/b.java
           } > audit-out/vendor-dolby.txt
-          head -n 150 audit-out/vendor-dolby.txt
+          sed -n '145,420p' audit-out/vendor-dolby.txt
           {
             echo "=== References to Ac3Encoder in vendor DEX ==="
             grep -R -n -E '(Ac3Encoder|\.nPull\(|\.nPush\()' audit-out/decompiled-244/sources \
