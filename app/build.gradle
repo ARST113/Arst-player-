@@ -185,6 +185,7 @@ dependencies {
     }
     implementation "androidx.media3:media3-decoder:$media3_version"
     implementation "androidx.media3:media3-common:$media3_version"
+    implementation "androidx.media3:media3-effect:$media3_version"
     implementation "androidx.media3:media3-container:$media3_version"
     implementation "androidx.media3:media3-extractor:$media3_version"
     // Just+ 2.2.2 software HEVC / MPEG4 is provided by the native libffvideoJNI.so
