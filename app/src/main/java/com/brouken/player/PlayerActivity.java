@@ -12530,6 +12530,10 @@ public class PlayerActivity extends Activity {
             items.add(new Dialogs.MenuItem(R.drawable.ic_audiotrack_24dp, "Equalizer · 10 bands",
                     ArxEqualizerDialog.enabled(this) ? "Enabled" : "Off", false,
                     () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
+            if (isTvBox) {
+                items.add(new Dialogs.MenuItem(R.drawable.ic_fit_screen_24dp, "Resize / Zoom",
+                        null, false, this::showAspectModePicker));
+            }
             if (!ArxDrm.isProtected(player.getCurrentMediaItem())) {
                 items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Ambient light",
                         null, false, () -> { if (arxAmbientLight != null) arxAmbientLight.show(); }));
