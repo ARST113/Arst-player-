@@ -64,3 +64,7 @@ Do **not** merge or publish this branch as a fully compatible Just+ 2.4.4 replac
 8. Test seeking inside partially downloaded TorrServer MKV; report any loop, jump, or missing subtitles.
 
 Do not promote this PR to stable until these regressions have been checked and outstanding discrepancies decided explicitly.
+
+## Preview publishing
+
+Signed test APK builds from this branch use the stable ARX signing certificate, `versionCode 2004003` and `versionName 2.4.4-arx1-preview`. Release candidates are kept off `master`. The attached APK can be installed over the previously signed ARX builds. Testers should report any HDMI / Dolby / DV / DRM deviations in PR #7.
