@@ -6153,15 +6153,39 @@ public class PlayerActivity extends Activity {
                 duration == C.TIME_UNSET || duration <= 0 ? -1L : duration);
     }
 
-    // Just+ 2.2.2 no longer emits periodic playback progress to Lampa.
-    // Playback position and watched state are still sent by the final callback
-    // on leaving the player. Keep the methods for existing lifecycle call sites.
+    // 2.4.4 restores progress snapshots requested by the external launcher through
+    // playlist.result_callback and playlist.report_interval. Keep the existing final
+    // "user"/"completion" callbacks unchanged: periodic snapshots are only "progress".
+    // The parser clamps report_interval to at least 30 seconds; do not invent
+    // unsolicited broadcasts when a launcher opted out.
+    private final Runnable nestedReportRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!nestedPlaylistSession || nestedResultCallback == null
+                    || nestedReportIntervalMs <= 0 || player == null || !player.isPlaying()) {
+                return;
+            }
+            touchNestedJournal();
+            sendNestedPlaylistCallback(buildNestedPlaylistResult("progress"));
+            playerView.postDelayed(this, nestedReportIntervalMs);
+        }
+    };
+
     private void armNestedReportTimer() {
-        // Intentionally disabled.
+        if (playerView == null) {
+            return;
+        }
+        playerView.removeCallbacks(nestedReportRunnable);
+        if (nestedPlaylistSession && nestedResultCallback != null
+                && nestedReportIntervalMs > 0 && player != null && player.isPlaying()) {
+            playerView.postDelayed(nestedReportRunnable, nestedReportIntervalMs);
+        }
     }
 
     private void cancelNestedReportTimer() {
-        // No periodic task is scheduled in 2.2.2.
+        if (playerView != null) {
+            playerView.removeCallbacks(nestedReportRunnable);
+        }
     }
 
     private void sendNestedPlaylistCallback(final Bundle result) {
