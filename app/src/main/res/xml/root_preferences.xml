@@ -300,6 +300,23 @@
                     app:summaryOff="@string/pref_audio_passthrough_off"
                     app:summaryOn="@string/pref_audio_passthrough_on"
                     app:title="@string/pref_audio_passthrough"/>
+                <ListPreference
+                    app:defaultValue="0"
+                    app:dependency="audioPassthrough"
+                    app:entries="@array/arx_dolby_mode_entries"
+                    app:entryValues="@array/arx_dolby_mode_values"
+                    app:key="arxDolbyEncodeMode"
+                    app:title="Encode multichannel audio to Dolby (experimental)"
+                    app:summary="Requires a Dolby-capable receiver; off by default"
+                    app:useSimpleSummaryProvider="true"/>
+                <ListPreference
+                    app:defaultValue="640000"
+                    app:dependency="audioPassthrough"
+                    app:entries="@array/arx_dolby_bitrate_entries"
+                    app:entryValues="@array/arx_dolby_bitrate_values"
+                    app:key="arxDolbyBitrate"
+                    app:title="Dolby Digital encoding bitrate"
+                    app:useSimpleSummaryProvider="true"/>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
                     app:dependency="audioPassthrough"
