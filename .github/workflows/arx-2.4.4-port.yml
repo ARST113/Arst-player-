@@ -116,6 +116,15 @@ jobs:
             sed -n '1,360p' audit-out/decompiled-244/sources/com/brouken/player/Ac3Encoder.java
           } > audit-out/vendor-dolby.txt
           head -n 150 audit-out/vendor-dolby.txt
+          {
+            echo "=== References to Ac3Encoder in vendor DEX ==="
+            grep -R -n -F 'Ac3Encoder.' audit-out/decompiled-244/sources/com \
+              | head -n 120 || true
+            echo "=== Exported JNI encoder methods ==="
+            unzip -p vendor-apk/244.apk lib/arm64-v8a/libffmpegJNI.so > /tmp/arx-vendor-ffmpegJNI.so
+            nm -D /tmp/arx-vendor-ffmpegJNI.so | grep -E 'Ac3Encoder|Java_com_brouken_player' \
+              | head -n 80 || true
+          } | tee audit-out/vendor-dolby-calls.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -125,6 +134,7 @@ jobs:
             audit-out/decompiled-diff-summary.txt
             audit-out/targeted-code-evidence.txt
             audit-out/vendor-dolby.txt
+            audit-out/vendor-dolby-calls.txt
             audit-out/jadx-*.log
           retention-days: 14
 
