@@ -350,4 +350,17 @@
     <item>legacy</item><item>off</item><item>auto</item><item>same</item>
     <item>double</item><item>highest</item>
   </string-array>
+  <string-array name="arx_dolby_mode_entries">
+    <item>Off</item><item>Automatic (only for stereo PCM outputs)</item>
+    <item>Always encode multichannel PCM</item>
+  </string-array>
+  <string-array name="arx_dolby_mode_values" translatable="false">
+    <item>0</item><item>1</item><item>2</item>
+  </string-array>
+  <string-array name="arx_dolby_bitrate_entries">
+    <item>640 kbit/s</item><item>448 kbit/s (older receivers)</item>
+  </string-array>
+  <string-array name="arx_dolby_bitrate_values" translatable="false">
+    <item>640000</item><item>448000</item>
+  </string-array>
 </resources>
