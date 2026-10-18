@@ -1247,6 +1247,7 @@ public class PlayerActivity extends Activity {
     private Boolean dynamicRangeSession;
     private Boolean centreBoostSession;
     private DynamicRangeProcessor dynamicRangeProcessor;
+    private ArxEqualizerProcessor arxEqualizerProcessor;
     // How this session offers segments, or null to follow the settings. One value for both kinds,
     // because the viewer mid-film holds one intention and not two — "stop interrupting me in this
     // series" — and two rows of it were two rows of the same answer. Same life as the offset above and
@@ -3033,6 +3034,11 @@ public class PlayerActivity extends Activity {
         Utils.log("onStart" + (player == null ? ", no player" : player.getPlayerError() != null
                 ? ", player failed while away" : ", state " + stateName(player.getPlaybackState())));
         updateSubtitleStyle(this);
+        // Preferences may have been edited while Settings covered the retained player.
+        if (arxEqualizerProcessor != null) {
+            arxEqualizerProcessor.setBands(ArxEqualizerDialog.enabled(this),
+                    ArxEqualizerDialog.bands(this));
+        }
         if (Build.VERSION.SDK_INT >= 31) {
             playerView.removeCallbacks(barsHider);
             Utils.toggleSystemUi(this, playerView, true);
@@ -12483,6 +12489,9 @@ public class PlayerActivity extends Activity {
                     false, this::showSpeedDialog));
             items.add(new Dialogs.MenuItem(R.drawable.ic_volume_up_24dp, getString(R.string.sound_row),
                     soundSummary(), false, this::showSoundPanel));
+            items.add(new Dialogs.MenuItem(R.drawable.ic_audiotrack_24dp, "Equalizer · 10 bands",
+                    ArxEqualizerDialog.enabled(this) ? "Enabled" : "Off", false,
+                    () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
         }
         // Only with subtitles on: there is nothing to shift otherwise. One row for both lines — the
         // panel behind it carries a slider each, and which is which is answered there.
@@ -14179,6 +14188,8 @@ public class PlayerActivity extends Activity {
                         // are speakers worth keeping a mix for.
                         // Always in the chain, bypassed while off: the session switches it mid-film.
                         .setAudioProcessors(new AudioProcessor[]{boostProcessor,
+                                arxEqualizerProcessor = new ArxEqualizerProcessor(
+                                        ArxEqualizerDialog.enabled(context), ArxEqualizerDialog.bands(context)),
                                 dynamicRangeProcessor = new DynamicRangeProcessor(routeChannels <= 2,
                                         dynamicRangeOn())});
                 AudioSink sink = builder.build();
