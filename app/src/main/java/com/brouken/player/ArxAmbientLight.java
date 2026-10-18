@@ -55,7 +55,7 @@ final class ArxAmbientLight {
             edge[i]=new View(activity);
             edge[i].setFocusable(false);
             edge[i].setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            root.addView(edge[i],0,new CoordinatorLayout.LayoutParams(0,0));
+            root.addView(edge[i],1,new CoordinatorLayout.LayoutParams(0,0));
         }
         hide();
     }
