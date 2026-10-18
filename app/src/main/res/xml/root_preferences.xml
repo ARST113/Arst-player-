@@ -274,6 +274,10 @@
                     app:title="@string/pref_forget_dubs"/>
             </PreferenceCategory>
             <PreferenceCategory app:title="@string/pref_section_sound">
+                <Preference
+                    app:key="arxEqualizer"
+                    app:title="Equalizer · 10 bands"
+                    app:summary="Live tone controls and presets for decoded audio"/>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
                     app:key="dynamicRange"
