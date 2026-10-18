@@ -342,4 +342,12 @@
     <item>1.25x</item><item>1.5x</item><item>1.75x</item><item>2x</item>
   </string-array>
 
+  <string-array name="arx_frame_rate_entries">
+    <item>Previous settings</item><item>Off</item><item>Automatic</item>
+    <item>Same as video</item><item>Double the video rate</item><item>Highest supported</item>
+  </string-array>
+  <string-array name="arx_frame_rate_values" translatable="false">
+    <item>legacy</item><item>off</item><item>auto</item><item>same</item>
+    <item>double</item><item>highest</item>
+  </string-array>
 </resources>
