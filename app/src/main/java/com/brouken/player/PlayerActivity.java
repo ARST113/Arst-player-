@@ -1249,6 +1249,7 @@ public class PlayerActivity extends Activity {
     private DynamicRangeProcessor dynamicRangeProcessor;
     private ArxEqualizerProcessor arxEqualizerProcessor;
     private int pictureAppliedHash = Integer.MIN_VALUE;
+    private ArxAmbientLight arxAmbientLight;
     // How this session offers segments, or null to follow the settings. One value for both kinds,
     // because the viewer mid-film holds one intention and not two — "stop interrupting me in this
     // series" — and two rows of it were two rows of the same answer. Same life as the offset above and
@@ -1722,6 +1723,7 @@ public class PlayerActivity extends Activity {
         dimOverlay = findViewById(R.id.dim_overlay);
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         playerView = findViewById(R.id.video_view);
+        arxAmbientLight = new ArxAmbientLight(this, playerView.getVideoSurfaceView());
         createStartupSplash();
         // Built with the view rather than with the player: it paints from a file and asks for the
         // position lazily, so a rebuild of the player leaves it alone.
@@ -3035,6 +3037,7 @@ public class PlayerActivity extends Activity {
         Utils.log("onStart" + (player == null ? ", no player" : player.getPlayerError() != null
                 ? ", player failed while away" : ", state " + stateName(player.getPlaybackState())));
         updateSubtitleStyle(this);
+        if (arxAmbientLight != null) arxAmbientLight.start();
         // Preferences may have been edited while Settings covered the retained player.
         if (arxEqualizerProcessor != null) {
             arxEqualizerProcessor.setBands(ArxEqualizerDialog.enabled(this),
@@ -3143,6 +3146,7 @@ public class PlayerActivity extends Activity {
                     nestedPlaylistError != null ? "error" : (playbackFinished ? "completion" : "user")));
         }
         cancelNestedReportTimer();
+        if (arxAmbientLight != null) arxAmbientLight.stop();
         if (Build.VERSION.SDK_INT >= 31) {
             playerView.removeCallbacks(barsHider);
         }
@@ -3256,6 +3260,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         cancelNestedReportTimer();
+        if (arxAmbientLight != null) arxAmbientLight.stop();
         if (!handedOver) {
             releasePlayer(false);
         }
@@ -12523,6 +12528,8 @@ public class PlayerActivity extends Activity {
                     ArxEqualizerDialog.enabled(this) ? "Enabled" : "Off", false,
                     () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
             if (!ArxDrm.isProtected(player.getCurrentMediaItem())) {
+                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Ambient light",
+                        null, false, () -> { if (arxAmbientLight != null) arxAmbientLight.show(); }));
                 items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Picture",
                         ArxPictureDialog.active(this) ? "Adjusted" : "Neutral", false,
                         () -> ArxPictureDialog.show(this, () -> {
