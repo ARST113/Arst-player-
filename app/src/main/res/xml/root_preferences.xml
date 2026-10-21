@@ -58,6 +58,11 @@
                     app:key="loadingScreenMode"
                     app:title="@string/pref_loading_screen"
                     app:useSimpleSummaryProvider="true"/>
+                <SwitchPreferenceCompat
+                    app:defaultValue="true"
+                    app:key="loadingSpeed"
+                    app:summary="@string/pref_loading_speed_summary"
+                    app:title="@string/pref_loading_speed"/>
                 <PreferenceCategory app:title="@string/pref_overlay_group">
                     <ListPreference
                         app:defaultValue="paused"
