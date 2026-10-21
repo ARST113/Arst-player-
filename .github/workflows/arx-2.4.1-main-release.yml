@@ -1,9 +1,7 @@
 name: ARX 2.4.1 mainline signed release and emulator validation
 
+# Superseded by arx-2.4.4-main-release.yml. Retained for historical manual rebuilds.
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch:
 
 permissions:
