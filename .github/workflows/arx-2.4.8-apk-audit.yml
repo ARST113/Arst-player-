@@ -1,0 +1,115 @@
+name: ARX 2.4.8 vendor APK reverse audit
+on:
+  push:
+    branches: [arx/v2.4.8-port]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-vendor-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Download original 2.4.4 and 2.4.8, verify checksums
+        run: |
+          set -euo pipefail
+          mkdir -p vendor out
+          curl -fsSL --retry 3 https://github.com/just-plus-player/just-plus-player/releases/download/v2.4.4/JustPlus.Player.v2.4.4.apk -o vendor/244.apk
+          curl -fsSL --retry 3 https://github.com/just-plus-player/just-plus-player/releases/download/v2.4.8/JustPlus.Player.v2.4.8.apk -o vendor/248.apk
+          echo 'c4c955bd69d48272f43066b028dd54a370545bf6aaca2a0720ca57e3f99dff0d  vendor/244.apk' | sha256sum -c
+          echo '16ba12c72a3e69ea99d118a5a0489053b5be1a16fb0dcd5b2257b7ce3b67b06b  vendor/248.apk' | sha256sum -c
+      - name: Report exact APK resource and native library differences
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee out/archive-diff.txt
+          import hashlib,zipfile
+          old=zipfile.ZipFile('vendor/244.apk')
+          new=zipfile.ZipFile('vendor/248.apk')
+          def digest(z):
+              return {i.filename:(i.file_size,hashlib.sha256(z.read(i.filename)).hexdigest()) for i in z.infolist()}
+          a,b=digest(old),digest(new)
+          changed=[x for x in sorted(a.keys()|b.keys()) if a.get(x)!=b.get(x)]
+          print('244 archive entries:',len(a))
+          print('248 archive entries:',len(b))
+          print('Total changed entries:',len(changed))
+          print('Changed native libraries:',sum(x.startswith('lib/') for x in changed))
+          for name in changed:
+              change='ADDED' if name not in a else 'REMOVED' if name not in b else 'MODIFIED'
+              print(change,name,'old=',a.get(name),'new=',b.get(name))
+          PY
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          for v in 244 248; do "$aapt" dump badging "vendor/$v.apk" | head -n4; done | tee out/package-versions.txt
+      - name: Decompile original DEX with JADX 1.5.3
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://github.com/skylot/jadx/releases/download/v1.5.3/jadx-1.5.3.zip -o /tmp/jadx.zip
+          mkdir -p /tmp/jadx-248
+          unzip -q /tmp/jadx.zip -d /tmp/jadx-248
+          chmod +x /tmp/jadx-248/bin/jadx
+          for v in 244 248; do
+            /tmp/jadx-248/bin/jadx --no-res --no-debug-info --threads-count 3 -d "out/jadx-$v" "vendor/$v.apk" >"out/jadx-$v.log" 2>&1 || true
+          done
+      - name: Extract Blu-ray transport stream, audio and playback evidence
+        run: |
+          python3 - <<'PY' | tee out/transport-stream-evidence.txt
+          from pathlib import Path
+          import re,collections
+          PATTERNS=[
+             r'\\.m2ts',r'\\.mts',r'video/mp2t',r'video/mp2ts',
+             r'truehd',r'audio/true-hd',r'dts.hd',r'audio/vnd.dts',
+             r'eac3',r'ec-3',r'Ac3Extractor',r'TsExtractor',
+             r'Blu.?ray',r'iec61937',r'PlayerCommand',r'COMMAND_SEEK_TO',
+             r'MediaSession',r'ignoreReportedRefreshRate',r'loadSpeed'
+          ]
+          for version in ['244','248']:
+              root=Path('out/jadx-'+version+'/sources')
+              print('===== ORIGINAL VERSION',version,'=====')
+              print('Java source files:',len(list(root.rglob('*.java'))))
+              totals=collections.Counter()
+              excerpts=[]
+              for file in root.rglob('*.java'):
+                  try: lines=file.read_text(errors='replace').splitlines()
+                  except OSError: continue
+                  for i,line in enumerate(lines):
+                      matches=[p for p in PATTERNS if re.search(p,line,re.I)]
+                      if not matches:continue
+                      for pat in matches:totals[pat]+=1
+                      if len(excerpts)<360 and ('brouken/player' in str(file)
+                          or any(x.lower() in str(file).lower() for x in ('tsreader','tsextractor','ac3','truehd','mpegts','dts','session'))):
+                          excerpts.append((str(file.relative_to(root)),i+1,line[:235]))
+              print('Hits:',dict(totals))
+              print('Relevant source matches:')
+              for f,line,text in excerpts: print(f+':'+str(line),text)
+          PY
+          python3 - <<'PY' | tee out/stable-class-diff.txt
+          from pathlib import Path
+          import hashlib
+          a=Path('out/jadx-244/sources/com/brouken/player')
+          b=Path('out/jadx-248/sources/com/brouken/player')
+          old={p.relative_to(a):p for p in a.rglob('*.java')}
+          new={p.relative_to(b):p for p in b.rglob('*.java')}
+          print('Old classes:',len(old),'New classes:',len(new))
+          for p in sorted(old.keys()|new.keys()):
+              if p not in old: print('ADDED:',p)
+              elif p not in new:print('REMOVED:',p)
+              elif old[p].read_bytes()!=new[p].read_bytes():
+                  print('CHANGED:',p,hashlib.sha256(old[p].read_bytes()).hexdigest()[:12],hashlib.sha256(new[p].read_bytes()).hexdigest()[:12])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ARX-2.4.8-vendor-apk-audit
+          path: |
+            out/archive-diff.txt
+            out/package-versions.txt
+            out/transport-stream-evidence.txt
+            out/stable-class-diff.txt
+            out/jadx-*.log
+          retention-days: 14
