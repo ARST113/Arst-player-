@@ -959,6 +959,10 @@ public class PlayerActivity extends Activity {
     private final Runnable loadingSpeedRunnable = new Runnable() {
         @Override
         public void run() {
+            if (!mPrefs.loadingSpeed) {
+                stopLoadingSpeed();
+                return;
+            }
             final long total = TrackNameParsingDataSource.bytesRead.get();
             final double mbps = Math.max(0, total - loadingSpeedBytes)
                     * 1000d / LOADING_SPEED_TICK_MS * 8d / 1_000_000d;
@@ -19394,7 +19398,7 @@ public class PlayerActivity extends Activity {
             if (loading == null) {
                 loading = mPrefs.mediaUri;
             }
-            if (Utils.isNetworkMedia(loading)) {
+            if (mPrefs.loadingSpeed && Utils.isNetworkMedia(loading)) {
                 // Arm it once per wait: this runs again on every STATE_BUFFERING, and re-posting would
                 // push the delay back past the wait itself.
                 if (!loadingSpeedScheduled) {
@@ -19402,6 +19406,8 @@ public class PlayerActivity extends Activity {
                     loadingSpeedBytes = TrackNameParsingDataSource.bytesRead.get();
                     playerView.postDelayed(loadingSpeedRunnable, LOADING_SPEED_DELAY_MS);
                 }
+            } else {
+                stopLoadingSpeed();
             }
         } else {
             stopLoadingSpeed();
