@@ -14527,7 +14527,8 @@ public class PlayerActivity extends Activity {
         // Outermost on purpose: the loader must see a failed open() as a failed read() whatever failed
         // underneath, the cache included — see DeferredOpenDataSource.
         final androidx.media3.datasource.DataSource.Factory dataSourceFactory = new DeferredOpenDataSource.Factory(
-                new TrackNameParsingDataSource.Factory(hashSource, trackNameListener));
+                new M2tsDataSource.Factory(
+                        new TrackNameParsingDataSource.Factory(hashSource, trackNameListener)));
         // Dolby Vision profile 7 is rewritten as profile 8.1 on the way out of the extractor, so the
         // display gets Dolby Vision instead of the base layer's HDR10 (see Dv7Converter). Not when the
         // user asked for the base layer outright ("Dolby Vision profile 7 fallback", handled by
