@@ -1,4 +1,4 @@
-name: ARX 2.4.8 port compile and unit tests
+name: ARX 2.4.8 preview APK and tests
 on:
   push:
     branches: [arx/v2.4.8-port]
@@ -24,8 +24,8 @@ jobs:
           cache: gradle
       - name: Install SHA-verified official native FFmpeg libraries
         run: bash .github/scripts/arx-241-import-native.sh
-      - name: Compile reconstructed source and run JVM tests
-        run: ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+      - name: Compile debug, run JVM tests, then assemble signed preview
+        run: ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest :app:assembleLatestUniversalRelease
       - name: Verify debug output
         run: |
           set -euo pipefail
@@ -36,3 +36,18 @@ jobs:
           name: ARX-2.4.8-WIP-debug
           path: app/build/outputs/apk/latestUniversal/debug/*.apk
           retention-days: 7
+      - name: Check signed preview certificate and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/latestUniversal/release -type f -name '*.apk' | head -n1)"
+          test -s "$apk"
+          signer="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+          "$signer" verify --print-certs "$apk"
+          sha256sum "$apk"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ARX-TPlayer-2.4.8-arx1-preview-signed
+          path: app/build/outputs/apk/latestUniversal/release/*.apk
+          retention-days: 14
