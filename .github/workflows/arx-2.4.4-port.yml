@@ -1,9 +1,7 @@
 name: ARX 2.4.4 APK audit and port validation
 
+# Archived preview: stable checks now run in arx-2.4.4-main-release.yml.
 on:
-  push:
-    branches:
-      - arx/v2.4.4-port
   workflow_dispatch:
 
 permissions:
