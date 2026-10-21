@@ -6,13 +6,16 @@ import androidx.media3.common.Format;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.ui.DefaultTrackNameProvider;
 
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.MissingResourceException;
 
 class CustomDefaultTrackNameProvider extends DefaultTrackNameProvider {
     // Format.id -> rich container name (e.g. "DUB | Blu-Ray CEE | DTS | 5.1 | 754 kbps"), shared live
     // with PlayerActivity and populated once the container has been parsed. May be null.
     private Map<String, String> trackNames;
+    private static final Map<String, String> ISO3_TO_ISO2 = iso3LanguageMap();
 
     public CustomDefaultTrackNameProvider(Resources resources) {
         super(resources);
@@ -40,8 +43,12 @@ class CustomDefaultTrackNameProvider extends DefaultTrackNameProvider {
         }
         if (title == null || title.isEmpty()) {
             if (hasLang) {
-                title = capitalize(new Locale(format.language).getDisplayLanguage());
+                title = displayLanguageCode(format.language, Locale.getDefault());
             }
+        } else {
+            // Catalogue subtitles often label a track only "eng" or "deu". Show the
+            // language name instead of presenting the raw code as its title.
+            title = displayLanguageCode(title, Locale.getDefault());
         }
 
         final String tech = techInfo(format);
@@ -87,6 +94,43 @@ class CustomDefaultTrackNameProvider extends DefaultTrackNameProvider {
             t.append(bitrate / 1000).append('k');
         }
         return t.toString();
+    }
+
+    /**
+     * Convert an exact ISO 639-1/2/3 language-code label to a readable language.
+     * Leave arbitrary titles and unknown tags untouched: a studio named "ABC"
+     * must not be rewritten by a loose substring match.
+     */
+    static String displayLanguageCode(String label, Locale displayLocale) {
+        if (label == null) return null;
+        final String code = label.trim().toLowerCase(Locale.ROOT);
+        if (!code.matches("[a-z]{2,3}")) return label;
+        final String alpha2 = code.length() == 3 ? ISO3_TO_ISO2.get(code) : code;
+        if (alpha2 == null) return label;
+        final String language = new Locale(alpha2).getDisplayLanguage(displayLocale);
+        if (language.isEmpty() || language.equalsIgnoreCase(alpha2)) return label;
+        return capitalize(language);
+    }
+
+    private static Map<String, String> iso3LanguageMap() {
+        final Map<String, String> languages = new HashMap<>();
+        for (String alpha2 : Locale.getISOLanguages()) {
+            try {
+                languages.put(new Locale(alpha2).getISO3Language().toLowerCase(Locale.ROOT), alpha2);
+            } catch (MissingResourceException ignored) {
+                // Not every Android ICU version knows every ISO 639 alias.
+            }
+        }
+        // The older bibliographic spellings still occur in Matroska and manifests.
+        languages.put("ger", "de");
+        languages.put("fre", "fr");
+        languages.put("dut", "nl");
+        languages.put("chi", "zh");
+        languages.put("rum", "ro");
+        languages.put("cze", "cs");
+        languages.put("gre", "el");
+        languages.put("slo", "sk");
+        return languages;
     }
 
     private static String capitalize(String s) {

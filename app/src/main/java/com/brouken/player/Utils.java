@@ -124,7 +124,7 @@ public class Utils {
 
     public static final String FEATURE_FIRE_TV = "amazon.hardware.fire_tv";
 
-    public static final String[] supportedExtensionsVideo = new String[] { "3gp", "avi", "m4v", "mkv", "mov", "mp4", "ts", "webm" };
+    public static final String[] supportedExtensionsVideo = new String[] { "3gp", "avi", "m2ts", "mts", "m4v", "mkv", "mov", "mp4", "ts", "webm" };
     public static final String[] supportedExtensionsSubtitle = new String[] { "srt", "ssa", "ass", "vtt", "ttml", "dfxp", "xml" };
 
     public static final String[] supportedMimeTypesVideo = new String[] {
@@ -133,7 +133,7 @@ public class Utils {
             MimeTypes.VIDEO_MP4, // .mp4, .m4v
             MimeTypes.VIDEO_WEBM, // .webm
             "video/quicktime", // .mov
-            "video/mp2ts", // .ts, but also incompatible .m2ts
+            "video/mp2ts", // .ts, .m2ts, .mts Blu-ray and camcorder transport streams
             MimeTypes.VIDEO_H263, // .3gp
             "video/avi", // .avi
             "video/x-msvideo", // .avi, older mime table

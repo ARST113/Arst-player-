@@ -959,6 +959,10 @@ public class PlayerActivity extends Activity {
     private final Runnable loadingSpeedRunnable = new Runnable() {
         @Override
         public void run() {
+            if (!mPrefs.loadingSpeed) {
+                stopLoadingSpeed();
+                return;
+            }
             final long total = TrackNameParsingDataSource.bytesRead.get();
             final double mbps = Math.max(0, total - loadingSpeedBytes)
                     * 1000d / LOADING_SPEED_TICK_MS * 8d / 1_000_000d;
@@ -14527,7 +14531,8 @@ public class PlayerActivity extends Activity {
         // Outermost on purpose: the loader must see a failed open() as a failed read() whatever failed
         // underneath, the cache included — see DeferredOpenDataSource.
         final androidx.media3.datasource.DataSource.Factory dataSourceFactory = new DeferredOpenDataSource.Factory(
-                new TrackNameParsingDataSource.Factory(hashSource, trackNameListener));
+                new M2tsDataSource.Factory(
+                        new TrackNameParsingDataSource.Factory(hashSource, trackNameListener)));
         // Dolby Vision profile 7 is rewritten as profile 8.1 on the way out of the extractor, so the
         // display gets Dolby Vision instead of the base layer's HDR10 (see Dv7Converter). Not when the
         // user asked for the base layer outright ("Dolby Vision profile 7 fallback", handled by
@@ -14630,7 +14635,26 @@ public class PlayerActivity extends Activity {
 
         if (player.canAdvertiseSession()) {
             try {
-                mediaSession = new MediaSession.Builder(this, player).build();
+                mediaSession = new MediaSession.Builder(this, player)
+                        .setCallback(new MediaSession.Callback() {
+                            @Override
+                            public MediaSession.ConnectionResult onConnect(
+                                    MediaSession session, MediaSession.ControllerInfo controller) {
+                                // 2.4.7: a phone/Google TV playback card is a remote controller.
+                                // Media3 defaults untrusted controllers to read-only; allow only
+                                // transport commands, not editing a playlist or changing audio routes.
+                                final MediaSession.ConnectionResult result =
+                                        MediaSession.Callback.super.onConnect(session, controller);
+                                final Player.Commands playback = result.availablePlayerCommands.buildUpon()
+                                        .add(Player.COMMAND_PLAY_PAUSE)
+                                        .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                                        .add(Player.COMMAND_SEEK_BACK)
+                                        .add(Player.COMMAND_SEEK_FORWARD)
+                                        .build();
+                                return MediaSession.ConnectionResult.accept(
+                                        result.availableSessionCommands, playback);
+                            }
+                        }).build();
             } catch (IllegalStateException e) {
                 e.printStackTrace();
             }
@@ -19374,7 +19398,7 @@ public class PlayerActivity extends Activity {
             if (loading == null) {
                 loading = mPrefs.mediaUri;
             }
-            if (Utils.isNetworkMedia(loading)) {
+            if (mPrefs.loadingSpeed && Utils.isNetworkMedia(loading)) {
                 // Arm it once per wait: this runs again on every STATE_BUFFERING, and re-posting would
                 // push the delay back past the wait itself.
                 if (!loadingSpeedScheduled) {
@@ -19382,6 +19406,8 @@ public class PlayerActivity extends Activity {
                     loadingSpeedBytes = TrackNameParsingDataSource.bytesRead.get();
                     playerView.postDelayed(loadingSpeedRunnable, LOADING_SPEED_DELAY_MS);
                 }
+            } else {
+                stopLoadingSpeed();
             }
         } else {
             stopLoadingSpeed();

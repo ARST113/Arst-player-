@@ -557,6 +557,8 @@
     <string name="pref_round_values">Компактные кнопки значений</string>
     <string name="pref_round_values_on">Использовать компактные круглые кнопки</string>
     <string name="pref_round_values_off">Показывать значения на кнопках плеера</string>
+    <string name="pref_loading_speed">Скорость загрузки</string>
+        <string name="pref_loading_speed_summary">Показывать скорость поступления данных во время буферизации видео</string>
     <string name="pref_loading_screen">Экран загрузки</string>
     <string name="pref_loading_screen_first">Только первый элемент</string>
     <string name="pref_loading_screen_every">Каждый элемент</string>

@@ -87,6 +87,7 @@ class Prefs {
     private static final String PREF_KEY_HEADER_INFO = "headerInfo";
     private static final String PREF_KEY_ROUND_VALUE_BUTTONS = "roundValueButtons";
     private static final String PREF_KEY_LOADING_SCREEN_MODE = "loadingScreenMode";
+    private static final String PREF_KEY_LOADING_SPEED = "loadingSpeed";
     private static final String PREF_KEY_PLAYLIST_GRID = "playlistGrid";
     private static final String PREF_KEY_TV_SINGLE_BACK = "tvSingleBack";
     private static final String PREF_KEY_RESUME_MODE = "resumeMode";
@@ -284,6 +285,7 @@ class Prefs {
     public String headerInfo = "detailed";
     public boolean roundValueButtons = false;
     public String loadingScreenMode = "every";
+    public boolean loadingSpeed = true;
     /** The playlist panel draws frames in a grid rather than a row per file. Off is the row per file. */
     /**
      * Frames rather than rows. On by default since the playlist became a rail standing on the progress
@@ -552,6 +554,7 @@ class Prefs {
         headerInfo = mSharedPreferences.getString(PREF_KEY_HEADER_INFO, headerInfo);
         roundValueButtons = mSharedPreferences.getBoolean(PREF_KEY_ROUND_VALUE_BUTTONS, roundValueButtons);
         loadingScreenMode = mSharedPreferences.getString(PREF_KEY_LOADING_SCREEN_MODE, loadingScreenMode);
+        loadingSpeed = mSharedPreferences.getBoolean(PREF_KEY_LOADING_SPEED, true);
         playlistGrid = mSharedPreferences.getBoolean(PREF_KEY_PLAYLIST_GRID, playlistGrid);
         tvSingleBack = mSharedPreferences.getBoolean(PREF_KEY_TV_SINGLE_BACK, tvSingleBack);
         resumeMode = mSharedPreferences.getString(PREF_KEY_RESUME_MODE, resumeMode);
