@@ -1,0 +1,38 @@
+name: ARX 2.4.8 port compile and unit tests
+on:
+  push:
+    branches: [arx/v2.4.8-port]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arx-248-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Install SHA-verified official native FFmpeg libraries
+        run: bash .github/scripts/arx-241-import-native.sh
+      - name: Compile reconstructed source and run JVM tests
+        run: ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+      - name: Verify debug output
+        run: |
+          set -euo pipefail
+          test -s "$(find app/build/outputs/apk/latestUniversal/debug -type f -name '*.apk' | head -n1)"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ARX-2.4.8-WIP-debug
+          path: app/build/outputs/apk/latestUniversal/debug/*.apk
+          retention-days: 7
