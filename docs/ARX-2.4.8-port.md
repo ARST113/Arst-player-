@@ -41,6 +41,9 @@ Official 2.4.8: `16ba12c72a3e69ea99d118a5a0489053b5be1a16fb0dcd5b2257b7ce3b67b06
 ## Applied
 
 - `Utils.supportedExtensionsVideo` recognizes `.m2ts` and `.mts`; browser selection can discover them. **Opening these files and decoding advanced TS audio is NOT yet claimed to work.**
+- `PlayerActivity` now allows remote MediaSession controllers to send play/pause and in-item seek commands, retaining Media3's default controller permissions otherwise. The device's actual supported commands remain the final capability gate.
+- Source inspection confirms `DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS` was **already enabled** in ARX 2.4.4. Additional MPEG-TS elementary stream recognition and M2TS packet parsing remain necessary; blindly adding that flag again would provide nothing.
+- JVM and debug compile checks for these port commits pass in `.github/workflows/arx-2.4.8-build.yml`.
 
 ## Test matrix before any 2.4.8 preview
 
