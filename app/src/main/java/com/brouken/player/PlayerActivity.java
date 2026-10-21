@@ -14630,7 +14630,26 @@ public class PlayerActivity extends Activity {
 
         if (player.canAdvertiseSession()) {
             try {
-                mediaSession = new MediaSession.Builder(this, player).build();
+                mediaSession = new MediaSession.Builder(this, player)
+                        .setCallback(new MediaSession.Callback() {
+                            @Override
+                            public MediaSession.ConnectionResult onConnect(
+                                    MediaSession session, MediaSession.ControllerInfo controller) {
+                                // 2.4.7: a phone/Google TV playback card is a remote controller.
+                                // Media3 defaults untrusted controllers to read-only; allow only
+                                // transport commands, not editing a playlist or changing audio routes.
+                                final MediaSession.ConnectionResult result =
+                                        MediaSession.Callback.super.onConnect(session, controller);
+                                final Player.Commands playback = result.availablePlayerCommands.buildUpon()
+                                        .add(Player.COMMAND_PLAY_PAUSE)
+                                        .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                                        .add(Player.COMMAND_SEEK_BACK)
+                                        .add(Player.COMMAND_SEEK_FORWARD)
+                                        .build();
+                                return MediaSession.ConnectionResult.accept(
+                                        result.availableSessionCommands, playback);
+                            }
+                        }).build();
             } catch (IllegalStateException e) {
                 e.printStackTrace();
             }
