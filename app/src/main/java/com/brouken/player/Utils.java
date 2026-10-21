@@ -1594,6 +1594,27 @@ public class Utils {
                             }
                         }
 
+                        // 2.4.2 match modes. Legacy users retain the old booleans until
+                        // the first explicit choice in Settings.
+                        if (activity.mPrefs != null) {
+                            final String modeChoice = activity.mPrefs.arxFrameRateMode;
+                            if ("highest".equals(modeChoice)) {
+                                modeBest = modeTop;
+                            } else if ("same".equals(modeChoice) || "double".equals(modeChoice)) {
+                                final float multiplier = "same".equals(modeChoice) ? 1f : 2f;
+                                Display.Mode exact = null;
+                                float bestError = Float.MAX_VALUE;
+                                for (Display.Mode candidate : modesHigh) {
+                                    final float error = Math.abs(candidate.getRefreshRate() / frameRate - multiplier);
+                                    if (error < 0.015f && error < bestError) {
+                                        bestError = error;
+                                        exact = candidate;
+                                    }
+                                }
+                                if (exact != null) modeBest = exact;
+                            }
+                        }
+
                         Window window = activity.getWindow();
                         WindowManager.LayoutParams layoutParams = window.getAttributes();
 

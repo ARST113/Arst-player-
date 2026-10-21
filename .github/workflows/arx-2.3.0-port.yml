@@ -18,6 +18,9 @@ permissions:
 
 jobs:
   android-build:
+    # Historical v2.3.0 ABI/version assertions apply only to the v2.3.0 port.
+    # Newer port PRs (2.4.x) use their own SHA-pinned workflows.
+    if: github.event_name != 'pull_request' || github.head_ref == 'arx/v2.3.0-port'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:

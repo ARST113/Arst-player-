@@ -1,0 +1,215 @@
+name: ARX 2.4.4 APK audit and port validation
+
+# Archived preview: stable checks now run in arx-2.4.4-main-release.yml.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Download and SHA-256 verify vendor 2.4.1 and 2.4.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor-apk audit-out
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.4.1/JustPlus.Player.v2.4.1.apk -o vendor-apk/241.apk
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.4.4/JustPlus.Player.v2.4.4.apk -o vendor-apk/244.apk
+          echo "7739082ceb67bb4665ad0c17a32d9fa70f032e818bada881b1d1e3868651a09d  vendor-apk/241.apk" | sha256sum --check
+          echo "c4c955bd69d48272f43066b028dd54a370545bf6aaca2a0720ca57e3f99dff0d  vendor-apk/244.apk" | sha256sum --check
+      - name: Compare archive resources native libraries and DEX
+        shell: bash
+        run: |
+          python3 - <<'PY' | tee audit-out/apk-summary.txt
+          import zipfile, hashlib
+          a,b=(zipfile.ZipFile('vendor-apk/'+x+'.apk') for x in ('241','244'))
+          da={i.filename:hashlib.sha256(a.read(i.filename)).hexdigest() for i in a.infolist()}
+          db={i.filename:hashlib.sha256(b.read(i.filename)).hexdigest() for i in b.infolist()}
+          changed=[x for x in sorted(da.keys()|db.keys()) if da.get(x)!=db.get(x)]
+          print('2.4.1 archive entries',len(da),'2.4.4 entries',len(db),'changed entries',len(changed))
+          for x in changed:
+              print(x, 'ADDED' if x not in da else 'REMOVED' if x not in db else 'MODIFIED',da.get(x,'-')[:16],db.get(x,'-')[:16])
+          PY
+          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          for v in 241 244; do "$aapt" dump badging "vendor-apk/$v.apk" | head -n3; done
+      - name: Disassemble DEX with JADX and report relevant Java changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/skylot/jadx/releases/download/v1.5.3/jadx-1.5.3.zip -o /tmp/jadx.zip
+          mkdir -p /tmp/arx-jadx
+          unzip -q /tmp/jadx.zip -d /tmp/arx-jadx
+          chmod +x /tmp/arx-jadx/bin/jadx
+          for v in 241 244; do
+            /tmp/arx-jadx/bin/jadx --no-res --no-debug-info --threads-count 3 \
+              -d "audit-out/decompiled-$v" "vendor-apk/$v.apk" > "audit-out/jadx-$v.log" 2>&1 || true
+          done
+          python3 - <<'PY' | tee audit-out/decompiled-diff-summary.txt
+          from pathlib import Path
+          import difflib,re
+          a=Path('audit-out/decompiled-241/sources')
+          b=Path('audit-out/decompiled-244/sources')
+          old={p.relative_to(a):p for p in a.rglob('*.java')}
+          new={p.relative_to(b):p for p in b.rglob('*.java')}
+          changed=[p for p in old.keys()|new.keys() if p not in old or p not in new or old[p].read_bytes()!=new[p].read_bytes()]
+          print('Changed decompiled Java classes:',len(changed),'of',len(new))
+          key=re.compile(r'(brouken|player|exoplayer|media3)',re.I)
+          relevant=[p for p in changed if key.search(str(p))]
+          print('Relevant changed class names (first 120):')
+          for p in sorted(relevant)[:120]:print('  ',p)
+          candidates=[p for p in relevant if re.search('PlayerActivity|CustomPlayerView|Prefs|TrackOrder|Mkv|Surface|MediaCodec|Extractor',str(p),re.I)]
+          for p in sorted(candidates)[:16]:
+              if p not in old or p not in new: continue
+              x=old[p].read_text(errors='replace').splitlines()
+              y=new[p].read_text(errors='replace').splitlines()
+              d=list(difflib.unified_diff(x,y,fromfile='2.4.1/'+str(p),tofile='2.4.4/'+str(p),n=3))
+              print('\n=== DIFF',p,'lines',len(d),'===')
+              for line in d[:310]:print(line[:450])
+          PY
+          head -n 140 audit-out/decompiled-diff-summary.txt
+      - name: Inspect actual vendor callback and surface lifecycle code
+        shell: bash
+        run: |
+          python3 - <<'PY' | tee audit-out/targeted-code-evidence.txt
+          from pathlib import Path
+          for version in ('241','244'):
+              root=Path('audit-out/decompiled-'+version+'/sources/com/brouken/player')
+              print('\\n=== TARGETED APK',version,'===')
+              for name in ('PlayerActivity.java','PlaylistApi.java'):
+                  path=root/name
+                  if not path.exists():continue
+                  lines=path.read_text(errors='replace').splitlines()
+                  matches=[]
+                  for i,line in enumerate(lines):
+                      if any(x in line for x in ('report_interval','result_callback','"progress"','"end_by"','onStop()','onStart()','onRenderedFirstFrame')):
+                          matches.append(i)
+                  print('FILE',name,'MATCHES',len(matches))
+                  for i in matches[:55]:
+                      print('--- line',i+1)
+                      for j in range(max(0,i-3),min(len(lines),i+8)):
+                          print(str(j+1)+': '+lines[j][:250])
+          PY
+      - name: Inspect vendor Dolby encoder ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            for v in 241 244; do
+              echo "==== NATIVE LIBRARIES $v ===="
+              unzip -Z1 "vendor-apk/$v.apk" | grep '^lib/' || true
+            done
+            echo "==== 2.4.4 Java AC3 Encoder ===="
+            sed -n '1,360p' audit-out/decompiled-244/sources/com/brouken/player/Ac3Encoder.java
+            echo "==== 2.4.4 wrapper a.java ===="
+            sed -n '1,310p' audit-out/decompiled-244/sources/com/brouken/player/a.java
+            echo "==== 2.4.4 wrapper b.java ===="
+            sed -n '1,310p' audit-out/decompiled-244/sources/com/brouken/player/b.java
+          } > audit-out/vendor-dolby.txt
+          sed -n '145,420p' audit-out/vendor-dolby.txt
+          {
+            echo "=== References to Ac3Encoder in vendor DEX ==="
+            grep -R -n -E '(Ac3Encoder|\.nPull\(|\.nPush\()' audit-out/decompiled-244/sources \
+              | head -n 120 || true
+            echo "=== Exported JNI encoder methods ==="
+            unzip -p vendor-apk/244.apk lib/arm64-v8a/libffmpegJNI.so > /tmp/arx-vendor-ffmpegJNI.so
+            nm -D /tmp/arx-vendor-ffmpegJNI.so | grep -E 'Ac3Encoder|Java_com_brouken_player' \
+              | head -n 80 || true
+          } | tee audit-out/vendor-dolby-calls.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ARX-2.4.4-apk-audit
+          path: |
+            audit-out/apk-summary.txt
+            audit-out/decompiled-diff-summary.txt
+            audit-out/targeted-code-evidence.txt
+            audit-out/vendor-dolby.txt
+            audit-out/vendor-dolby-calls.txt
+            audit-out/jadx-*.log
+          retention-days: 14
+
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Import pinned FFmpeg native binaries
+        run: bash .github/scripts/arx-241-import-native.sh
+      - name: Set partial-port preview version for CI APKs only
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle')
+          text=p.read_text()
+          assert 'versionCode 2004002' in text
+          assert 'versionName "2.4.1-arx1"' in text
+          text=text.replace('versionCode 2004002', 'versionCode 2004003', 1)
+          text=text.replace('versionName "2.4.1-arx1"', 'versionName "2.4.4-arx1-preview"', 1)
+          p.write_text(text)
+          PY
+      - name: Compile signed preview APK, debug APK and run JVM tests
+        run: ./gradlew --no-daemon :app:assembleLatestUniversalRelease :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+      - name: Verify preview package version and signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p preview-apk
+          apk="$(find app/build/outputs/apk/latestUniversal/release -maxdepth 1 -type f -name '*.apk' | head -n1)"
+          test -s "$apk"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          "$aapt" dump badging "$apk" | grep -F "versionCode='2004003' versionName='2.4.4-arx1-preview'"
+          "$signer" verify --print-certs "$apk"
+          cp "$apk" preview-apk/ARX.TPlayer.v2.4.4-arx1-preview.apk
+          sha256sum preview-apk/*.apk | tee preview-apk/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ARX-2.4.4-partial-preview-signed-apk
+          path: |
+            preview-apk/
+            app/build/outputs/apk/latestUniversal/debug/*.apk
+          retention-days: 14
+          if-no-files-found: warn
+
+  preview-release:
+    if: contains(github.event.head_commit.message, 'publish-preview:')
+    needs: [compile, apk-audit]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ARX-2.4.4-partial-preview-signed-apk
+          path: dist
+      - name: Publish signed test APK as prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="arx-v2.4.4-preview-${GITHUB_SHA:0:8}"
+          apk="dist/preview-apk/ARX.TPlayer.v2.4.4-arx1-preview.apk"
+          test -s "$apk"
+          gh release create "$tag" "$apk" "dist/preview-apk/SHA256SUMS.txt" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "ARX TPlayer 2.4.4 experimental test" \
+            --notes "Experimental ARX 2.4.4 port for hands-on testing. Do not treat as full vendor feature parity. This release is a partial reconstruction. Dolby encoding and several picture controls are still under review. See PR #7 and docs/ARX-2.4.4-port.md."

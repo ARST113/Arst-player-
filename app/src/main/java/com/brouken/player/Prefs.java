@@ -258,6 +258,7 @@ class Prefs {
     public boolean tunneling = false;
     public boolean captureVisible = false;
     public boolean frameRateMatching = false;
+    public String arxFrameRateMode = "legacy";
     public boolean frameRateCorrection = false;
     public boolean frameRateDoubling = false;
     public int modeSwitchPauseMs = 0;
@@ -531,6 +532,11 @@ class Prefs {
         frameRateMatching = mSharedPreferences.getBoolean(PREF_KEY_FRAMERATE_MATCHING, frameRateMatching);
         frameRateCorrection = mSharedPreferences.getBoolean(PREF_KEY_FRAME_RATE_CORRECTION, frameRateCorrection);
         frameRateDoubling = mSharedPreferences.getBoolean(PREF_KEY_FRAME_RATE_DOUBLING, frameRateDoubling);
+        arxFrameRateMode = mSharedPreferences.getString("arxFrameRateMode", "legacy");
+        if (!"legacy".equals(arxFrameRateMode)) {
+            frameRateMatching = !"off".equals(arxFrameRateMode);
+            frameRateDoubling = "double".equals(arxFrameRateMode);
+        }
         modeSwitchPauseMs = Integer.parseInt(mSharedPreferences.getString(
                 PREF_KEY_MODE_SWITCH_PAUSE_MS, String.valueOf(modeSwitchPauseMs)));
         bufferMode = mSharedPreferences.getString(PREF_KEY_BUFFER_MODE, bufferMode);

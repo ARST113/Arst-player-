@@ -189,34 +189,29 @@
                     app:title="@string/pref_still_watching"/>
             </PreferenceCategory>
             <PreferenceCategory app:title="@string/pref_section_display">
+                <ListPreference
+                    app:defaultValue="legacy"
+                    app:key="arxFrameRateMode"
+                    app:entries="@array/arx_frame_rate_entries"
+                    app:entryValues="@array/arx_frame_rate_values"
+                    app:title="Match display refresh rate"
+                    app:useSimpleSummaryProvider="true"/>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
-                    app:key="frameRateMatching"
-                    app:summaryOff="@string/pref_framerate_matching_off"
-                    app:summaryOn="@string/pref_framerate_matching_on"
-                    app:title="@string/pref_framerate_matching"/>
-                <SwitchPreferenceCompat
-                    app:defaultValue="false"
-                    app:dependency="frameRateMatching"
+                    app:dependency="arxFrameRateMode"
                     app:key="displayResolutionMatching"
                     app:summaryOff="@string/pref_resolution_matching_off"
                     app:summaryOn="@string/pref_resolution_matching_on"
                     app:title="@string/pref_resolution_matching"/>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
-                    app:dependency="frameRateMatching"
+                    app:dependency="arxFrameRateMode"
                     app:key="frameRateCorrection"
                     app:summary="@string/pref_framerate_correction_summary"
                     app:title="@string/pref_framerate_correction"/>
-                <SwitchPreferenceCompat
-                    app:defaultValue="false"
-                    app:dependency="frameRateMatching"
-                    app:key="frameRateDoubling"
-                    app:summary="@string/pref_framerate_doubling_summary"
-                    app:title="@string/pref_framerate_doubling"/>
                 <ListPreference
                     app:defaultValue="0"
-                    app:dependency="frameRateMatching"
+                    app:dependency="arxFrameRateMode"
                     app:entries="@array/mode_switch_pause_entries"
                     app:entryValues="@array/mode_switch_pause_values"
                     app:key="modeSwitchPauseMs"
@@ -274,6 +269,10 @@
                     app:title="@string/pref_forget_dubs"/>
             </PreferenceCategory>
             <PreferenceCategory app:title="@string/pref_section_sound">
+                <Preference
+                    app:key="arxEqualizer"
+                    app:title="Equalizer · 10 bands"
+                    app:summary="Live tone controls and presets for decoded audio"/>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
                     app:key="dynamicRange"
@@ -301,6 +300,23 @@
                     app:summaryOff="@string/pref_audio_passthrough_off"
                     app:summaryOn="@string/pref_audio_passthrough_on"
                     app:title="@string/pref_audio_passthrough"/>
+                <ListPreference
+                    app:defaultValue="0"
+                    app:dependency="audioPassthrough"
+                    app:entries="@array/arx_dolby_mode_entries"
+                    app:entryValues="@array/arx_dolby_mode_values"
+                    app:key="arxDolbyEncodeMode"
+                    app:title="Encode multichannel audio to Dolby (experimental)"
+                    app:summary="Requires a Dolby-capable receiver; off by default"
+                    app:useSimpleSummaryProvider="true"/>
+                <ListPreference
+                    app:defaultValue="640000"
+                    app:dependency="audioPassthrough"
+                    app:entries="@array/arx_dolby_bitrate_entries"
+                    app:entryValues="@array/arx_dolby_bitrate_values"
+                    app:key="arxDolbyBitrate"
+                    app:title="Dolby Digital encoding bitrate"
+                    app:useSimpleSummaryProvider="true"/>
                 <SwitchPreferenceCompat
                     app:defaultValue="false"
                     app:dependency="audioPassthrough"

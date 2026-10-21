@@ -635,6 +635,7 @@ public class PlayerActivity extends Activity {
     // Re-reads spent on network source errors this session (see recoverFromSourceError), reset per player
     // build so a chronically bad stream costs a bounded number of re-prepares instead of one per resume.
     private int sourceRetries;
+    private int torrIncompleteSkips;
     // The stream the budget above was spent on, so a rebuild of the same one does not refill it.
     private String sourceRetriesUri;
     private static final int MAX_SOURCE_RETRIES = 3;
@@ -1247,6 +1248,9 @@ public class PlayerActivity extends Activity {
     private Boolean dynamicRangeSession;
     private Boolean centreBoostSession;
     private DynamicRangeProcessor dynamicRangeProcessor;
+    private ArxEqualizerProcessor arxEqualizerProcessor;
+    private int pictureAppliedHash = Integer.MIN_VALUE;
+    private ArxAmbientLight arxAmbientLight;
     // How this session offers segments, or null to follow the settings. One value for both kinds,
     // because the viewer mid-film holds one intention and not two — "stop interrupting me in this
     // series" — and two rows of it were two rows of the same answer. Same life as the offset above and
@@ -1720,6 +1724,7 @@ public class PlayerActivity extends Activity {
         dimOverlay = findViewById(R.id.dim_overlay);
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         playerView = findViewById(R.id.video_view);
+        arxAmbientLight = new ArxAmbientLight(this, playerView.getVideoSurfaceView());
         createStartupSplash();
         // Built with the view rather than with the player: it paints from a file and asks for the
         // position lazily, so a rebuild of the player leaves it alone.
@@ -3033,6 +3038,14 @@ public class PlayerActivity extends Activity {
         Utils.log("onStart" + (player == null ? ", no player" : player.getPlayerError() != null
                 ? ", player failed while away" : ", state " + stateName(player.getPlaybackState())));
         updateSubtitleStyle(this);
+        if (arxAmbientLight != null) arxAmbientLight.start();
+        // Preferences may have been edited while Settings covered the retained player.
+        if (arxEqualizerProcessor != null) {
+            arxEqualizerProcessor.setBands(ArxEqualizerDialog.enabled(this),
+                    ArxEqualizerDialog.bands(this));
+        }
+        pictureAppliedHash = Integer.MIN_VALUE;
+        applyArxPicture();
         if (Build.VERSION.SDK_INT >= 31) {
             playerView.removeCallbacks(barsHider);
             Utils.toggleSystemUi(this, playerView, true);
@@ -3136,6 +3149,7 @@ public class PlayerActivity extends Activity {
                     nestedPlaylistError != null ? "error" : (playbackFinished ? "completion" : "user")));
         }
         cancelNestedReportTimer();
+        if (arxAmbientLight != null) arxAmbientLight.stop();
         if (Build.VERSION.SDK_INT >= 31) {
             playerView.removeCallbacks(barsHider);
         }
@@ -3194,27 +3208,27 @@ public class PlayerActivity extends Activity {
             player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build());
         }
-        // A TV entering sleep must give back the hardware video decoder as well as the passthrough
-        // audio route. Only during genuine screen-off: Settings, HOME and external pickers also call
-        // onStop, and need not dismantle a healthy decoder. Toggling this track type releases
-        // MediaCodecVideoRenderer through onDisabled, leaving the source, timeline and progress intact.
-        final android.os.PowerManager power =
-                (android.os.PowerManager) getSystemService(POWER_SERVICE);
-        if (isTvBox && power != null && !power.isInteractive()) {
-            // Known Realtek Dolby Vision drivers fail reopening the same MediaCodec instance after
-            // screen-off (0x80001000). Leave this path to the system's process reclamation until
-            // an actual hardware validation proves the replacement safe on those boxes.
+        // Just+ 2.4.4: some Android TV MediaCodec decoders cannot retain their output when
+        // the SurfaceView is destroyed while this activity is in the background. When returning
+        // they can report READY/first-frame but show old or corrupt pixels until a keyframe.
+        // Detach the VIDEO track at every real TV background transition: onStart restores it
+        // and MediaCodecVideoRenderer constructs a fresh codec for the newly attached surface.
+        // Unlike releasePlayer(), this preserves source buffers, playlist and timecode.
+        //
+        // Keep the tested Realtek + Dolby Vision exception: those drivers can reject a second
+        // codec init (0x80001000), so the full-screen recovery path handles their failures.
+        if (isTvBox && !isChangingConfigurations()) {
             final String hardware = (Build.HARDWARE + " " + Build.BOARD + " " + Build.MANUFACTURER)
                     .toLowerCase(Locale.ROOT);
             final Format currentVideo = player.getVideoFormat();
             final boolean realtekDolbyVision = (hardware.contains("realtek") || hardware.contains("rtd"))
                     && currentVideo != null
                     && MimeTypes.VIDEO_DOLBY_VISION.equals(currentVideo.sampleMimeType);
-            if (!realtekDolbyVision) {
+            if (currentVideo != null && !realtekDolbyVision) {
                 videoReleasedForBackground = true;
                 player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
                         .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).build());
-                Utils.log("sleep: released hardware video decoder");
+                Utils.log("background: released TV video decoder for clean surface return");
             }
         }
         // The load watchdog only ever ran while the activity was on screen by accident: nothing cancelled it
@@ -3249,6 +3263,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         cancelNestedReportTimer();
+        if (arxAmbientLight != null) arxAmbientLight.stop();
         if (!handedOver) {
             releasePlayer(false);
         }
@@ -5739,6 +5754,7 @@ public class PlayerActivity extends Activity {
             final MediaItem.Builder itemBuilder = new MediaItem.Builder()
                     .setUri(uri)
                     .setMediaMetadata(metadataBuilder.build());
+            ArxDrm.configure(itemBuilder, uri, playlist);
 
             final List<MediaItem.SubtitleConfiguration> itemSubs =
                     buildNestedSubtitleConfigurations(item.activeSubtitles());
@@ -6153,15 +6169,39 @@ public class PlayerActivity extends Activity {
                 duration == C.TIME_UNSET || duration <= 0 ? -1L : duration);
     }
 
-    // Just+ 2.2.2 no longer emits periodic playback progress to Lampa.
-    // Playback position and watched state are still sent by the final callback
-    // on leaving the player. Keep the methods for existing lifecycle call sites.
+    // 2.4.4 restores progress snapshots requested by the external launcher through
+    // playlist.result_callback and playlist.report_interval. Keep the existing final
+    // "user"/"completion" callbacks unchanged: periodic snapshots use "interval", as in 2.4.4.
+    // The parser clamps report_interval to at least 30 seconds; do not invent
+    // unsolicited broadcasts when a launcher opted out.
+    private final Runnable nestedReportRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!nestedPlaylistSession || nestedResultCallback == null
+                    || nestedReportIntervalMs <= 0 || player == null || !player.isPlaying()) {
+                return;
+            }
+            touchNestedJournal();
+            sendNestedPlaylistCallback(buildNestedPlaylistResult("interval"));
+            playerView.postDelayed(this, nestedReportIntervalMs);
+        }
+    };
+
     private void armNestedReportTimer() {
-        // Intentionally disabled.
+        if (playerView == null) {
+            return;
+        }
+        playerView.removeCallbacks(nestedReportRunnable);
+        if (nestedPlaylistSession && nestedResultCallback != null
+                && nestedReportIntervalMs > 0 && player != null && player.isPlaying()) {
+            playerView.postDelayed(nestedReportRunnable, nestedReportIntervalMs);
+        }
     }
 
     private void cancelNestedReportTimer() {
-        // No periodic task is scheduled in 2.2.2.
+        if (playerView != null) {
+            playerView.removeCallbacks(nestedReportRunnable);
+        }
     }
 
     private void sendNestedPlaylistCallback(final Bundle result) {
@@ -6263,6 +6303,7 @@ public class PlayerActivity extends Activity {
             final MediaItem.Builder itemBuilder = new MediaItem.Builder()
                     .setUri(uri)
                     .setMediaMetadata(metadataBuilder.build());
+            ArxDrm.configure(itemBuilder, uri, bundle);
             // Per-episode external subtitles. They have to ride on the item itself: a playlist replaces the
             // single media item wholesale, so the apiSubs of a lone video never reach it.
             final List<MediaItem.SubtitleConfiguration> itemSubs = readPlaylistSubtitles(subtitles, i);
@@ -12447,6 +12488,33 @@ public class PlayerActivity extends Activity {
      * carry a row called "More" that opened the real settings screen: one glyph, two destinations, and
      * three names between them.
      */
+    private void applyArxPicture() {
+        if (player == null) return;
+        final int[] settings = ArxPictureDialog.values(this);
+        final int hash = java.util.Arrays.hashCode(settings);
+        if (hash == pictureAppliedHash) return;
+        final Format video = player.getVideoFormat();
+        final boolean protectedVideo = ArxDrm.isProtected(player.getCurrentMediaItem());
+        final boolean dolbyVision = video != null
+                && MimeTypes.VIDEO_DOLBY_VISION.equals(video.sampleMimeType);
+        final boolean softwareVideo = forceHevcSoftwareStage == 3
+                || (videoDecoderName != null && videoDecoderName.toLowerCase(Locale.ROOT).contains("ffmpeg"));
+        if (protectedVideo || dolbyVision || softwareVideo) {
+            // Never route protected buffers, Dolby Vision or native fallback through a GL editor.
+            if (pictureAppliedHash != Integer.MIN_VALUE)
+                player.setVideoEffects(Collections.emptyList());
+            pictureAppliedHash = Integer.MIN_VALUE;
+            return;
+        }
+        pictureAppliedHash = hash;
+        try {
+            player.setVideoEffects(ArxPictureDialog.effects(this));
+        } catch (RuntimeException error) {
+            pictureAppliedHash = Integer.MIN_VALUE;
+            Utils.log("picture effects unavailable: " + error);
+        }
+    }
+
     private void showMoreMenu() {
         final List<Dialogs.MenuItem> items = new ArrayList<>();
         // The bands are divided by the rules below rather than by captions: a caption over the first of
@@ -12459,6 +12527,23 @@ public class PlayerActivity extends Activity {
                     false, this::showSpeedDialog));
             items.add(new Dialogs.MenuItem(R.drawable.ic_volume_up_24dp, getString(R.string.sound_row),
                     soundSummary(), false, this::showSoundPanel));
+            items.add(new Dialogs.MenuItem(R.drawable.ic_audiotrack_24dp, "Equalizer · 10 bands",
+                    ArxEqualizerDialog.enabled(this) ? "Enabled" : "Off", false,
+                    () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
+            if (isTvBox) {
+                items.add(new Dialogs.MenuItem(R.drawable.ic_fit_screen_24dp, "Resize / Zoom",
+                        null, false, this::showAspectModePicker));
+            }
+            if (!ArxDrm.isProtected(player.getCurrentMediaItem())) {
+                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Ambient light",
+                        null, false, () -> { if (arxAmbientLight != null) arxAmbientLight.show(); }));
+                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Picture",
+                        ArxPictureDialog.active(this) ? "Adjusted" : "Neutral", false,
+                        () -> ArxPictureDialog.show(this, () -> {
+                            pictureAppliedHash = Integer.MIN_VALUE;
+                            applyArxPicture();
+                        })));
+            }
         }
         // Only with subtitles on: there is nothing to shift otherwise. One row for both lines — the
         // panel behind it carries a slider each, and which is which is answered there.
@@ -13678,6 +13763,7 @@ public class PlayerActivity extends Activity {
     }
 
     public void initializePlayer() {
+        pictureAppliedHash = Integer.MIN_VALUE;
         // Before anything asks where this file was left: another screen may have written that since
         // this activity was created, and on a torrent server another device may have.
         mPrefs.reloadPositions();
@@ -14144,6 +14230,13 @@ public class PlayerActivity extends Activity {
                 } else {
                     builder = new DefaultAudioSink.Builder(context);
                 }
+                if (!forceCapabilities && mPrefs.audioPassthrough
+                        && ArxDolbyProvider.mode(context) > 0) {
+                    // The encoder sees PCM after EQ, dialogue gain and night-mode processors.
+                    // On force-capabilities mode the custom provider cannot replace the
+                    // force-configured sink, so leave its existing behavior untouched.
+                    builder.setAudioOutputProvider(new ArxDolbyProvider(context, routeChannels));
+                }
                 builder.setEnableFloatOutput(enableFloatOutput)
                         .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                         // Night mode after the boost, so it sees what the boost and the dialogue
@@ -14155,6 +14248,8 @@ public class PlayerActivity extends Activity {
                         // are speakers worth keeping a mix for.
                         // Always in the chain, bypassed while off: the session switches it mid-film.
                         .setAudioProcessors(new AudioProcessor[]{boostProcessor,
+                                arxEqualizerProcessor = new ArxEqualizerProcessor(
+                                        ArxEqualizerDialog.enabled(context), ArxEqualizerDialog.bands(context)),
                                 dynamicRangeProcessor = new DynamicRangeProcessor(routeChannels <= 2,
                                         dynamicRangeOn())});
                 AudioSink sink = builder.build();
@@ -14574,6 +14669,8 @@ public class PlayerActivity extends Activity {
             MediaItem.Builder mediaItemBuilder = new MediaItem.Builder()
                     .setUri(mPrefs.mediaUri)
                     .setMimeType(mPrefs.mediaType);
+            ArxDrm.configure(mediaItemBuilder, mPrefs.mediaUri,
+                    getIntent() == null ? null : getIntent().getExtras());
             String title;
             if (apiTitle != null) {
                 title = apiTitle;
@@ -15585,6 +15682,12 @@ public class PlayerActivity extends Activity {
 
         @Override
         public void onMediaItemTransition(MediaItem mediaItem, int reason) {
+            pictureAppliedHash = Integer.MIN_VALUE;
+            // Disable GPU grading BEFORE a protected episode starts, rather than waiting
+            // until READY (when an OEM secure decoder may already be handed a GL surface).
+            if (player != null && ArxDrm.isProtected(mediaItem)) {
+                player.setVideoEffects(Collections.emptyList());
+            }
             // The link rides the trace so the app log names the file too, masked as the setting says.
             Utils.log("item transition reason=" + reason
                     + (player != null ? " index=" + player.getCurrentMediaItemIndex() : "")
@@ -15926,6 +16029,7 @@ public class PlayerActivity extends Activity {
             setEndControlsVisible(haveMedia && (state == Player.STATE_ENDED || isNearEnd));
 
             if (state == Player.STATE_READY) {
+                applyArxPicture();
                 // Audio-only items do not produce onRenderedFirstFrame().
                 if (player.getVideoFormat() == null) {
                     hideStartupSplash(true);
@@ -16411,6 +16515,27 @@ public class PlayerActivity extends Activity {
             return false;
         }
         if (sourceRetries >= MAX_SOURCE_RETRIES) {
+            // 2.4.2: an unfinished TorrServer MKV may contain a gap in an as-yet
+            // unavailable piece. Once normal re-reads have failed, skip that
+            // small corrupted span rather than leave the viewer on a black screen.
+            final Uri source = currentMediaUri();
+            final String path = source == null ? null : source.getPath();
+            final boolean torrent = source != null && (TorrFiles.speaks(source)
+                    || (path != null && path.contains("/stream/")));
+            if (torrent && isMatroskaMedia() && isBadBytes(error)
+                    && torrIncompleteSkips < 3 && player.isCurrentMediaItemSeekable()) {
+                final long position = player.getCurrentPosition();
+                final long duration = player.getDuration();
+                if (duration == C.TIME_UNSET || position + 3_000L < duration) {
+                    ++torrIncompleteSkips;
+                    sourceRetries = 0;
+                    Utils.log("incomplete torrent MKV: skipping 2 seconds past missing piece");
+                    player.seekTo(position + 2_000L);
+                    updateLoading(true);
+                    playerView.postDelayed(sourceRetryRunnable, 500L);
+                    return true;
+                }
+            }
             return false;
         }
         // The position is gone from the window, so re-preparing there would only reproduce the error until

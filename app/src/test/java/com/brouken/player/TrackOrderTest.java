@@ -46,4 +46,20 @@ public class TrackOrderTest {
         assertTrue(TrackOrder.compareSubtitle(forced, "English", f, "English",
                 Collections.singletonList("eng")) < 0);
     }
+
+    @Test public void sortsUnpreferredSubtitleTracksByDisplayName() {
+        final Format french = new Format.Builder().setLanguage("fra").build();
+        final Format japanese = new Format.Builder().setLanguage("jpn").build();
+        assertTrue(TrackOrder.compareSubtitle(japanese, "Alpha Japanese", french,
+                "Zulu French", Collections.singletonList("rus")) < 0);
+        assertTrue(TrackOrder.compareSubtitle(french, "Zulu French", japanese,
+                "Alpha Japanese", Collections.singletonList("rus")) > 0);
+    }
+
+    @Test public void preferredSubtitlesRemainAboveAlphabetizedExtras() {
+        final Format russian = new Format.Builder().setLanguage("rus").build();
+        final Format french = new Format.Builder().setLanguage("fra").build();
+        assertTrue(TrackOrder.compareSubtitle(russian, "Zulu Russian", french,
+                "Alpha French", Collections.singletonList("rus")) < 0);
+    }
 }

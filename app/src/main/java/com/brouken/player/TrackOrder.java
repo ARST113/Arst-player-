@@ -91,11 +91,19 @@ final class TrackOrder {
                                List<String> priorities) {
         final String langA = language(a, nameA);
         final String langB = language(b, nameB);
-        int order = Integer.compare(languageRank(langA, priorities),
-                languageRank(langB, priorities));
+        // Just+ 2.4.2: show each preferred language first, in the user's order.
+        // Everything else is ordered by the actual top-line display label,
+        // including tracks without a language tag. Do not group those extras
+        // alphabetically by ISO language: that hid familiar subtitle labels.
+        final int preferredA = priorities.indexOf(langA);
+        final int preferredB = priorities.indexOf(langB);
+        final int rankA = preferredA >= 0 ? preferredA : priorities.size();
+        final int rankB = preferredB >= 0 ? preferredB : priorities.size();
+        int order = Integer.compare(rankA, rankB);
         if (order != 0) return order;
-        order = compareLanguages(langA, langB);
-        if (order != 0) return order;
+        if (preferredA < 0) {
+            return compareLabels(nameA, nameB);
+        }
         order = Boolean.compare(!forced(a, nameA), !forced(b, nameB));
         return order != 0 ? order : compareLabels(nameA, nameB);
     }

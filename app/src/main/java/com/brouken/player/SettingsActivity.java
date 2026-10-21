@@ -438,6 +438,14 @@ public class SettingsActivity extends AppCompatActivity
 
             bindBrowser();
 
+            final Preference equalizer = findPreference("arxEqualizer");
+            if (equalizer != null) {
+                equalizer.setOnPreferenceClickListener(preference -> {
+                    ArxEqualizerDialog.show(requireContext(), null);
+                    return true;
+                });
+            }
+
             final Preference language = findPreference("appLanguage");
             if (language != null) {
                 language.setSummary(AppLanguage.summary(requireContext()));
@@ -479,9 +487,23 @@ public class SettingsActivity extends AppCompatActivity
                     roundValues.setVisible(false);
                 }
             }
-            Preference preferenceFrameRateMatching = findPreference("frameRateMatching");
-            if (preferenceFrameRateMatching != null) {
-                preferenceFrameRateMatching.setEnabled(Build.VERSION.SDK_INT >= 23);
+            final ListPreference rateMode = findPreference("arxFrameRateMode");
+            if (rateMode != null) {
+                rateMode.setEnabled(Build.VERSION.SDK_INT >= 23);
+                final Preference resolution = findPreference("displayResolutionMatching");
+                final Preference correction = findPreference("frameRateCorrection");
+                final Preference pause = findPreference("modeSwitchPauseMs");
+                final java.util.function.Consumer<String> visibility = choice -> {
+                    final boolean shown = !"off".equals(choice);
+                    if (resolution != null) resolution.setVisible(shown);
+                    if (correction != null) correction.setVisible(shown);
+                    if (pause != null) pause.setVisible(shown);
+                };
+                visibility.accept(rateMode.getValue());
+                rateMode.setOnPreferenceChangeListener((preference, value) -> {
+                    visibility.accept(String.valueOf(value));
+                    return true;
+                });
             }
             SwitchPreferenceCompat preferenceAllowSystemFrameRate = findPreference("allowSystemFrameRate");
             if (preferenceAllowSystemFrameRate != null) {
