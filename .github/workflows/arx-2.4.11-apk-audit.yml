@@ -1,0 +1,60 @@
+name: ARX 2.4.8 to 2.4.11 official APK audit
+on:
+  push:
+    branches: [arx/v2.4.11-port]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Download and pin vendor 2.4.8 to 2.4.11 APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor out
+          for v in 2.4.8 2.4.9 2.4.10 2.4.11; do
+            curl -fL --retry 4 --retry-delay 3 "https://github.com/just-plus-player/just-plus-player/releases/download/v$v/JustPlus.Player.v$v.apk" -o "vendor/$v.apk"
+          done
+          printf '%s\n' \
+            '16ba12c72a3e69ea99d118a5a0489053b5be1a16fb0dcd5b2257b7ce3b67b06b  vendor/2.4.8.apk' \
+            '5e6af09099840c813797fabb8ea178f807156eb32fae83e255aab063f3696367  vendor/2.4.9.apk' \
+            '4a4e6a0d9bc1657b96ca55c757dad8f270d5caf9ac9f7b3421747e7be47a6f5a  vendor/2.4.10.apk' \
+            '05868eaf3cfbcd25516430226836278fb63f535c14f66a5ee62da92c1ce634ba  vendor/2.4.11.apk' | sha256sum -c
+      - name: Compare APK contents and native dependencies for each release
+        run: python3 .github/scripts/arx-2411-apk-diff.py | tee out/archive-and-library-diff.txt
+      - name: Install JADX 1.5.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://github.com/skylot/jadx/releases/download/v1.5.3/jadx-1.5.3.zip -o /tmp/jadx.zip
+          mkdir -p /tmp/jadx-2411
+          unzip -q /tmp/jadx.zip -d /tmp/jadx-2411
+          chmod +x /tmp/jadx-2411/bin/jadx
+      - name: Decompile 2.4.8 and 2.4.11 APK bytecode
+        shell: bash
+        run: |
+          set -euo pipefail
+          for v in 2.4.8 2.4.11; do
+            /tmp/jadx-2411/bin/jadx --no-res --no-debug-info --threads-count 4 -d "out/jadx-$v" "vendor/$v.apk" >"out/jadx-$v.log" 2>&1 || true
+          done
+      - name: Extract changed behavior and key code evidence
+        run: python3 .github/scripts/arx-2411-java-evidence.py | tee out/java-evidence.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ARX-2.4.11-vendor-reconstruction-audit
+          path: |
+            out/archive-and-library-diff.txt
+            out/java-evidence.txt
+            out/jadx-*.log
+          retention-days: 14
