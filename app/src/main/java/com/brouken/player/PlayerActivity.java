@@ -497,6 +497,9 @@ public class PlayerActivity extends Activity {
      * uses (dddplayer, PlayerManager.kt).
      */
     static final okhttp3.OkHttpClient MEDIA_HTTP_CLIENT = new okhttp3.OkHttpClient.Builder()
+            // Just+ 2.4.9: Blu-ray and torrent media reads must use HTTP/1.1.
+            .protocols(Collections.singletonList(okhttp3.Protocol.HTTP_1_1))
+            .addInterceptor(new ArxHttp429RetryInterceptor())
             .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
