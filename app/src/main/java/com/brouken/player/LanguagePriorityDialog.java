@@ -164,10 +164,29 @@ final class LanguagePriorityDialog {
         add.setCompoundDrawableTintList(ColorStateList.valueOf(add.getCurrentTextColor()));
         add.setPadding(0, Utils.dpToPx(12), 0, Utils.dpToPx(12));
         add.setBackgroundResource(themeAttr(context, android.R.attr.selectableItemBackground));
+        // 2.4.10: hide the Add action once every supported language is already selected.
+        // An empty picker previously opened as a focusless dialog on Android TV.
+        boolean hasAvailableLanguage = false;
+        for (String code : allLanguages.keySet()) {
+            if (!languages.contains(code)) {
+                hasAvailableLanguage = true;
+                break;
+            }
+        }
+        if (!hasAvailableLanguage) {
+            for (String code : pinned) {
+                if (!languages.contains(code)) {
+                    hasAvailableLanguage = true;
+                    break;
+                }
+            }
+        }
+        add.setVisibility(hasAvailableLanguage ? View.VISIBLE : View.GONE);
+        add.setEnabled(hasAvailableLanguage);
         add.setOnClickListener(v -> showPicker());
         list.addView(add);
 
-        restoreFocus(list, focusRow, focusChild, add);
+        restoreFocus(list, focusRow, focusChild, hasAvailableLanguage ? add : list);
     }
 
     /**
@@ -208,6 +227,8 @@ final class LanguagePriorityDialog {
                 codes.add(code);
             }
         }
+        // The dialog must never open with zero rows: Android TV cannot focus a choice.
+        if (codes.isEmpty()) return;
         final String[] labels = new String[codes.size()];
         for (int i = 0; i < codes.size(); i++) {
             labels[i] = label(allLanguages, codes.get(i));
