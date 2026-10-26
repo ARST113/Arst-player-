@@ -1,0 +1,47 @@
+name: ARX 2.4.11 preview (Android TV center-control regression)
+on:
+  push:
+    branches: [arx/v2.4.11-port]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Install verified ARX FFmpeg binaries
+        run: bash .github/scripts/arx-241-import-native.sh
+      - name: Assert TV play-pause remains centered
+        run: python3 .github/scripts/arx-check-tv-center.py
+      - name: Compile, test and assemble signed preview
+        run: ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest :app:assembleLatestUniversalRelease
+      - name: Verify release signature and package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/latestUniversal/release -name '*.apk' -type f | head -n1)"
+          test -s "$apk"
+          signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          "$signer" verify --print-certs "$apk"
+          sha256sum "$apk"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ARX-TPlayer-2.4.11-arx1-preview-signed
+          path: app/build/outputs/apk/latestUniversal/release/*.apk
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ARX-TPlayer-2.4.11-debug
+          path: app/build/outputs/apk/latestUniversal/debug/*.apk
+          retention-days: 7
