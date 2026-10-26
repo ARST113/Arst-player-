@@ -165,4 +165,30 @@ fi
 # behavior or successful seek from the mere absence of a crash.
 record remote-focus UNVERIFIED 'D-pad focus/seek and cleared seek delta require visual comparison of PNG/XML artifacts'
 record expired-url-resume UNVERIFIED 'Expired-link + Android process death requires dedicated external-launcher instrumentation'
+
+# Capture a true reference frame from the vendor APK on the SAME TV emulator.
+# The original and ARX use the same package name, so uninstall between them;
+# do not compare against a phone layout or treat an original-app crash as ARX failure.
+if [[ -s vendor/2.4.11.apk ]]; then
+  adb uninstall "$PKG" > "$OUT/reference-uninstall.txt" 2>&1 || true
+  if adb install vendor/2.4.11.apk > "$OUT/reference-install.txt" 2>&1; then
+    adb shell am force-stop "$PKG"
+    adb shell am start -W -n "$PKG/$ACT" -a android.intent.action.VIEW \
+      -d http://127.0.0.1:8765/tv-h264.mp4 -t video/mp4 > "$OUT/reference-launch.txt" 2>&1 || true
+    sleep 8
+    capture official-playing
+    adb shell input keyevent 23
+    sleep 2
+    capture official-controls
+    adb shell input keyevent 20
+    sleep 1
+    capture official-down
+    record reference PASS 'Verified official 2.4.11 installed, TV screen and controls captured for side-by-side visual review'
+  else
+    record reference UNVERIFIED 'Official APK installation unsuccessful; see reference-install.txt'
+  fi
+else
+  record reference UNVERIFIED 'Official 2.4.11 APK missing; no reference screenshots'
+fi
+
 if ((FAILURES > 0)); then exit 1; fi
