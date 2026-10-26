@@ -77,6 +77,7 @@ sleep 1
 capture arx-controls
 # XML hierarchy includes bounds for accessibility-visible controls. Verify placement
 # when the actual play/pause view is exported to UIAutomator.
+set +e
 python3 - "$OUT/arx-controls.xml" "$OUT/screen-size.txt" > "$OUT/arx-play-button-geometry.txt" <<'PY'
 from pathlib import Path
 import re,sys,xml.etree.ElementTree as ET
@@ -112,6 +113,7 @@ print("FAIL: button relocated outside central video zone")
 sys.exit(1)
 PY
 rc=$?
+set -e
 if ((rc==0)); then
   record centered-play PASS "$(head -n1 "$OUT/arx-play-button-geometry.txt")"
 elif ((rc==2)); then
