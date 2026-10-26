@@ -3338,6 +3338,18 @@ public class PlayerActivity extends Activity {
         state.putFloat("scale", mPrefs.scale);
         state.putFloat("aspectRatio", mPrefs.aspectRatio);
         state.putFloat("speed", mPrefs.speed);
+        // 2.4.11: Android can reclaim the activity while playback is paused.
+        // A resumed expiring stream may then fail before it is seekable again.
+        // Persist the last *successful* playback snapshot with the API session
+        // so the caller can still receive its timecode from finish().
+        if (intentReturnResult) {
+            rememberReport();
+            if (reportUri != null && reportPosition > 0 && reportDuration > 0) {
+                state.putString("lastReportUri", reportUri.toString());
+                state.putLong("lastReportPosition", reportPosition);
+                state.putLong("lastReportDuration", reportDuration);
+            }
+        }
         outState.putBundle(STATE_API_SESSION, state);
     }
 
@@ -3354,6 +3366,18 @@ public class PlayerActivity extends Activity {
         final Bundle state = savedInstanceState.getBundle(STATE_API_SESSION);
         if (state == null) {
             return;
+        }
+        // Restore independently of the decoder / renewed URL: a failed load
+        // cannot recreate these values after Android killed the paused process.
+        if (intentReturnResult) {
+            final String lastUri = state.getString("lastReportUri");
+            final long lastPosition = state.getLong("lastReportPosition", 0L);
+            final long lastDuration = state.getLong("lastReportDuration", 0L);
+            if (lastUri != null && lastPosition > 0 && lastDuration > 0) {
+                reportUri = Uri.parse(lastUri);
+                reportPosition = lastPosition;
+                reportDuration = lastDuration;
+            }
         }
         final String uri = state.getString("uri");
         final Uri target = uri == null ? null : Uri.parse(uri);
