@@ -8,6 +8,7 @@ OUT=arx-2411-tv-evidence
 mkdir -p "$OUT"
 printf 'test\tstatus\tdetails\n' > "$OUT/results.tsv"
 FAILURES=0
+SERVER_PID=""
 
 record() {
   printf '%s\t%s\t%s\n' "$1" "$2" "$3" | tee -a "$OUT/results.tsv"
@@ -27,6 +28,7 @@ capture() {
   adb shell dumpsys window windows > "$OUT/$name-window.txt" 2>/dev/null || true
 }
 cleanup() {
+  if [[ -n "$SERVER_PID" ]]; then kill "$SERVER_PID" >/dev/null 2>&1 || true; fi
   adb logcat -d -v threadtime > "$OUT/final-logcat.txt" 2>/dev/null || true
   adb shell dumpsys activity activities > "$OUT/final-activities.txt" 2>/dev/null || true
   adb shell dumpsys media.codec > "$OUT/final-codecs.txt" 2>/dev/null || true
@@ -47,6 +49,22 @@ record image PASS 'Android TV with leanback feature'
 APK="$(find app/build/outputs/apk/latestUniversal/debug -type f -name '*.apk' | head -n1)"
 test -s "$APK"
 adb install -r "$APK" > "$OUT/install.txt" 2>&1
+# Start a bounded-lifetime HTTP fixture server only while the emulator test runs.
+python3 -m http.server 8765 --bind 127.0.0.1 --directory arx-2411-tv-fixtures \
+  </dev/null > "$OUT/http-server.txt" 2>&1 &
+SERVER_PID=$!
+server_ready=0
+for i in {1..20}; do
+  if curl -fsSI --max-time 3 http://127.0.0.1:8765/tv-h264.mp4 > "$OUT/http-head.txt" 2>&1; then
+    server_ready=1
+    break
+  fi
+  sleep 1
+done
+if ((server_ready == 0)); then
+  record http-server FAIL "Video test server failed to start"
+  exit 1
+fi
 adb reverse tcp:8765 tcp:8765
 adb shell settings put secure immersive_mode_confirmations confirmed || true
 adb shell am force-stop "$PKG"
