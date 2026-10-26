@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: arx-2411-audit-port
+  cancel-in-progress: true
+
 jobs:
   audit:
     runs-on: ubuntu-latest
