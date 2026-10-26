@@ -3,7 +3,6 @@ package com.brouken.player;
 import androidx.annotation.NonNull;
 
 import java.io.IOException;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Interceptor;
@@ -51,7 +50,7 @@ final class ArxHttp429RetryInterceptor implements Interceptor {
         try {
             long seconds = Long.parseLong(header.trim());
             if (seconds < 0) return DEFAULT_DELAY_MS;
-            return Math.min(MAX_DELAY_MS, seconds * 1000L);
+            return seconds >= MAX_DELAY_MS / 1000L ? MAX_DELAY_MS : seconds * 1000L;
         } catch (NumberFormatException e) {
             // HTTP dates are legal Retry-After values too; use a safe bounded fallback.
             return DEFAULT_DELAY_MS;
