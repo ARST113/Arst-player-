@@ -122,8 +122,10 @@ final class ArxControlsUi {
         scroll.setFillViewport(false);
         scroll.setVerticalScrollBarEnabled(true);
         scroll.addView(body);
+        // On portrait devices pickerWindow sizes its sheet to WRAP_CONTENT.
+        // A weighted child with height 0 would measure as an empty panel there.
         outer.addView(scroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         // pickerWindow owns correct TV/landscape side docking, dark surface,
         // scrim, cutouts, focusable close button and gesture inset handling.
