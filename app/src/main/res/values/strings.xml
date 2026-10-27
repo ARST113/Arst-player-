@@ -665,4 +665,50 @@
     <string name="pref_about_upstream">Original project</string>
     <string name="about_upstream_summary" translatable="false">Just+ Player by @levende</string>
     <string name="about_upstream_url" translatable="false">https://github.com/just-plus-player/just-plus-player</string>
+
+    <!-- Local ARX controls use the same Material 3 panel and locale as upstream player. -->
+    <string name="arx_menu_equalizer">Equalizer · 10 bands</string>
+    <string name="arx_menu_ambient">Ambient light</string>
+    <string name="arx_menu_picture">Picture</string>
+    <string name="arx_menu_enabled">On</string>
+    <string name="arx_menu_off">Off</string>
+    <string name="arx_menu_adjusted">Adjusted</string>
+    <string name="arx_menu_neutral">Neutral</string>
+    <string name="arx_picture_title">Picture adjustments</string>
+    <string name="arx_picture_notice">Picture effects use GPU rendering. Protected video, Dolby Vision and software decoding remain unchanged.</string>
+    <string name="arx_picture_brightness">Brightness</string>
+    <string name="arx_picture_contrast">Contrast</string>
+    <string name="arx_picture_saturation">Saturation</string>
+    <string name="arx_picture_warmth">Warmth</string>
+    <string name="arx_picture_lightness">Lightness</string>
+    <string name="arx_picture_preset">Picture preset</string>
+    <string name="arx_picture_custom">Custom</string>
+    <string name="arx_picture_vivid">Vivid</string>
+    <string name="arx_picture_cinema">Cinema</string>
+    <string name="arx_picture_bright">Bright</string>
+    <string name="arx_picture_night">Night</string>
+    <string name="arx_ambient_title">Ambient light</string>
+    <string name="arx_ambient_mode">Lighting mode</string>
+    <string name="arx_ambient_glow">Glow</string>
+    <string name="arx_ambient_cinema">Cinema</string>
+    <string name="arx_ambient_echo">Echo</string>
+    <string name="arx_ambient_mirror">Mirror</string>
+    <string name="arx_ambient_reach">Reach</string>
+    <string name="arx_ambient_response">Response</string>
+    <string name="arx_ambient_notice">Video backlight is simulated around the screen; external LED hardware is not required.</string>
+    <string name="arx_eq_title">Equalizer · 10 bands</string>
+    <string name="arx_eq_enable">Enable equalizer (decoded audio)</string>
+    <string name="arx_eq_preset">Equalizer preset</string>
+    <string name="arx_eq_custom">Custom</string>
+    <string name="arx_eq_flat">Flat</string>
+    <string name="arx_eq_bass">Bass</string>
+    <string name="arx_eq_cinema">Cinema</string>
+    <string name="arx_eq_voice">Voice</string>
+    <string name="arx_eq_treble">Treble</string>
+    <string name="arx_eq_music">Music</string>
+    <string name="arx_eq_notice">Changes take effect during playback for decoded audio; HDMI passthrough is not modified.</string>
+    <string name="arx_ui_preset">Preset: %1$s</string>
+    <string name="arx_ui_percent">%1$s: %2$d%%</string>
+    <string name="arx_ui_number">%1$s: %2$d</string>
+    <string name="arx_ui_mode">Mode: %1$s</string>
 </resources>
