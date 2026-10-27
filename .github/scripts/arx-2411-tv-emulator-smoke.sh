@@ -173,24 +173,40 @@ capture_panel() {
     record "panel-$which" UNVERIFIED 'More button inaccessible on this Android TV UI snapshot'
     return
   fi
-  adb shell input tap $more
-  sleep 1
-  capture "arx-more-before-$which"
-  local coords
-  coords="$(panel_coordinates "$OUT/arx-more-before-$which.xml" "$menu_label")"
+  # On TV the controller may be fading when the first touch lands.
+  # Check the menu actually opened and retry rather than silently tapping
+  # the video at coordinates which were valid only in the missing menu.
+  local coords=""
+  for attempt in 1 2 3; do
+    adb shell input tap $more
+    sleep 2
+    capture "arx-more-before-$which"
+    coords="$(panel_coordinates "$OUT/arx-more-before-$which.xml" "$menu_label")"
+    if [[ -n "$coords" ]]; then break; fi
+  done
   if [[ -z "$coords" ]]; then
-    record "panel-$which" UNVERIFIED "Menu row $menu_label not visible in TV UIAutomator XML"
+    record "panel-$which" UNVERIFIED "Menu row $menu_label not visible after three controller/menu attempts"
     adb shell input keyevent 4 || true
     return
   fi
-  adb shell input tap $coords
-  sleep 2
-  capture "arx-material3-$which"
-  if [[ -s "$OUT/arx-material3-$which.xml" ]] && \
-     grep -q "$expected" "$OUT/arx-material3-$which.xml"; then
+  local visible=0
+  for attempt in 1 2; do
+    adb shell input tap $coords
+    sleep 2
+    capture "arx-material3-$which"
+    if [[ -s "$OUT/arx-material3-$which.xml" ]] && \
+       grep -q "$expected" "$OUT/arx-material3-$which.xml"; then
+      visible=1
+      break
+    fi
+    # Retry an item tap only if the menu remains on screen; if it closed,
+    # do not tap the same coordinate against the underlying video.
+    if ! grep -q "$menu_label" "$OUT/arx-material3-$which.xml"; then break; fi
+  done
+  if (( visible )); then
     record "panel-$which" PASS "Material 3 $which pane opened, $expected accessibility text captured"
   else
-    record "panel-$which" FAIL "Did not find $expected in $which dialog accessibility tree"
+    record "panel-$which" FAIL "Menu opened but no $expected in $which panel accessibility tree"
   fi
   adb shell input keyevent 4 || true
   sleep 1
