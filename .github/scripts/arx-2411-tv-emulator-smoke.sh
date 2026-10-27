@@ -287,13 +287,13 @@ fi
 
 # The parallel ARX build must coexist with the SHA-verified official Just+
 # package without changing the visible ARX name or ACTION_VIEW protocol.
-PARALLEL_PKG=com.arst.tplayer
+PARALLEL_PKG=com.lampaua.player.arx
 PARALLEL_APK="$(find app/build/outputs/apk/latestParallel/debug -type f -name '*.apk' | head -n1)"
 if [[ -s "$PARALLEL_APK" ]]; then
   if adb install -r "$PARALLEL_APK" > "$OUT/parallel-install.txt" 2>&1; then
     adb shell pm list packages > "$OUT/parallel-installed-packages.txt"
     if grep -qx "package:com.justplus.player" "$OUT/parallel-installed-packages.txt" && \
-       grep -qx "package:com.arst.tplayer" "$OUT/parallel-installed-packages.txt"; then
+       grep -qx "package:com.lampaua.player.arx" "$OUT/parallel-installed-packages.txt"; then
       record parallel-install PASS 'Official Just+ and parallel ARX installed simultaneously with independent package IDs'
     else
       record parallel-install FAIL 'Expected both package IDs; see parallel-installed-packages.txt'
@@ -323,7 +323,7 @@ if [[ -s "$PARALLEL_APK" ]]; then
       sleep 1
       capture parallel-controls
       if ((p_ready && p_frame && p_play)); then
-        record parallel-lampa-intent PASS 'ACTION_VIEW video/mp4 with -p com.arst.tplayer resolved, playing and decoded first frame'
+        record parallel-lampa-intent PASS 'ACTION_VIEW video/mp4 with -p com.lampaua.player.arx resolved, playing and decoded first frame'
       else
         record parallel-lampa-intent FAIL "Parallel ACTION_VIEW playback: READY=$p_ready frame=$p_frame playing=$p_play"
       fi
@@ -340,7 +340,7 @@ fi
 # The previous ACTION_VIEW test was only one video. Build a *real* nested
 # playlist Bundle in an exported debug-only activity, send it through the
 # public PlayerActivity path and confirm both items are parsed.
-if [[ -s "$PARALLEL_APK" ]] && grep -qx "package:com.arst.tplayer" "$OUT/parallel-installed-packages.txt"; then
+if [[ -s "$PARALLEL_APK" ]] && grep -qx "package:com.lampaua.player.arx" "$OUT/parallel-installed-packages.txt"; then
   adb shell am force-stop "$PARALLEL_PKG"
   adb logcat -c
   if timeout 40 adb shell am start -W \
@@ -375,5 +375,6 @@ else
   record parallel-nested-playlist UNVERIFIED 'Parallel APK failed installation or is missing'
 fi
 
-record lampa-hardcoded-package UNVERIFIED 'If Lampa forces com.justplus.player it cannot automatically choose com.arst.tplayer; source-side selection config required'
+record lampa-package-whitelist PASS 'Lampa v1.13.3+ recognizes com.lampaua.player prefix for native Just+ nested playlist contract'
+record lampa-player-selection UNVERIFIED 'Selecting ARX in Lampa remains necessary when a different player was saved as default'
 if ((FAILURES > 0)); then exit 1; fi
