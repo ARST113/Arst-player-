@@ -5732,6 +5732,12 @@ public class PlayerActivity extends Activity {
         nestedPlaylistError = null;
 
         apiTitle = Utils.unescapeHtml(model.title);
+        // Lampa sends a series logo as playlist.logo (root-level). Warm Glide's
+        // memory/disk cache as soon as the native Bundle is parsed so the
+        // buffering splash can paint it before the first video frame.
+        if (model.logo != null) {
+            Glide.with(getApplicationContext()).load(model.logo).preload();
+        }
         apiHeaders = mergedHeaders(model.headers, model.items.get(model.startIndex).headers);
         nestedResultCallback = model.resultCallback instanceof PendingIntent
                 ? (PendingIntent) model.resultCallback : null;
@@ -19373,6 +19379,8 @@ public class PlayerActivity extends Activity {
                 @Override
                 public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target,
                                             boolean firstResource) {
+                    Utils.log("startup series logo load failed: " +
+                            (e != null ? e.getClass().getSimpleName() : "unknown"));
                     return false; // the accessible white title remains if artwork fails
                 }
 
