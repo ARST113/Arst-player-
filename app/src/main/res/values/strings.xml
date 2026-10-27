@@ -699,6 +699,7 @@
     <string name="arx_eq_title">Equalizer · 10 bands</string>
     <string name="arx_eq_enable">Enable equalizer (decoded audio)</string>
     <string name="arx_eq_preset">Equalizer preset</string>
+    <string name="arx_eq_bands">Frequency bands</string>
     <string name="arx_eq_custom">Custom</string>
     <string name="arx_eq_flat">Flat</string>
     <string name="arx_eq_bass">Bass</string>
