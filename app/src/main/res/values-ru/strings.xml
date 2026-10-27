@@ -660,6 +660,7 @@
     <string name="arx_eq_title">Эквалайзер · 10 полос</string>
     <string name="arx_eq_enable">Включить эквалайзер (декодированный звук)</string>
     <string name="arx_eq_preset">Профиль эквалайзера</string>
+    <string name="arx_eq_bands">Частотные полосы</string>
     <string name="arx_eq_custom">Пользовательский</string>
     <string name="arx_eq_flat">Ровный</string>
     <string name="arx_eq_bass">Басы</string>
