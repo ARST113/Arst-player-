@@ -64,8 +64,12 @@ public final class PlaylistContractSmokeActivity extends Activity {
         playlist.putParcelable("result_callback",
                 PendingIntent.getBroadcast(this, REQUEST, callback, flags));
 
+        // Allow the same independent Lampa-like launcher to exercise vendor
+        // Just+ and parallel ARX with IDENTICAL extras, URI, artwork and items.
+        final String selected = getIntent().getStringExtra("target_package");
+        final String targetPackage = selected == null ? getPackageName() : selected;
         final Intent view = new Intent(Intent.ACTION_VIEW)
-                .setComponent(new ComponentName(getPackageName(),
+                .setComponent(new ComponentName(targetPackage,
                         "com.brouken.player.PlayerActivity"))
                 .setDataAndType(Uri.parse(url), "video/mp4")
                 .putExtra("playlist", playlist);
