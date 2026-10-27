@@ -16,7 +16,7 @@ playlist result semantics and center TV Play/Pause position.
 | `:app:assembleLatestUniversalRelease` | `com.justplus.player` | Legacy-compatible install/update; mutually exclusive with official Just+ Player | Existing updater setting |
 | `:app:assembleLatestParallelRelease` | `com.lampaua.player.arx` | Standalone ARX TPlayer; install **alongside** official Just+ Player | Disabled (until ARX package-aware updater is implemented) |
 
-Output: `app/build/outputs/apk/latestParallel/release/ARX.TPlayer.v<version>-parallel.apk`.
+Output: `app/build/outputs/apk/latestParallel/release/ARX.TPlayer.v<version>-LAMPA-playlists-parallel.apk`.
 Both use the pinned `arx` release certificate.
 
 **Important**: Installing the parallel APK does not replace `com.justplus.player`
@@ -46,9 +46,9 @@ Android players are addressed in one of two ways:
 - **Package-scoped or explicit intent**: if the source plugin hardcodes
   `com.justplus.player`, Android *must* select that package. Giving an APK the
   same label does not change this. Select `com.lampaua.player.arx` in the
-  Lampa Android player chooser or reset the saved player preference; Lampa
-  then sends the full nested playlist Bundle to the selected APK,
-  URI and extras. The activity class remains `com.brouken.player.PlayerActivity`.
+  Lampa Android player chooser or reset the saved player preference. Lampa
+  then sends the full nested playlist Bundle, URI and extras to the selected
+  APK. The activity class remains `com.brouken.player.PlayerActivity`.
 
 This build preserves the **literal API result action**
 `com.justplus.player.result` for nested playlists regardless of the Android
@@ -62,7 +62,7 @@ so providers do not clash when both APKs are installed.
 Android package selection test (when both players are installed):
 
 ```sh
-adb shell pm list packages | grep -E 'com.(justplus.player|arst.tplayer)'
+adb shell pm list packages | grep -E 'com\\.(justplus\\.player|lampaua\\.player\\.arx)'
 adb shell am start -W -a android.intent.action.VIEW \
   -p com.lampaua.player.arx \
   -d 'http://127.0.0.1:8765/tv-h264.mp4' -t video/mp4
@@ -72,12 +72,15 @@ adb shell am start -W -a android.intent.action.VIEW \
 
 `.github/workflows/arx-2.4.11-build.yml` produces both signed, separately
 named GitHub Actions artifacts and verifies signatures, package identifiers
-and **identical visible app labels**.
+and **identical visible app labels**, and verifies the parallel APK's
+full-playlist allowlist membership directly against Lampa 1.13.3 and 1.13.4
+native Kotlin source.
 
 `.github/workflows/arx-2.4.11-tv-emulator.yml` installs the verified official
 APK and parallel ARX on the *same* Android TV API 33 emulator; it asserts both
 packages are installed, launches the parallel variant with a package-scoped
-implicit video intent, waits for Media3 READY/first decoded frame, captures
+implicit video intent **and a real two-episode nested playlist Bundle**,
+waits for parsing and Media3 READY/first decoded frame, captures
 screenshots and logcat. Incomplete/failing runs must never be reported as PASS.
 
 ## Remaining caveat
