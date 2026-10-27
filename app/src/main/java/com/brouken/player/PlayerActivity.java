@@ -12561,23 +12561,28 @@ public class PlayerActivity extends Activity {
                     false, this::showSpeedDialog));
             items.add(new Dialogs.MenuItem(R.drawable.ic_volume_up_24dp, getString(R.string.sound_row),
                     soundSummary(), false, this::showSoundPanel));
-            items.add(new Dialogs.MenuItem(R.drawable.ic_audiotrack_24dp, "Equalizer · 10 bands",
-                    ArxEqualizerDialog.enabled(this) ? "Enabled" : "Off", false,
-                    () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
             if (isTvBox) {
-                items.add(new Dialogs.MenuItem(R.drawable.ic_fit_screen_24dp, "Resize / Zoom",
-                        null, false, this::showAspectModePicker));
+                items.add(new Dialogs.MenuItem(R.drawable.ic_fit_screen_24dp,
+                        getString(R.string.video_resize_fit), null, false, this::showAspectModePicker));
             }
             if (!ArxDrm.isProtected(player.getCurrentMediaItem())) {
-                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Ambient light",
-                        null, false, () -> { if (arxAmbientLight != null) arxAmbientLight.show(); }));
-                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Picture",
-                        ArxPictureDialog.active(this) ? "Adjusted" : "Neutral", false,
+                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp,
+                        getString(R.string.arx_menu_ambient), null, false,
+                        () -> { if (arxAmbientLight != null) arxAmbientLight.show(); }));
+                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp,
+                        getString(R.string.arx_menu_picture),
+                        getString(ArxPictureDialog.active(this)
+                                ? R.string.arx_menu_adjusted : R.string.arx_menu_neutral), false,
                         () -> ArxPictureDialog.show(this, () -> {
                             pictureAppliedHash = Integer.MIN_VALUE;
                             applyArxPicture();
                         })));
             }
+            items.add(new Dialogs.MenuItem(R.drawable.ic_tune_24dp,
+                    getString(R.string.arx_menu_equalizer),
+                    getString(ArxEqualizerDialog.enabled(this)
+                            ? R.string.arx_menu_enabled : R.string.arx_menu_off), false,
+                    () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
         }
         // Only with subtitles on: there is nothing to shift otherwise. One row for both lines — the
         // panel behind it carries a slider each, and which is which is answered there.
