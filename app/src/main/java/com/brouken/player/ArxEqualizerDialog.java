@@ -4,7 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
-import android.widget.CheckBox;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -58,7 +58,9 @@ public final class ArxEqualizerDialog {
         final LinearLayout body = ArxControlsUi.column(ctx);
         body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_eq_notice)));
 
-        final CheckBox enable = new CheckBox(ctx);
+        // Material 3 switch row: the upstream pane presents this as a toggle,
+        // not an old Android checkbox. Keeps full remote-focus semantics.
+        final MaterialSwitch enable = new MaterialSwitch(ctx);
         enable.setText(activity.getString(R.string.arx_eq_enable));
         enable.setTextSize(16f);
         enable.setTextColor(MaterialColors.getColor(ctx, R.attr.colorOnSurface, Color.WHITE));
@@ -66,7 +68,12 @@ public final class ArxEqualizerDialog {
                 MaterialColors.getColor(ctx, R.attr.colorPrimary, Color.RED)));
         enable.setChecked(on[0]);
         enable.setMinHeight(Utils.dpToPx(56));
+        enable.setPadding(Utils.dpToPx(14), Utils.dpToPx(5),
+                Utils.dpToPx(14), Utils.dpToPx(5));
+        enable.setBackground(Dialogs.pickerRow(ctx, Color.TRANSPARENT));
+        enable.setFocusable(true);
         body.addView(enable);
+        body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_eq_preset)));
 
         final String[] presetNames = new String[PRESET_LABELS.length];
         for (int i=0;i<presetNames.length;i++) presetNames[i]=activity.getString(PRESET_LABELS[i]);
@@ -106,6 +113,9 @@ public final class ArxEqualizerDialog {
                 save.run();
             }));
         body.addView(presetButton[0]);
+        // Each band is independently focusable through the native TV
+        // SeekBar; a focused row shows frequency and signed gain in dB.
+        body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_eq_bands)));
 
         for (int i=0;i<levels.length;i++) {
             final int index=i;
