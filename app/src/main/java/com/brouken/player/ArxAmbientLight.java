@@ -201,49 +201,35 @@ final class ArxAmbientLight {
         final LinearLayout body = ArxControlsUi.column(ctx);
         body.addView(ArxControlsUi.caption(ctx,
                 activity.getString(R.string.arx_ambient_notice)));
+        // Just+ 2.4.11 uses one mode selector/card, not a permanently
+        // expanded stack of radio buttons (which also made TV-DPAD unusable).
+        // The chooser itself uses the player's focus-aware side sheet.
         body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_ambient_mode)));
-        final TextView label = ArxControlsUi.valueLabel(ctx, "");
-        body.addView(label);
-
         final int[] modeLabels = {
                 R.string.arx_menu_off, R.string.arx_ambient_glow,
                 R.string.arx_ambient_cinema, R.string.arx_ambient_echo,
                 R.string.arx_ambient_mirror
         };
-        final android.widget.RadioButton[] radios =
-                new android.widget.RadioButton[modeLabels.length];
-        final Runnable refresh = () -> {
-            label.setText(activity.getString(R.string.arx_ui_mode,
-                    activity.getString(modeLabels[mode])));
-            for (int j=0;j<radios.length;j++) {
-                if (radios[j] != null) radios[j].setChecked(j == mode);
-            }
-        };
-        for (int i=0;i<modeLabels.length;i++) {
-            final int index=i;
-            final android.widget.RadioButton radio = new android.widget.RadioButton(ctx);
-            radios[i]=radio;
-            radio.setText(activity.getString(modeLabels[i]));
-            radio.setTextSize(17f);
-            radio.setTextColor(com.google.android.material.color.MaterialColors.getColor(ctx,
-                    R.attr.colorOnSurface, Color.WHITE));
-            radio.setButtonTintList(android.content.res.ColorStateList.valueOf(
-                    com.google.android.material.color.MaterialColors.getColor(ctx,
-                            R.attr.colorPrimary, Color.RED)));
-            radio.setPadding(Utils.dpToPx(8), Utils.dpToPx(5),
-                    Utils.dpToPx(8), Utils.dpToPx(5));
-            radio.setMinHeight(Utils.dpToPx(50));
-            radio.setBackground(Dialogs.pickerRow(ctx, Color.TRANSPARENT));
-            radio.setOnClickListener(v -> {
-                mode=index;
-                prefs().edit().putInt(MODE,index).apply();
-                refresh.run();
-                if (mode==0) hide();
-                else if (!running) start();
-            });
-            body.addView(radio);
+        final String[] modeNames = new String[modeLabels.length];
+        for (int i=0; i<modeNames.length; i++) {
+            modeNames[i] = activity.getString(modeLabels[i]);
         }
+        final TextView[] selector = new TextView[1];
+        final Runnable refresh = () -> selector[0].setText(activity.getString(
+                R.string.arx_ui_mode, modeNames[Math.max(0, Math.min(mode, modeNames.length-1))]));
+        selector[0] = ArxControlsUi.action(ctx, "", () ->
+                ArxControlsUi.chooser(activity, R.string.arx_ambient_mode,
+                        modeNames, mode, index -> {
+                            mode = index;
+                            prefs().edit().putInt(MODE, index).apply();
+                            refresh.run();
+                            if (mode == 0) hide();
+                            else if (!running) start();
+                        }));
+        selector[0].setContentDescription(activity.getString(R.string.arx_ambient_mode));
+        body.addView(selector[0]);
         refresh.run();
+
         final int[] sliderLabels = {
                 R.string.arx_picture_brightness, R.string.arx_ambient_reach,
                 R.string.arx_ambient_response
