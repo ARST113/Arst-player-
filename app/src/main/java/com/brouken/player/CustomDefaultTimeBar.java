@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.animation.PathInterpolator;
+import android.view.View;
 import android.view.MotionEvent;
 
 import androidx.annotation.Nullable;
@@ -96,6 +97,15 @@ class CustomDefaultTimeBar extends DefaultTimeBar {
             @Override
             public void onScrubStop(TimeBar timeBar, long position, boolean canceled) {
                 scrubbingNow = false;
+                // 2.4.11: clearing the top seek delta must happen AFTER the activity's
+                // own scrub-stop listeners have updated the final time readout.
+                // Otherwise a stale jump stays above the TV picture indefinitely.
+                final View surface = getRootView().findViewById(R.id.video_view);
+                if (surface instanceof CustomPlayerView) {
+                    final CustomPlayerView playerView = (CustomPlayerView) surface;
+                    playerView.removeCallbacks(playerView.textClearRunnable);
+                    playerView.postDelayed(playerView.textClearRunnable, 300L);
+                }
             }
         });
     }

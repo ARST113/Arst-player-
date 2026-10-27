@@ -497,6 +497,9 @@ public class PlayerActivity extends Activity {
      * uses (dddplayer, PlayerManager.kt).
      */
     static final okhttp3.OkHttpClient MEDIA_HTTP_CLIENT = new okhttp3.OkHttpClient.Builder()
+            // Just+ 2.4.9: Blu-ray and torrent media reads must use HTTP/1.1.
+            .protocols(Collections.singletonList(okhttp3.Protocol.HTTP_1_1))
+            .addInterceptor(new ArxHttp429RetryInterceptor())
             .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
@@ -3335,6 +3338,18 @@ public class PlayerActivity extends Activity {
         state.putFloat("scale", mPrefs.scale);
         state.putFloat("aspectRatio", mPrefs.aspectRatio);
         state.putFloat("speed", mPrefs.speed);
+        // 2.4.11: Android can reclaim the activity while playback is paused.
+        // A resumed expiring stream may then fail before it is seekable again.
+        // Persist the last *successful* playback snapshot with the API session
+        // so the caller can still receive its timecode from finish().
+        if (intentReturnResult) {
+            rememberReport();
+            if (reportUri != null && reportPosition > 0 && reportDuration > 0) {
+                state.putString("lastReportUri", reportUri.toString());
+                state.putLong("lastReportPosition", reportPosition);
+                state.putLong("lastReportDuration", reportDuration);
+            }
+        }
         outState.putBundle(STATE_API_SESSION, state);
     }
 
@@ -3351,6 +3366,18 @@ public class PlayerActivity extends Activity {
         final Bundle state = savedInstanceState.getBundle(STATE_API_SESSION);
         if (state == null) {
             return;
+        }
+        // Restore independently of the decoder / renewed URL: a failed load
+        // cannot recreate these values after Android killed the paused process.
+        if (intentReturnResult) {
+            final String lastUri = state.getString("lastReportUri");
+            final long lastPosition = state.getLong("lastReportPosition", 0L);
+            final long lastDuration = state.getLong("lastReportDuration", 0L);
+            if (lastUri != null && lastPosition > 0 && lastDuration > 0) {
+                reportUri = Uri.parse(lastUri);
+                reportPosition = lastPosition;
+                reportDuration = lastDuration;
+            }
         }
         final String uri = state.getString("uri");
         final Uri target = uri == null ? null : Uri.parse(uri);
@@ -3490,7 +3517,10 @@ public class PlayerActivity extends Activity {
     public void finish() {
         if (nestedPlaylistSession) {
             final Bundle result = buildNestedPlaylistResult(playbackFinished ? "completion" : "user");
-            final Intent intent = new Intent(getPackageName() + ".result");
+            // Lampa/Just+ nested playlist result action is part of the external API protocol.
+            // Do not derive it from our side-by-side APK applicationId: callers may
+            // compare this exact action even when ARX lives at com.arst.tplayer.
+            final Intent intent = new Intent("com.justplus.player.result");
             intent.putExtras(result);
             final String uriText = result.getString("uri");
             if (uriText != null && !uriText.isEmpty()) {
@@ -5702,6 +5732,12 @@ public class PlayerActivity extends Activity {
         nestedPlaylistError = null;
 
         apiTitle = Utils.unescapeHtml(model.title);
+        // Lampa sends a series logo as playlist.logo (root-level). Warm Glide's
+        // memory/disk cache as soon as the native Bundle is parsed so the
+        // buffering splash can paint it before the first video frame.
+        if (model.logo != null) {
+            Glide.with(getApplicationContext()).load(model.logo).preload();
+        }
         apiHeaders = mergedHeaders(model.headers, model.items.get(model.startIndex).headers);
         nestedResultCallback = model.resultCallback instanceof PendingIntent
                 ? (PendingIntent) model.resultCallback : null;
@@ -6487,8 +6523,7 @@ public class PlayerActivity extends Activity {
         titleView.setText(title);
 
         final String headerArt = mPrefs != null && mPrefs.headerArt != null ? mPrefs.headerArt : "logo";
-        final Uri logo = nestedPlaylistSession && itemIndex >= 0 && itemIndex < apiPlaylistLogos.size()
-                ? apiPlaylistLogos.get(itemIndex) : null;
+        final Uri logo = nestedSeriesLogo(itemIndex);
         Uri artworkUri = metadata != null ? metadata.artworkUri : null;
         if (artworkUri == null) {
             artworkUri = playingArtwork;
@@ -12531,23 +12566,24 @@ public class PlayerActivity extends Activity {
                     false, this::showSpeedDialog));
             items.add(new Dialogs.MenuItem(R.drawable.ic_volume_up_24dp, getString(R.string.sound_row),
                     soundSummary(), false, this::showSoundPanel));
-            items.add(new Dialogs.MenuItem(R.drawable.ic_audiotrack_24dp, "Equalizer · 10 bands",
-                    ArxEqualizerDialog.enabled(this) ? "Enabled" : "Off", false,
-                    () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
             if (isTvBox) {
-                items.add(new Dialogs.MenuItem(R.drawable.ic_fit_screen_24dp, "Resize / Zoom",
-                        null, false, this::showAspectModePicker));
+                items.add(new Dialogs.MenuItem(R.drawable.ic_fit_screen_24dp,
+                        getString(R.string.arx_menu_resize), null, false, this::showAspectModePicker));
             }
             if (!ArxDrm.isProtected(player.getCurrentMediaItem())) {
-                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Ambient light",
-                        null, false, () -> { if (arxAmbientLight != null) arxAmbientLight.show(); }));
-                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp, "Picture",
-                        ArxPictureDialog.active(this) ? "Adjusted" : "Neutral", false,
+                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp,
+                        getString(R.string.arx_menu_ambient), null, false,
+                        () -> { if (arxAmbientLight != null) arxAmbientLight.show(); }));
+                items.add(new Dialogs.MenuItem(R.drawable.ic_palette_24dp,
+                        getString(R.string.arx_menu_picture), null, false,
                         () -> ArxPictureDialog.show(this, () -> {
                             pictureAppliedHash = Integer.MIN_VALUE;
                             applyArxPicture();
                         })));
             }
+            items.add(new Dialogs.MenuItem(R.drawable.ic_tune_24dp,
+                    getString(R.string.arx_menu_equalizer), null, false,
+                    () -> ArxEqualizerDialog.show(this, arxEqualizerProcessor)));
         }
         // Only with subtitles on: there is nothing to shift otherwise. One row for both lines — the
         // panel behind it carries a slider each, and which is which is answered there.
@@ -19253,7 +19289,9 @@ public class PlayerActivity extends Activity {
 
         startupTitle = new TextView(this);
         startupTitle.setGravity(Gravity.CENTER);
-        startupTitle.setTextColor(Color.rgb(255, 25, 42));
+        // Fallback has to be legible over the dark buffering scrim; never
+        // show the old giant red Just+ lettering when network logo fails.
+        startupTitle.setTextColor(Color.WHITE);
         startupTitle.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
         startupTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, isTvBox ? 60 : 54);
         startupTitle.setMaxLines(2);
@@ -19267,6 +19305,22 @@ public class PlayerActivity extends Activity {
 
         coordinatorLayout.addView(startupSplash, new CoordinatorLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    /**
+     * Native Lampa places the show's transparent logo in playlist.logo. Its
+     * item Bundles do not carry a logo, which is why the old code rendered the
+     * red fallback title even though Lampa had supplied the real series logo.
+     * Prefer an explicit episode logo when there is one; otherwise use the
+     * show's root logo for both the startup screen and the player header.
+     */
+    @Nullable
+    private Uri nestedSeriesLogo(int index) {
+        if (!nestedPlaylistSession) return null;
+        final Uri episodeLogo = index >= 0 && index < apiPlaylistLogos.size()
+                ? apiPlaylistLogos.get(index) : null;
+        return episodeLogo != null ? episodeLogo
+                : nestedPlaylistModel != null ? nestedPlaylistModel.logo : null;
     }
 
     private void showStartupSplash() {
@@ -19295,8 +19349,9 @@ public class PlayerActivity extends Activity {
             artwork = playingArtwork;
         }
 
-        final Uri logo = nestedPlaylistSession && index >= 0 && index < apiPlaylistLogos.size()
-                ? apiPlaylistLogos.get(index) : null;
+        // Lampa sends the SERIES logo on the root playlist Bundle, not on
+        // each episode. Always fall back to that verified root field.
+        final Uri logo = nestedSeriesLogo(index);
         CharSequence title = !TextUtils.isEmpty(apiTitle) ? apiTitle
                 : (metadata != null ? metadata.title : null);
         if (TextUtils.isEmpty(title)) {
@@ -19324,7 +19379,9 @@ public class PlayerActivity extends Activity {
                 @Override
                 public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target,
                                             boolean firstResource) {
-                    return false; // the red title stays available as a fallback
+                    Utils.log("startup series logo load failed: " +
+                            (e != null ? e.getClass().getSimpleName() : "unknown"));
+                    return false; // the accessible white title remains if artwork fails
                 }
 
                 @Override
@@ -19333,6 +19390,7 @@ public class PlayerActivity extends Activity {
                     if (startupSplashPending) {
                         startupLogo.setVisibility(View.VISIBLE);
                         startupTitle.setVisibility(View.GONE);
+                        Utils.log("startup series logo displayed from Lampa");
                     }
                     return false;
                 }

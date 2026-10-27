@@ -1,0 +1,111 @@
+name: ARX 2.4.11 Android TV real-emulator UI and remote tests
+on:
+  push:
+    branches: [arx/v2.4.11-port]
+    paths:
+      - '.github/workflows/arx-2.4.11-tv-emulator.yml'
+      - '.github/scripts/arx-2411-tv-emulator-smoke.sh'
+      - 'app/src/main/**'
+      - 'app/src/debug/**'
+      - '.github/scripts/arx-tv-ui-parity.py'
+      - '.github/scripts/arx-tv-fixture-server.py'
+      - '.github/scripts/arx-check-2411-ui-contract.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arx-2411-real-android-tv-emulator-fixed
+  cancel-in-progress: true
+
+jobs:
+  android-tv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Install SHA-pinned ARX FFmpeg shared libraries
+        run: bash .github/scripts/arx-241-import-native.sh
+      - name: Compile, JVM tests and static center-control assertion
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          bash -n .github/scripts/arx-2411-tv-emulator-smoke.sh
+          python3 .github/scripts/arx-check-tv-center.py
+          python3 .github/scripts/arx-check-2411-ui-contract.py
+          ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:assembleLatestParallelDebug :app:testLatestUniversalDebugUnitTest
+
+      - name: Build offline deterministic video stream
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p arx-2411-tv-fixtures arx-2411-tv-evidence
+          command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+          timeout 120 ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i 'testsrc2=size=320x180:rate=12' \
+            -f lavfi -i 'sine=frequency=440:sample_rate=48000' \
+            -t 96 -c:v libx264 -threads 1 -preset ultrafast -pix_fmt yuv420p \
+            -c:a aac -b:a 96k -movflags +faststart \
+            arx-2411-tv-fixtures/tv-h264.mp4
+          ffprobe -v error -show_entries format=duration:stream=codec_name,codec_type \
+            -of json arx-2411-tv-fixtures/tv-h264.mp4 \
+            > arx-2411-tv-evidence/fixture-metadata.json
+          # Server starts inside the emulator smoke script, not this build step.
+          # Keeping a daemon open here can prevent GitHub's step from exiting.
+          test -s arx-2411-tv-fixtures/tv-h264.mp4
+
+      - name: Download verified upstream v2.4.11 reference APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor
+          curl -fL --retry 3 --retry-delay 3 \
+            https://github.com/just-plus-player/just-plus-player/releases/download/v2.4.11/JustPlus.Player.v2.4.11.apk \
+            -o vendor/2.4.11.apk
+          echo '05868eaf3cfbcd25516430226836278fb63f535c14f66a5ee62da92c1ce634ba  vendor/2.4.11.apk' \
+            | sha256sum -c
+
+      - name: Enable KVM for Android TV emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Launch Android TV API 33, run remote control and compare screens
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: android-tv
+          arch: x86
+          profile: tv_1080p
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/arx-2411-tv-emulator-smoke.sh
+
+      - name: Compare every Android TV screen with original Just+ 2.4.11 (STRICT)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 .github/scripts/arx-tv-ui-parity.py arx-2411-tv-evidence --strict
+
+      - name: Upload screenshots, accessibility trees, video playback and crash logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ARX-2.4.11-Android-TV-emulator-evidence
+          path: |
+            arx-2411-tv-evidence/
+            app/build/test-results/testLatestUniversalDebugUnitTest/
+          retention-days: 14
+          if-no-files-found: warn

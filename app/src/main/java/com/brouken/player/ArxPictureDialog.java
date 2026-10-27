@@ -1,13 +1,10 @@
 package com.brouken.player;
 
-import android.app.AlertDialog;
+import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
-import android.view.View;
-import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import androidx.media3.common.Effect;
@@ -19,13 +16,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * GPU picture grading for ordinary video, preserving original output for
- * secure DRM / Dolby Vision and software-decoded video.
- * Only Media3-provided GL effects are used; user can disable instantly.
+ * ARX GPU picture grading. The controls are hosted by the native-style
+ * Material 3 sheet used by all other Just+/ARX player panels.
  */
 public final class ArxPictureDialog {
-    private static final String[] NAMES = {"Brightness", "Contrast", "Saturation", "Warmth", "Lightness"};
-    private static final String[] PRESETS = {"Neutral", "Vivid", "Cinema", "Bright", "Night"};
+    private static final int[] LABELS = {
+            R.string.arx_picture_brightness, R.string.arx_picture_contrast,
+            R.string.arx_picture_saturation, R.string.arx_picture_warmth,
+            R.string.arx_picture_lightness
+    };
+    private static final int[] PRESET_LABELS = {
+            R.string.arx_menu_neutral, R.string.arx_picture_vivid, R.string.arx_picture_cinema,
+            R.string.arx_picture_bright, R.string.arx_picture_night
+    };
     private static final int[][] VALUES = {
             {0,0,0,0,0}, {6,12,24,4,2}, {-4,8,-6,5,-1},
             {12,6,8,3,6}, {-10,-8,-8,8,3}
@@ -40,8 +43,8 @@ public final class ArxPictureDialog {
 
     public static int[] values(Context context) {
         SharedPreferences pref = prefs(context);
-        int[] out = new int[NAMES.length];
-        for (int i=0;i<out.length;i++)out[i]=pref.getInt(PREFIX+i,0);
+        int[] out = new int[LABELS.length];
+        for (int i=0;i<out.length;i++) out[i]=pref.getInt(PREFIX+i,0);
         return out;
     }
 
@@ -67,58 +70,78 @@ public final class ArxPictureDialog {
     }
 
     public static void show(Context context, Runnable apply) {
+        final Activity activity = (Activity) context;
+        final Context ctx = ArxControlsUi.context(activity);
         final int[] settings = values(context);
-        LinearLayout layout = new LinearLayout(context);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        final int pad = (int)(16*context.getResources().getDisplayMetrics().density);
-        layout.setPadding(pad,pad,pad,pad);
-        final TextView notice = new TextView(context);
-        notice.setText("Picture effects require a GPU path. DRM, Dolby Vision and software video are left unchanged.");
-        layout.addView(notice);
-        Button presets = new Button(context);
-        presets.setText("Preset: Custom — tap to select");
-        layout.addView(presets);
-        SeekBar[] bars = new SeekBar[settings.length];
-        TextView[] labels = new TextView[settings.length];
+        final LinearLayout body = ArxControlsUi.column(ctx);
+        body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_picture_notice)));
+
+        final String[] presetNames = new String[PRESET_LABELS.length];
+        for (int i=0;i<presetNames.length;i++) presetNames[i]=activity.getString(PRESET_LABELS[i]);
+        final int[] chosen = {-1};
+        for (int i=0;i<VALUES.length;i++) {
+            if (java.util.Arrays.equals(settings, VALUES[i])) {
+                chosen[0]=i;
+                break;
+            }
+        }
+        final TextView[] labels = new TextView[settings.length];
+        final SeekBar[] bars = new SeekBar[settings.length];
+        final TextView[] selectPreset = new TextView[1];
         final Runnable save = () -> {
             SharedPreferences.Editor ed = prefs(context).edit();
-            for(int i=0;i<settings.length;i++)ed.putInt(PREFIX+i,settings[i]);
+            for (int i=0;i<settings.length;i++) ed.putInt(PREFIX+i,settings[i]);
             ed.apply();
-            if (apply!=null) apply.run();
+            if (apply != null) apply.run();
         };
-        for(int i=0;i<settings.length;i++){
-            final int index=i;
-            TextView label=new TextView(context);
-            labels[i]=label; layout.addView(label);
-            SeekBar bar=new SeekBar(context);bars[i]=bar;
-            bar.setMax(100);bar.setProgress(settings[i]+50);
-            bar.setContentDescription(NAMES[i]);layout.addView(bar);
-            label.setText(NAMES[i]+": "+settings[i]);
-            bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-                public void onStartTrackingTouch(SeekBar s){}
-                public void onStopTrackingTouch(SeekBar s){}
-                public void onProgressChanged(SeekBar s,int p,boolean user){
-                    if(!user)return;
-                    settings[index]=p-50;
-                    labels[index].setText(NAMES[index]+": "+settings[index]);
-                    presets.setText("Preset: Custom — tap to select");
-                    save.run();
-                }
-            });
-        }
-        final int[] presetIndex={-1};
-        presets.setOnClickListener(v->{
-            presetIndex[0]=(presetIndex[0]+1)%PRESETS.length;
-            System.arraycopy(VALUES[presetIndex[0]],0,settings,0,settings.length);
-            for(int i=0;i<settings.length;i++){
+        final Runnable refresh = () -> {
+            selectPreset[0].setText(activity.getString(R.string.arx_ui_preset,
+                    chosen[0] < 0 ? activity.getString(R.string.arx_picture_custom)
+                            : presetNames[chosen[0]]));
+            for (int i=0;i<settings.length;i++) {
                 bars[i].setProgress(settings[i]+50);
-                labels[i].setText(NAMES[i]+": "+settings[i]);
+                labels[i].setText(activity.getString(R.string.arx_ui_number,
+                        activity.getString(LABELS[i]), settings[i]));
             }
-            presets.setText("Preset: "+PRESETS[presetIndex[0]]);
-            save.run();
+        };
+
+        selectPreset[0]=ArxControlsUi.action(ctx, "", () -> {
+            ArxControlsUi.chooser(activity, R.string.arx_picture_preset, presetNames, chosen[0], index -> {
+                chosen[0]=index;
+                System.arraycopy(VALUES[index],0,settings,0,settings.length);
+                refresh.run();
+                save.run();
+            });
         });
-        ScrollView scroll=new ScrollView(context); scroll.addView(layout);
-        new AlertDialog.Builder(context).setTitle("Picture adjustments")
-                .setView(scroll).setPositiveButton(android.R.string.ok,(d,w)->save.run()).show();
+        body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_picture_preset)));
+        body.addView(selectPreset[0]);
+
+        for (int i=0;i<settings.length;i++) {
+            final int index=i;
+            labels[i]=ArxControlsUi.valueLabel(ctx, "");
+            bars[i]=ArxControlsUi.seekBar(ctx, body, 100, settings[i]+50,
+                    activity.getString(LABELS[i]),
+                    new SeekBar.OnSeekBarChangeListener() {
+                        public void onStartTrackingTouch(SeekBar bar) {}
+                        public void onStopTrackingTouch(SeekBar bar) {}
+                        public void onProgressChanged(SeekBar bar,int p,boolean fromUser) {
+                            if (!fromUser) return;
+                            settings[index]=p-50;
+                            chosen[0]=-1;
+                            labels[index].setText(activity.getString(R.string.arx_ui_number,
+                                    activity.getString(LABELS[index]), settings[index]));
+                            selectPreset[0].setText(activity.getString(R.string.arx_ui_preset,
+                                    activity.getString(R.string.arx_picture_custom)));
+                            save.run();
+                        }
+                    });
+            // Labels lead sliders semantically; add at the right index without
+            // detaching the SeekBar after its listener and accessibility setup.
+            body.removeView(bars[i]);
+            body.addView(labels[i]);
+            body.addView(bars[i]);
+        }
+        refresh.run();
+        ArxControlsUi.sheet(activity, activity.getString(R.string.arx_picture_title), body);
     }
 }
