@@ -60,6 +60,10 @@ def main():
     if not (directory / "tv-h264.mp4").is_file():
         raise SystemExit("missing test video")
     make_logo(directory / "tv-series-logo.png")
+    (directory / "tv-subtitles.vtt").write_text(
+        "WEBVTT\n\n00:00:02.000 --> 00:00:07.000\n"
+        "ARX / Just+ shared subtitle fixture\n", encoding="utf-8"
+    )
     os.chdir(directory)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
