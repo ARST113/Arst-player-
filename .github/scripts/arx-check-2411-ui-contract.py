@@ -52,8 +52,9 @@ def main():
     controls = (java / "ArxControlsUi.java").read_text(encoding="utf-8")
     require("Dialogs.pickerWindow(" in controls, "all ARX control panes use focusable Just+ side sheets")
     ambient = (java / "ArxAmbientLight.java").read_text(encoding="utf-8")
-    require('ArxControlsUi.chooser(activity, R.string.arx_ambient_mode' in ambient,
-            "ambient opens a compact selectable mode card + chooser instead of stale radio stack")
+    require('ArxControlsUi.modeCard(' in ambient
+            and 'arx_ambient_motion' in ambient and 'ArxControlsUi.segmented(' in ambient,
+            "Ambient mode preview, inline radio choices, hidden Off sliders and 3-way motion match 2.4.11")
     require("ArxControlsUi.seekBar(ctx,body,100" in ambient,
             "ambient brightness/reach/response remain functional sliders")
     equalizer = (java / "ArxEqualizerDialog.java").read_text(encoding="utf-8")
