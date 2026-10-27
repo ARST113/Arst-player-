@@ -18,7 +18,7 @@ import android.util.Log;
  * Lampa/third-party callers address. The target package is the actual APK's
  * installed ID, allowing the parallel variant to be tested independently.
  *
- * adb shell am start -W -n com.arst.tplayer/com.brouken.player.PlaylistContractSmokeActivity \\
+ * adb shell am start -W -n com.lampaua.player.arx/com.brouken.player.PlaylistContractSmokeActivity \\
  *     --es fixture_url http://127.0.0.1:8765/tv-h264.mp4
  */
 public final class PlaylistContractSmokeActivity extends Activity {
