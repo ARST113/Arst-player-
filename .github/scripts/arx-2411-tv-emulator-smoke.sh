@@ -50,7 +50,7 @@ APK="$(find app/build/outputs/apk/latestUniversal/debug -type f -name '*.apk' | 
 test -s "$APK"
 adb install -r "$APK" > "$OUT/install.txt" 2>&1
 # Start a bounded-lifetime HTTP fixture server only while the emulator test runs.
-python3 -m http.server 8765 --bind 127.0.0.1 --directory arx-2411-tv-fixtures \
+python3 .github/scripts/arx-tv-fixture-server.py --port 8765 --directory arx-2411-tv-fixtures \
   </dev/null > "$OUT/http-server.txt" 2>&1 &
 SERVER_PID=$!
 server_ready=0
@@ -345,8 +345,19 @@ if [[ -s "$PARALLEL_APK" ]] && grep -qx "package:com.lampaua.player.arx" "$OUT/p
   adb logcat -c
   if timeout 40 adb shell am start -W \
       -n "$PARALLEL_PKG/com.brouken.player.PlaylistContractSmokeActivity" \
-      --es fixture_url http://127.0.0.1:8765/tv-h264.mp4 \
+      --es fixture_url http://127.0.0.1:8765/tv-slow.mp4 \
       > "$OUT/parallel-nested-launch.txt" 2>&1; then
+    # The real Lampa root playlist.logo is served immediately, but the movie
+    # is held for 9 seconds. This proves actual artwork on the buffering
+    # screen, not simply the presence of a logo string in Java.
+    sleep 2
+    capture parallel-buffering-series-logo
+    adb logcat -d -v threadtime > "$OUT/parallel-logo-logcat.txt" 2>/dev/null || true
+    if grep -q 'startup series logo displayed from Lampa' "$OUT/parallel-logo-logcat.txt"; then
+      record parallel-buffering-logo PASS 'Glide loaded actual root playlist.logo onto initial buffering splash'
+    else
+      record parallel-buffering-logo FAIL 'Root series logo did not appear; see parallel-logo-logcat.txt and parallel-buffering-series-logo.png'
+    fi
     nested_ok=0
     nested_end=$((SECONDS+60))
     while ((SECONDS < nested_end)); do
