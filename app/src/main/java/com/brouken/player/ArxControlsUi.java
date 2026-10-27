@@ -9,7 +9,6 @@ import android.graphics.Typeface;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.ScrollView;
@@ -147,8 +146,10 @@ final class ArxControlsUi {
         return null;
     }
 
+    interface ChoiceListener { void select(int index); }
+
     static void chooser(Activity activity, @StringRes int title, String[] choices,
-                        int selected, java.util.function.IntConsumer onSelected) {
+                        int selected, ChoiceListener onSelected) {
         final Context ctx = context(activity);
         final LinearLayout body = column(ctx);
         final RadioButton[] radios = new RadioButton[choices.length];
@@ -169,7 +170,7 @@ final class ArxControlsUi {
             radio.setChecked(i == selected);
             radio.setOnClickListener(v -> {
                 for (int j=0; j<radios.length; j++) radios[j].setChecked(j == index);
-                onSelected.accept(index);
+                onSelected.select(index);
                 if (holder[0] != null) holder[0].dismiss();
             });
             body.addView(radio);
