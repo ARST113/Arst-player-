@@ -47,7 +47,7 @@ jobs:
           "$aapt" dump badging "$apk" > /tmp/arx-original.badging
           "$aapt" dump badging "$parallel_apk" > /tmp/arx-parallel.badging
           grep -q "package: name='com.justplus.player'" /tmp/arx-original.badging
-          grep -q "package: name='com.arst.tplayer'" /tmp/arx-parallel.badging
+          grep -q "package: name='com.lampaua.player.arx'" /tmp/arx-parallel.badging
           grep -F "application-label:'ARX TPlayer'" /tmp/arx-original.badging
           grep -F "application-label:'ARX TPlayer'" /tmp/arx-parallel.badging
           echo "PASS: same visible name; two distinct Android packages"
