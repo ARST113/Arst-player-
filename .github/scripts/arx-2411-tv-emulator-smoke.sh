@@ -246,7 +246,6 @@ capture_native_button() {
   adb shell input keyevent 4 || true
   sleep 1
 }
-capture_native_button arx playlist 'Playlist'
 capture_native_button arx subtitles 'Subtitles'
 
 # D-pad navigation and timeline manipulation, each with a real screenshot.
@@ -316,7 +315,6 @@ if [[ -s vendor/2.4.11.apk ]]; then
     capture_panel ambient 'Ambient light' 'Lighting mode'
     capture_panel picture 'Picture' 'Picture preset'
     capture_panel equalizer 'Equalizer' 'Enable equalizer'
-    capture_native_button official playlist 'Playlist'
     capture_native_button official subtitles 'Subtitles'
     APP_SIDE=arx
     record reference PASS 'Verified official 2.4.11 installed, TV screen and controls captured for side-by-side visual review'
@@ -340,6 +338,28 @@ if [[ -s "$PARALLEL_APK" ]]; then
       record parallel-install PASS 'Official Just+ and parallel ARX installed simultaneously with independent package IDs'
     else
       record parallel-install FAIL 'Expected both package IDs; see parallel-installed-packages.txt'
+    fi
+
+    # Both apps must be started by the same external native playlist launcher
+    # to compare the ACTUAL root-series-logo buffering panel of Just+ 2.4.11
+    # against ARX, not a raw single-video intent with no Lampa logo field.
+    adb shell am force-stop "$PKG"
+    adb logcat -c
+    if timeout 40 adb shell am start -W \
+        -n "$PARALLEL_PKG/com.brouken.player.PlaylistContractSmokeActivity" \
+        --es target_package "$PKG" \
+        --es fixture_url http://127.0.0.1:8765/tv-slow.mp4 \
+        > "$OUT/official-nested-launch.txt" 2>&1; then
+      sleep 2
+      capture official-buffering-series-logo
+      record reference-buffering PASS 'Official Just+ launched with identical delayed-video/series-logo Bundle; screenshot saved'
+      sleep 11
+      adb shell input tap 960 540 || true
+      sleep 1
+      capture official-playlist-controls
+      capture_native_button official playlist 'Playlist'
+    else
+      record reference-buffering FAIL 'Official Just+ playlist launcher refused external nested Bundle'
     fi
 
     # This is the form of an Android ACTION_VIEW launch with setPackage();
@@ -417,6 +437,9 @@ if [[ -s "$PARALLEL_APK" ]] && grep -qx "package:com.lampaua.player.arx" "$OUT/p
     adb shell input keyevent 23
     sleep 2
     capture parallel-nested-controls
+    capture_native_button parallel playlist 'Playlist'
+    # These can only be validated in a real multi-episode playlist, not a
+    # single video. Missing controls remain explicitly UNVERIFIED.
     if ((nested_ok)); then
       record parallel-nested-playlist PASS 'Real Bundle with two episodes parsed by parallel ARX PlayerActivity'
     else
