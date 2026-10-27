@@ -337,5 +337,43 @@ else
   record parallel-install FAIL 'Parallel APK missing from latestParallelDebug outputs'
 fi
 
+# The previous ACTION_VIEW test was only one video. Build a *real* nested
+# playlist Bundle in an exported debug-only activity, send it through the
+# public PlayerActivity path and confirm both items are parsed.
+if [[ -s "$PARALLEL_APK" ]] && grep -qx "package:com.arst.tplayer" "$OUT/parallel-installed-packages.txt"; then
+  adb shell am force-stop "$PARALLEL_PKG"
+  adb logcat -c
+  if timeout 40 adb shell am start -W \
+      -n "$PARALLEL_PKG/com.brouken.player.PlaylistContractSmokeActivity" \
+      --es fixture_url http://127.0.0.1:8765/tv-h264.mp4 \
+      > "$OUT/parallel-nested-launch.txt" 2>&1; then
+    nested_ok=0
+    nested_end=$((SECONDS+60))
+    while ((SECONDS < nested_end)); do
+      adb logcat -d -v threadtime > "$OUT/parallel-nested-logcat.txt" 2>/dev/null || true
+      if grep -q 'nested playlist parsed natively: 2' "$OUT/parallel-nested-logcat.txt"; then
+        nested_ok=1
+        break
+      fi
+      if grep -q 'playlist refused' "$OUT/parallel-nested-logcat.txt"; then break; fi
+      sleep 3
+    done
+    sleep 2
+    capture parallel-nested-playing
+    adb shell input keyevent 23
+    sleep 2
+    capture parallel-nested-controls
+    if ((nested_ok)); then
+      record parallel-nested-playlist PASS 'Real Bundle with two episodes parsed by parallel ARX PlayerActivity'
+    else
+      record parallel-nested-playlist FAIL 'Nested playlist was not parsed, see parallel-nested-logcat.txt'
+    fi
+  else
+    record parallel-nested-playlist FAIL 'Debug playlist test launcher could not start'
+  fi
+else
+  record parallel-nested-playlist UNVERIFIED 'Parallel APK failed installation or is missing'
+fi
+
 record lampa-hardcoded-package UNVERIFIED 'If Lampa forces com.justplus.player it cannot automatically choose com.arst.tplayer; source-side selection config required'
 if ((FAILURES > 0)); then exit 1; fi
