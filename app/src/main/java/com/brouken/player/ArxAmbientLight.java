@@ -201,6 +201,7 @@ final class ArxAmbientLight {
         final LinearLayout body = ArxControlsUi.column(ctx);
         body.addView(ArxControlsUi.caption(ctx,
                 activity.getString(R.string.arx_ambient_notice)));
+        body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_ambient_mode)));
         final TextView label = ArxControlsUi.valueLabel(ctx, "");
         body.addView(label);
 
