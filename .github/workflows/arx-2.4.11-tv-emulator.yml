@@ -43,10 +43,10 @@ jobs:
           set -euo pipefail
           mkdir -p arx-2411-tv-fixtures arx-2411-tv-evidence
           command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
-          ffmpeg -hide_banner -loglevel error -y \
-            -f lavfi -i 'testsrc2=size=640x360:rate=12' \
+          timeout 120 ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i 'testsrc2=size=320x180:rate=12' \
             -f lavfi -i 'sine=frequency=440:sample_rate=48000' \
-            -t 120 -c:v libx264 -threads 2 -preset ultrafast -pix_fmt yuv420p \
+            -t 96 -c:v libx264 -threads 1 -preset ultrafast -pix_fmt yuv420p \
             -c:a aac -b:a 96k -movflags +faststart \
             arx-2411-tv-fixtures/tv-h264.mp4
           ffprobe -v error -show_entries format=duration:stream=codec_name,codec_type \
