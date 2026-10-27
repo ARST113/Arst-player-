@@ -209,4 +209,58 @@ else
   record reference UNVERIFIED 'Official 2.4.11 APK missing; no reference screenshots'
 fi
 
+
+# The parallel ARX build must coexist with the SHA-verified official Just+
+# package without changing the visible ARX name or ACTION_VIEW protocol.
+PARALLEL_PKG=com.arst.tplayer
+PARALLEL_APK="$(find app/build/outputs/apk/latestParallel/debug -type f -name '*.apk' | head -n1)"
+if [[ -s "$PARALLEL_APK" ]]; then
+  if adb install -r "$PARALLEL_APK" > "$OUT/parallel-install.txt" 2>&1; then
+    adb shell pm list packages > "$OUT/parallel-installed-packages.txt"
+    if grep -qx "package:com.justplus.player" "$OUT/parallel-installed-packages.txt" && \
+       grep -qx "package:com.arst.tplayer" "$OUT/parallel-installed-packages.txt"; then
+      record parallel-install PASS 'Official Just+ and parallel ARX installed simultaneously with independent package IDs'
+    else
+      record parallel-install FAIL 'Expected both package IDs; see parallel-installed-packages.txt'
+    fi
+
+    # This is the form of an Android ACTION_VIEW launch with setPackage();
+    # unlike explicit -n, it proves that the Lampa-style implicit video
+    # intent filter matches the independent parallel package.
+    adb shell am force-stop "$PARALLEL_PKG"
+    adb logcat -c
+    if timeout 40 adb shell am start -W -p "$PARALLEL_PKG" \
+        -a android.intent.action.VIEW \
+        -d http://127.0.0.1:8765/tv-h264.mp4 -t video/mp4 \
+        > "$OUT/parallel-view-intent-launch.txt" 2>&1; then
+      p_ready=0; p_frame=0; p_play=0
+      end_parallel=$((SECONDS+75))
+      while ((SECONDS < end_parallel )); do
+        adb logcat -d -v threadtime > "$OUT/parallel-play-logcat.txt" 2>/dev/null || true
+        grep -q 'state READY' "$OUT/parallel-play-logcat.txt" && p_ready=1 || true
+        grep -q 'first frame rendered' "$OUT/parallel-play-logcat.txt" && p_frame=1 || true
+        grep -q 'playing=true' "$OUT/parallel-play-logcat.txt" && p_play=1 || true
+        if ((p_ready && p_frame && p_play)); then break; fi
+        sleep 3
+      done
+      capture parallel-playing
+      adb shell input keyevent 23
+      sleep 1
+      capture parallel-controls
+      if ((p_ready && p_frame && p_play)); then
+        record parallel-lampa-intent PASS 'ACTION_VIEW video/mp4 with -p com.arst.tplayer resolved, playing and decoded first frame'
+      else
+        record parallel-lampa-intent FAIL "Parallel ACTION_VIEW playback: READY=$p_ready frame=$p_frame playing=$p_play"
+      fi
+    else
+      record parallel-lampa-intent FAIL 'ACTION_VIEW package-scoped video intent failed, see parallel-view-intent-launch.txt'
+    fi
+  else
+    record parallel-install FAIL 'Parallel APK could not be installed, see parallel-install.txt'
+  fi
+else
+  record parallel-install FAIL 'Parallel APK missing from latestParallelDebug outputs'
+fi
+
+record lampa-hardcoded-package UNVERIFIED 'If Lampa forces com.justplus.player it cannot automatically choose com.arst.tplayer; source-side selection config required'
 if ((FAILURES > 0)); then exit 1; fi
