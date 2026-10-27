@@ -199,63 +199,132 @@ final class ArxAmbientLight {
         load();
         final android.content.Context ctx = ArxControlsUi.context(activity);
         final LinearLayout body = ArxControlsUi.column(ctx);
-        body.addView(ArxControlsUi.caption(ctx,
-                activity.getString(R.string.arx_ambient_notice)));
-        // Just+ 2.4.11 uses one mode selector/card, not a permanently
-        // expanded stack of radio buttons (which also made TV-DPAD unusable).
-        // The chooser itself uses the player's focus-aware side sheet.
-        body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_ambient_mode)));
-        final int[] modeLabels = {
+        final int[] titles = {
                 R.string.arx_menu_off, R.string.arx_ambient_glow,
                 R.string.arx_ambient_cinema, R.string.arx_ambient_echo,
                 R.string.arx_ambient_mirror
         };
-        final String[] modeNames = new String[modeLabels.length];
-        for (int i=0; i<modeNames.length; i++) {
-            modeNames[i] = activity.getString(modeLabels[i]);
-        }
-        final TextView[] selector = new TextView[1];
-        final Runnable refresh = () -> selector[0].setText(activity.getString(
-                R.string.arx_ui_mode, modeNames[Math.max(0, Math.min(mode, modeNames.length-1))]));
-        selector[0] = ArxControlsUi.action(ctx, "", () ->
-                ArxControlsUi.chooser(activity, R.string.arx_ambient_mode,
-                        modeNames, mode, index -> {
-                            mode = index;
-                            prefs().edit().putInt(MODE, index).apply();
-                            refresh.run();
-                            if (mode == 0) hide();
-                            else if (!running) start();
-                        }));
-        selector[0].setContentDescription(activity.getString(R.string.arx_ambient_mode));
-        body.addView(selector[0]);
-        refresh.run();
-
-        final int[] sliderLabels = {
-                R.string.arx_picture_brightness, R.string.arx_ambient_reach,
-                R.string.arx_ambient_response
+        final int[] summaries = {
+                R.string.arx_ambient_off_summary, R.string.arx_ambient_glow_summary,
+                R.string.arx_ambient_cinema_summary, R.string.arx_ambient_echo_summary,
+                R.string.arx_ambient_mirror_summary
         };
-        for (int i=0;i<sliderLabels.length;i++) {
-            final int index=i;
-            int initial=i==0?brightness:i==1?reach:speed;
-            final TextView caption=ArxControlsUi.valueLabel(ctx,
-                    activity.getString(R.string.arx_ui_percent,
-                            activity.getString(sliderLabels[i]),initial));
-            body.addView(caption);
-            ArxControlsUi.seekBar(ctx,body,100,initial,
-                    activity.getString(sliderLabels[i]),new SeekBar.OnSeekBarChangeListener() {
-                public void onStartTrackingTouch(SeekBar bar) {}
-                public void onStopTrackingTouch(SeekBar bar) {}
-                public void onProgressChanged(SeekBar bar,int value,boolean user) {
-                    if(!user) return;
-                    if(index==0) brightness=value;
-                    else if(index==1) reach=value;
-                    else speed=value;
-                    prefs().edit().putInt(index==0?BRIGHTNESS:index==1?REACH:SPEED,value).apply();
-                    caption.setText(activity.getString(R.string.arx_ui_percent,
-                            activity.getString(sliderLabels[index]),value));
+
+        // The original 2.4.11 uses an outlined dropdown preview. It is a
+        // *single card*, not five permanently visible old Android radio rows.
+        final TextView[] cardText = new TextView[2];
+        final LinearLayout[] preview = new LinearLayout[1];
+        final LinearLayout[] settings = new LinearLayout[1];
+        final LinearLayout[] options = new LinearLayout[1];
+        final TextView[] optionLabels = new TextView[titles.length];
+        final Runnable refresh = () -> {
+            final int selection = Math.max(0, Math.min(mode, titles.length-1));
+            final String name = activity.getString(titles[selection]);
+            final String summary = activity.getString(summaries[selection]);
+            cardText[0].setText(name);
+            cardText[1].setText(summary);
+            preview[0].setContentDescription(name + ". " + summary);
+            if (settings[0] != null) {
+                // At Off the authentic pane contains no brightness, reach
+                // or motion controls; only the collapsed selector card.
+                settings[0].setVisibility(mode == 0 ? View.GONE : View.VISIBLE);
+            }
+            for (int i=0;i<optionLabels.length;i++) {
+                final TextView radio = optionLabels[i];
+                if (radio != null) {
+                    radio.setText((i == selection ? "◉  " : "◯  ") +
+                            activity.getString(titles[i]) + "\n" +
+                            activity.getString(summaries[i]));
+                    radio.setSelected(i == selection);
                 }
+            }
+        };
+
+        final LinearLayout picker = new LinearLayout(ctx);
+        picker.setOrientation(LinearLayout.VERTICAL);
+        picker.setVisibility(View.GONE);
+        options[0] = picker;
+        preview[0] = ArxControlsUi.modeCard(ctx, cardText,
+                activity.getString(titles[Math.max(0, Math.min(mode, 4))]),
+                activity.getString(summaries[Math.max(0, Math.min(mode, 4))]),
+                () -> {
+                    boolean expanded = options[0].getVisibility() != View.VISIBLE;
+                    options[0].setVisibility(expanded ? View.VISIBLE : View.GONE);
+                    if (expanded) {
+                        picker.requestFocus();
+                        for (TextView radio : optionLabels) {
+                            if (radio != null && radio.isSelected()) {
+                                radio.requestFocus();
+                                break;
+                            }
+                        }
+                    } else {
+                        preview[0].requestFocus();
+                    }
+                });
+        body.addView(preview[0]);
+
+        // Expands INSIDE the same panel, like the Just+ dropdown shown in
+        // the user's screenshots. The translated captions are from the
+        // SHA-verified official 2.4.11 resources, not guesses.
+        picker.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_ambient_notice)));
+        for (int i=0;i<titles.length;i++) {
+            final int which = i;
+            final TextView radio = ArxControlsUi.action(ctx, "", () -> {
+                mode=which;
+                prefs().edit().putInt(MODE, which).apply();
+                options[0].setVisibility(View.GONE);
+                refresh.run();
+                if (which == 0) hide();
+                else if (!running) start();
+                preview[0].requestFocus();
             });
+            optionLabels[i]=radio;
+            radio.setMinHeight(Utils.dpToPx(62));
+            radio.setTextSize(16f);
+            picker.addView(radio);
         }
-        ArxControlsUi.sheet(activity,activity.getString(R.string.arx_ambient_title),body);
+        body.addView(picker);
+
+        final LinearLayout params = ArxControlsUi.column(ctx);
+        settings[0] = params;
+        final int[] sliderLabels = {R.string.arx_picture_brightness, R.string.arx_ambient_reach};
+        for (int i=0; i<sliderLabels.length; i++) {
+            final int index=i;
+            final TextView[] count = new TextView[1];
+            params.addView(ArxControlsUi.parameterLabel(ctx,
+                    activity.getString(sliderLabels[index]), count));
+            final int initial = index == 0 ? brightness : reach;
+            count[0].setText(initial + " %");
+            ArxControlsUi.seekBar(ctx, params, 100, initial,
+                    activity.getString(sliderLabels[index]),
+                    new SeekBar.OnSeekBarChangeListener() {
+                        @Override public void onStartTrackingTouch(SeekBar bar) {}
+                        @Override public void onStopTrackingTouch(SeekBar bar) {}
+                        @Override public void onProgressChanged(SeekBar bar, int value, boolean user) {
+                            if (!user) return;
+                            if (index == 0) brightness = value;
+                            else reach = value;
+                            prefs().edit().putInt(index == 0 ? BRIGHTNESS : REACH, value).apply();
+                            count[0].setText(value + " %");
+                        }
+                    });
+        }
+        params.addView(ArxControlsUi.valueLabel(ctx,
+                activity.getString(R.string.arx_ambient_motion)));
+        final String[] motionChoices = {
+                activity.getString(R.string.arx_ambient_motion_calm),
+                activity.getString(R.string.arx_ambient_motion_balanced),
+                activity.getString(R.string.arx_ambient_motion_lively)
+        };
+        final int selectedSpeed = speed < 45 ? 0 : speed > 75 ? 2 : 1;
+        params.addView(ArxControlsUi.segmented(ctx,motionChoices,selectedSpeed,index -> {
+            speed = index==0?30:index==1?60:90;
+            prefs().edit().putInt(SPEED,speed).apply();
+        }));
+        body.addView(params);
+        refresh.run();
+        ArxControlsUi.sheet(activity, activity.getString(R.string.arx_ambient_title), body);
     }
+
 }
