@@ -140,6 +140,65 @@ else
   record centered-play FAIL "$(tail -n1 "$OUT/arx-play-button-geometry.txt")"
 fi
 
+# Validate the actual Material 3 side sheets, not merely the Java source.
+# 1920x1080 Android TV screenshot evidence previously establishes the More
+# button rectangle at [1736,948][1816,1028].
+panel_coordinates() {
+  python3 - "$1" "$2" <<'PY'
+import sys,re,xml.etree.ElementTree as ET
+try:
+    root=ET.parse(sys.argv[1]).getroot()
+    target=sys.argv[2].casefold()
+    for node in root.iter('node'):
+        a=node.attrib
+        hay=(a.get('text','')+' '+a.get('content-desc','')).casefold()
+        if target in hay:
+            b=[int(n) for n in re.findall(r'\d+',a.get('bounds',''))]
+            if len(b)==4 and b[2]>b[0] and b[3]>b[1]:
+                print((b[0]+b[2])//2,(b[1]+b[3])//2)
+                break
+except Exception:
+    pass
+PY
+}
+capture_panel() {
+  local which="$1" menu_label="$2" expected="$3"
+  # Resume controller if its normal auto-hide has fired.
+  adb shell input tap 960 540 || true
+  sleep 1
+  capture "arx-control-before-$which"
+  local more
+  more="$(panel_coordinates "$OUT/arx-control-before-$which.xml" "More")"
+  if [[ -z "$more" ]]; then
+    record "panel-$which" UNVERIFIED 'More button inaccessible on this Android TV UI snapshot'
+    return
+  fi
+  adb shell input tap $more
+  sleep 1
+  capture "arx-more-before-$which"
+  local coords
+  coords="$(panel_coordinates "$OUT/arx-more-before-$which.xml" "$menu_label")"
+  if [[ -z "$coords" ]]; then
+    record "panel-$which" UNVERIFIED "Menu row $menu_label not visible in TV UIAutomator XML"
+    adb shell input keyevent 4 || true
+    return
+  fi
+  adb shell input tap $coords
+  sleep 2
+  capture "arx-material3-$which"
+  if [[ -s "$OUT/arx-material3-$which.xml" ]] && \
+     grep -q "$expected" "$OUT/arx-material3-$which.xml"; then
+    record "panel-$which" PASS "Material 3 $which pane opened, $expected accessibility text captured"
+  else
+    record "panel-$which" FAIL "Did not find $expected in $which dialog accessibility tree"
+  fi
+  adb shell input keyevent 4 || true
+  sleep 1
+}
+capture_panel ambient 'Ambient light' 'Lighting mode'
+capture_panel picture 'Picture' 'Picture preset'
+capture_panel equalizer 'Equalizer' 'Enable equalizer'
+
 # D-pad navigation and timeline manipulation, each with a real screenshot.
 for step in '20 down' '22 right' '22 right2' '21 left' '19 up' '23 select'; do
   key="$(awk '{print $1}' <<< "$step")"
