@@ -1,0 +1,45 @@
+name: Inspect official Just+ 2.4.11 Ambient/Picture/Equalizer UI resources
+on:
+  push:
+    branches: [arx/v2.4.11-port]
+    paths: ['.github/workflows/arx-2411-official-ui-inspection.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  vendor-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified original APK
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -fL --retry 3 https://github.com/just-plus-player/just-plus-player/releases/download/v2.4.11/JustPlus.Player.v2.4.11.apk -o /tmp/original-2411.apk
+          echo '05868eaf3cfbcd25516430226836278fb63f535c14f66a5ee62da92c1ce634ba  /tmp/original-2411.apk' | sha256sum -c
+      - name: Enumerate official resource labels and UI control IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          "$aapt" dump --values resources /tmp/original-2411.apk > out/vendor-resources.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          lines=Path("out/vendor-resources.txt").read_text(errors="replace").splitlines()
+          pattern=re.compile(r"ambient|picture|equalizer|follow|frame|glow|cinema|echo|mirror|light|reach|width|brightness|preset|saturation|gamma|response|sync|track",re.I)
+          ix=set()
+          for n,line in enumerate(lines):
+              if pattern.search(line):
+                  ix.update(range(max(0,n-2),min(len(lines),n+6)))
+          with open("out/official-ui-labels.txt","w") as out:
+              for i in sorted(ix):
+                  out.write(f"{i+1}: {lines[i]}\n")
+          print("resource lines:",len(lines),"relevant:",len(ix))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-2411-ui-resources
+          path: out/official-ui-labels.txt
+          retention-days: 14
