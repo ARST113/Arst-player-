@@ -353,11 +353,13 @@ if [[ -s "$PARALLEL_APK" ]]; then
       sleep 2
       capture official-buffering-series-logo
       record reference-buffering PASS 'Official Just+ launched with identical delayed-video/series-logo Bundle; screenshot saved'
-      sleep 11
+      sleep 12
+      capture official-skip-visible
       adb shell input tap 960 540 || true
       sleep 1
       capture official-playlist-controls
       capture_native_button official playlist 'Playlist'
+      capture_native_button official subtitles 'Subtitles'
     else
       record reference-buffering FAIL 'Official Just+ playlist launcher refused external nested Bundle'
     fi
@@ -437,7 +439,10 @@ if [[ -s "$PARALLEL_APK" ]] && grep -qx "package:com.lampaua.player.arx" "$OUT/p
     adb shell input keyevent 23
     sleep 2
     capture parallel-nested-controls
+    sleep 3
+    capture parallel-skip-visible
     capture_native_button parallel playlist 'Playlist'
+    capture_native_button parallel subtitles 'Subtitles'
     # These can only be validated in a real multi-episode playlist, not a
     # single video. Missing controls remain explicitly UNVERIFIED.
     if ((nested_ok)); then
