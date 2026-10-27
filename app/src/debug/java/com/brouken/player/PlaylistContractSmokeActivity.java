@@ -51,6 +51,9 @@ public final class PlaylistContractSmokeActivity extends Activity {
         second.putInt("episode", 2);
         final Bundle playlist = new Bundle();
         playlist.putString("title", "ARX playlist Lampa contract test");
+        // Actual Lampa v1.13.4 places the SHOW logo in the ROOT playlist
+        // Bundle (not in item Bundles). This probes the corrected startup art.
+        playlist.putString("logo", "http://127.0.0.1:8765/tv-series-logo.png");
         playlist.putInt("start_index", 0);
         playlist.putString("resume_mode", "never");
         playlist.putParcelableArray("items", new Bundle[]{first, second});
