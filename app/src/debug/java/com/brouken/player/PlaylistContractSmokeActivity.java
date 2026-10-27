@@ -44,11 +44,23 @@ public final class PlaylistContractSmokeActivity extends Activity {
         first.putString("title", "ARX playlist episode A");
         first.putInt("season", 1);
         first.putInt("episode", 1);
+        // Real Lampa skip format: duration in milliseconds, boundaries in
+        // seconds. 2..22s is deliberately long enough to screenshot the badge.
+        final String segments = "{\"duration_ms\":96000,\"skip\":[{\"start\":2,\"end\":22}]}";
+        final Bundle subtitle = new Bundle();
+        subtitle.putString("uri", "http://127.0.0.1:8765/tv-subtitles.vtt");
+        subtitle.putString("label", "English test");
+        subtitle.putString("language", "en");
+        first.putString("segments", segments);
+        first.putParcelableArray("subtitles", new Bundle[]{subtitle});
+
         final Bundle second = new Bundle();
         second.putString("uri", url);
         second.putString("title", "ARX playlist episode B");
         second.putInt("season", 1);
         second.putInt("episode", 2);
+        second.putString("segments", segments);
+        second.putParcelableArray("subtitles", new Bundle[]{subtitle});
         final Bundle playlist = new Bundle();
         playlist.putString("title", "ARX playlist Lampa contract test");
         // Actual Lampa v1.13.4 places the SHOW logo in the ROOT playlist
