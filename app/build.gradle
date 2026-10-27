@@ -124,6 +124,17 @@ android {
             // In-app self-update: only the sideloaded universal build may update itself.
             buildConfigField "boolean", "ENABLE_UPDATE", "true"
         }
+        parallel {
+            dimension "distribution"
+            // Separate Android install identity. The visible name, namespace, player
+            // activities, ACTION_VIEW filters and Lampa playlist contract are unchanged.
+            // Android identifies installed apps by applicationId, not the app label.
+            // com.justplus.player is deliberately retained for the universal variant.
+            applicationId "com.arst.tplayer"
+            // The updater downloads official Just+ packages, which must never be fed to
+            // this distinct package identity as a supposed in-place update.
+            buildConfigField "boolean", "ENABLE_UPDATE", "false"
+        }
         amazon {
             dimension "distribution"
             // Store distribution handles updates; self-update would violate store policy.
@@ -144,6 +155,11 @@ android {
         if (variant.buildType.name == "release" && variant.flavorName == "latestUniversal") {
             variant.outputs.all { output ->
                 output.outputFileName = "${base.archivesName.get()}.apk"
+            }
+        }
+        if (variant.buildType.name == "release" && variant.flavorName == "latestParallel") {
+            variant.outputs.all { output ->
+                output.outputFileName = "${base.archivesName.get()}-parallel.apk"
             }
         }
         if (variant.buildType.name == "release" && variant.flavorName == "legacyUniversal") {
