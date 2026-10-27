@@ -21,10 +21,10 @@ SCREENS = (
     ("picture", "arx-material3-picture", "official-material3-picture", "Изображение"),
     ("equalizer", "arx-material3-equalizer", "official-material3-equalizer", "Эквалайзер"),
     ("playlist", "parallel-native-playlist", "official-native-playlist", "Плейлисты"),
-    ("subtitles", "arx-native-subtitles", "official-native-subtitles", "Субтитры"),
+    ("subtitles", "parallel-native-subtitles", "official-native-subtitles", "Субтитры"),
     ("buffer-logo", "parallel-buffering-series-logo", "official-buffering-series-logo", "Логотип при буферизации"),
     ("timings", "arx-controls", "official-controls", "Тайминги и панель управления"),
-    ("skip", "arx-skip-visible", "official-skip-visible", "Плашка пропуска и таймер"),
+    ("skip", "parallel-skip-visible", "official-skip-visible", "Плашка пропуска и таймер"),
 )
 
 
