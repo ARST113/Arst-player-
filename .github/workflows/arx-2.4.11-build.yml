@@ -26,6 +26,18 @@ jobs:
         run: bash .github/scripts/arx-241-import-native.sh
       - name: Assert TV play-pause remains centered
         run: python3 .github/scripts/arx-check-tv-center.py
+      - name: Verify parallel package matches Lampa 1.13.3 and 1.13.4 native-playlist allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/arx-lampa-refs
+          for tag in v1.13.3 v1.13.4; do
+            curl -fsSL --retry 3 --max-time 60 \
+              "https://raw.githubusercontent.com/lampa-app/LAMPA/${tag}/app/src/main/java/top/rootu/lampa/MainActivity.kt" \
+              -o "/tmp/arx-lampa-refs/${tag}.kt"
+          done
+          python3 .github/scripts/arx-check-lampa-player-package.py \
+            /tmp/arx-lampa-refs/v1.13.3.kt /tmp/arx-lampa-refs/v1.13.4.kt
       - name: Compile, test and assemble both install identities
         run: |
           ./gradlew --no-daemon \
@@ -67,12 +79,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: ARX-TPlayer-2.4.11-arx1-preview-parallel-signed
+          name: ARX-TPlayer-2.4.11-LAMPA-playlists-parallel-signed
           path: app/build/outputs/apk/latestParallel/release/*.apk
           retention-days: 14
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: ARX-TPlayer-2.4.11-parallel-debug
+          name: ARX-TPlayer-2.4.11-LAMPA-playlists-parallel-debug
           path: app/build/outputs/apk/latestParallel/debug/*.apk
           retention-days: 7
