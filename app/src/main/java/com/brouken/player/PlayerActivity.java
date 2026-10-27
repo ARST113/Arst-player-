@@ -3517,7 +3517,10 @@ public class PlayerActivity extends Activity {
     public void finish() {
         if (nestedPlaylistSession) {
             final Bundle result = buildNestedPlaylistResult(playbackFinished ? "completion" : "user");
-            final Intent intent = new Intent(getPackageName() + ".result");
+            // Lampa/Just+ nested playlist result action is part of the external API protocol.
+            // Do not derive it from our side-by-side APK applicationId: callers may
+            // compare this exact action even when ARX lives at com.arst.tplayer.
+            final Intent intent = new Intent("com.justplus.player.result");
             intent.putExtras(result);
             final String uriText = result.getString("uri");
             if (uriText != null && !uriText.isEmpty()) {
