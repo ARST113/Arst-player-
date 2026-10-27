@@ -6,6 +6,10 @@ on:
       - '.github/workflows/arx-2.4.11-tv-emulator.yml'
       - '.github/scripts/arx-2411-tv-emulator-smoke.sh'
       - 'app/src/main/**'
+      - 'app/src/debug/**'
+      - '.github/scripts/arx-tv-ui-parity.py'
+      - '.github/scripts/arx-tv-fixture-server.py'
+      - '.github/scripts/arx-check-2411-ui-contract.py'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +39,7 @@ jobs:
           chmod +x ./gradlew
           bash -n .github/scripts/arx-2411-tv-emulator-smoke.sh
           python3 .github/scripts/arx-check-tv-center.py
+          python3 .github/scripts/arx-check-2411-ui-contract.py
           ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:assembleLatestParallelDebug :app:testLatestUniversalDebugUnitTest
 
       - name: Build offline deterministic video stream
@@ -85,6 +90,14 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: bash .github/scripts/arx-2411-tv-emulator-smoke.sh
+
+      - name: Compare every Android TV screen with original Just+ 2.4.11 (STRICT)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 .github/scripts/arx-tv-ui-parity.py arx-2411-tv-evidence --strict
 
       - name: Upload screenshots, accessibility trees, video playback and crash logs
         uses: actions/upload-artifact@v4
