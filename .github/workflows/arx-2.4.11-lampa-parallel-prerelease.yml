@@ -1,0 +1,91 @@
+name: Publish ARX 2.4.11 Lampa playlists PARALLEL prerelease (direct APK)
+on:
+  push:
+    branches: [arx/v2.4.11-port]
+    paths:
+      - '.github/workflows/arx-2.4.11-lampa-parallel-prerelease.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: arx-2411-lampa-parallel-public-prerelease
+  cancel-in-progress: false
+
+jobs:
+  prerelease:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check out current preview branch
+        uses: actions/checkout@v4
+
+      - name: Prepare Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Import pinned ARX native libraries
+        run: bash .github/scripts/arx-241-import-native.sh
+
+      - name: Verify actual Lampa 1.13.3/1.13.4 package compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/lampa-src
+          for tag in v1.13.3 v1.13.4; do
+            curl -fsSL --retry 3 --max-time 60               "https://raw.githubusercontent.com/lampa-app/LAMPA/${tag}/app/src/main/java/top/rootu/lampa/MainActivity.kt"               -o "/tmp/lampa-src/${tag}.kt"
+          done
+          python3 .github/scripts/arx-check-lampa-player-package.py             /tmp/lampa-src/v1.13.3.kt /tmp/lampa-src/v1.13.4.kt
+          python3 .github/scripts/arx-check-tv-center.py
+
+      - name: Build signed parallel APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:assembleLatestParallelRelease :app:testLatestParallelDebugUnitTest
+
+      - name: Assert signed APK package, label and hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          apk="$(find app/build/outputs/apk/latestParallel/release -type f -name '*.apk' | head -n1)"
+          test -s "$apk"
+          cp "$apk" release/
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          "$apksigner" verify --print-certs "$apk"
+          "$aapt" dump badging "$apk" > release/apk-info.txt
+          grep -q "package: name='com.lampaua.player.arx'" release/apk-info.txt
+          grep -F "application-label:'ARX TPlayer'" release/apk-info.txt
+          sha256sum release/*.apk | sed 's|release/||' > release/SHA256SUMS.txt
+          cat release/SHA256SUMS.txt
+
+      - name: Publish public GitHub prerelease assets (APK directly, no Actions ZIP)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG="arx-v2.4.11-arx1-lampa-parallel-preview-20261027"
+          NOTES="$(cat <<'EOF'
+          Preview build of ARX TPlayer 2.4.11. Installs next to the original Just+ Player.
+
+          - **Android package:** com.lampaua.player.arx (distinct from official com.justplus.player).
+          - **Lampa playlists:** v1.13.3/v1.13.4 pass the original Just+ native playlist Bundle to this package via their com.lampaua.player prefix.
+          - **Android TV:** center Play/Pause is preserved; two-episode nested playlist and co-installation passed emulator test.
+          - The displayed app name remains **ARX TPlayer**.
+          - After installing, open Lampa > Settings > Player > Reset default player and select ARX TPlayer.
+          - The obsolete parallel beta com.arst.tplayer is a different Android app; you may remove that beta, but keep official Just+ Player.
+          - This is a preview and does not claim full functional parity with official 2.4.11.
+
+          **Download the APK file under Assets directly.** No GitHub Actions ZIP and no GitHub sign-in required.
+          EOF
+          )"
+          gh release create "$TAG" release/*.apk release/SHA256SUMS.txt             --target "$GITHUB_SHA"             --title "ARX TPlayer 2.4.11 Preview — Lampa playlists, parallel APK"             --notes "$NOTES"             --prerelease             --latest=false
+          echo "RELEASE_URL=https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Public release created"
