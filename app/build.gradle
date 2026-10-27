@@ -129,8 +129,11 @@ android {
             // Separate Android install identity. The visible name, namespace, player
             // activities, ACTION_VIEW filters and Lampa playlist contract are unchanged.
             // Android identifies installed apps by applicationId, not the app label.
-            // com.justplus.player is deliberately retained for the universal variant.
-            applicationId "com.arst.tplayer"
+            // Lampa for Android 1.13.3+ recognizes the Just+ playlist API only
+            // when the package starts with com.justplus.player or com.lampaua.player.
+            // Use a unique child of the second prefix, not the UA Player base ID.
+            // com.justplus.player remains unchanged in the universal variant.
+            applicationId "com.lampaua.player.arx"
             // The updater downloads official Just+ packages, which must never be fed to
             // this distinct package identity as a supposed in-place update.
             buildConfigField "boolean", "ENABLE_UPDATE", "false"
