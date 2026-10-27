@@ -113,6 +113,7 @@ public final class ArxPictureDialog {
                 save.run();
             });
         });
+        body.addView(ArxControlsUi.caption(ctx, activity.getString(R.string.arx_picture_preset)));
         body.addView(selectPreset[0]);
 
         for (int i=0;i<settings.length;i++) {
