@@ -19390,6 +19390,7 @@ public class PlayerActivity extends Activity {
                     if (startupSplashPending) {
                         startupLogo.setVisibility(View.VISIBLE);
                         startupTitle.setVisibility(View.GONE);
+                        Utils.log("startup series logo displayed from Lampa");
                     }
                     return false;
                 }
