@@ -1,6 +1,5 @@
 package com.brouken.player;
 
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
@@ -196,49 +195,80 @@ final class ArxAmbientLight {
                 (int)(Color.blue(from)*(1-t)+Color.blue(to)*t));
     }
 
-    void show(){
+    void show() {
         load();
-        final LinearLayout layout=new LinearLayout(activity);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        int pad=(int)(16*activity.getResources().getDisplayMetrics().density);
-        layout.setPadding(pad,pad,pad,pad);
-        final TextView modeLabel=new TextView(activity);
-        modeLabel.setText("Current mode: "+MODES[mode]);
-        layout.addView(modeLabel);
-        for(int i=0;i<3;i++){
+        final android.content.Context ctx = ArxControlsUi.context(activity);
+        final LinearLayout body = ArxControlsUi.column(ctx);
+        body.addView(ArxControlsUi.caption(ctx,
+                activity.getString(R.string.arx_ambient_notice)));
+        final TextView label = ArxControlsUi.valueLabel(ctx, "");
+        body.addView(label);
+
+        final int[] modeLabels = {
+                R.string.arx_menu_off, R.string.arx_ambient_glow,
+                R.string.arx_ambient_cinema, R.string.arx_ambient_echo,
+                R.string.arx_ambient_mirror
+        };
+        final android.widget.RadioButton[] radios =
+                new android.widget.RadioButton[modeLabels.length];
+        final Runnable refresh = () -> {
+            label.setText(activity.getString(R.string.arx_ui_mode,
+                    activity.getString(modeLabels[mode])));
+            for (int j=0;j<radios.length;j++) {
+                if (radios[j] != null) radios[j].setChecked(j == mode);
+            }
+        };
+        for (int i=0;i<modeLabels.length;i++) {
             final int index=i;
-            final TextView label=new TextView(activity);
-            int value=i==0?brightness:i==1?reach:speed;
-            label.setText((i==0?"Brightness":i==1?"Reach":"Response")+": "+value+"%");
-            layout.addView(label);
-            SeekBar bar=new SeekBar(activity);
-            bar.setMax(100);bar.setProgress(value);layout.addView(bar);
-            bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-                public void onStartTrackingTouch(SeekBar b){}
-                public void onStopTrackingTouch(SeekBar b){}
-                public void onProgressChanged(SeekBar b,int value,boolean user){
-                    if(!user)return;
+            final android.widget.RadioButton radio = new android.widget.RadioButton(ctx);
+            radios[i]=radio;
+            radio.setText(activity.getString(modeLabels[i]));
+            radio.setTextSize(17f);
+            radio.setTextColor(com.google.android.material.color.MaterialColors.getColor(ctx,
+                    R.attr.colorOnSurface, Color.WHITE));
+            radio.setButtonTintList(android.content.res.ColorStateList.valueOf(
+                    com.google.android.material.color.MaterialColors.getColor(ctx,
+                            R.attr.colorPrimary, Color.RED)));
+            radio.setPadding(Utils.dpToPx(8), Utils.dpToPx(5),
+                    Utils.dpToPx(8), Utils.dpToPx(5));
+            radio.setMinHeight(Utils.dpToPx(50));
+            radio.setBackground(Dialogs.pickerRow(ctx, Color.TRANSPARENT));
+            radio.setOnClickListener(v -> {
+                mode=index;
+                prefs().edit().putInt(MODE,index).apply();
+                refresh.run();
+                if (mode==0) hide();
+                else if (!running) start();
+            });
+            body.addView(radio);
+        }
+        refresh.run();
+        final int[] sliderLabels = {
+                R.string.arx_picture_brightness, R.string.arx_ambient_reach,
+                R.string.arx_ambient_response
+        };
+        for (int i=0;i<sliderLabels.length;i++) {
+            final int index=i;
+            int initial=i==0?brightness:i==1?reach:speed;
+            final TextView caption=ArxControlsUi.valueLabel(ctx,
+                    activity.getString(R.string.arx_ui_percent,
+                            activity.getString(sliderLabels[i]),initial));
+            body.addView(caption);
+            ArxControlsUi.seekBar(ctx,body,100,initial,
+                    activity.getString(sliderLabels[i]),new SeekBar.OnSeekBarChangeListener() {
+                public void onStartTrackingTouch(SeekBar bar) {}
+                public void onStopTrackingTouch(SeekBar bar) {}
+                public void onProgressChanged(SeekBar bar,int value,boolean user) {
+                    if(!user) return;
                     if(index==0) brightness=value;
-                    else if(index==1)reach=value;
+                    else if(index==1) reach=value;
                     else speed=value;
                     prefs().edit().putInt(index==0?BRIGHTNESS:index==1?REACH:SPEED,value).apply();
-                    label.setText((index==0?"Brightness":index==1?"Reach":"Response")+": "+value+"%");
+                    caption.setText(activity.getString(R.string.arx_ui_percent,
+                            activity.getString(sliderLabels[index]),value));
                 }
             });
         }
-        AlertDialog dialog=new AlertDialog.Builder(activity)
-                .setTitle("Ambient light")
-                .setSingleChoiceItems(MODES,mode,(d,which)->{
-                    mode=which;
-                    prefs().edit().putInt(MODE,which).apply();
-                    modeLabel.setText("Current mode: "+MODES[which]);
-                    d.dismiss();
-                    if(which==0) hide();
-                    if(!running)start();
-                })
-                .setView(layout)
-                .setNegativeButton(android.R.string.cancel,null)
-                .create();
-        dialog.show();
+        ArxControlsUi.sheet(activity,activity.getString(R.string.arx_ambient_title),body);
     }
 }
