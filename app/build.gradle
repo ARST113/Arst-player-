@@ -162,7 +162,7 @@ android {
         }
         if (variant.buildType.name == "release" && variant.flavorName == "latestParallel") {
             variant.outputs.all { output ->
-                output.outputFileName = "${base.archivesName.get()}-parallel.apk"
+                output.outputFileName = "${base.archivesName.get()}-LAMPA-playlists-parallel.apk"
             }
         }
         if (variant.buildType.name == "release" && variant.flavorName == "legacyUniversal") {
