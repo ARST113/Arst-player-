@@ -35,7 +35,7 @@ jobs:
           chmod +x ./gradlew
           bash -n .github/scripts/arx-2411-tv-emulator-smoke.sh
           python3 .github/scripts/arx-check-tv-center.py
-          ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest
+          ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:assembleLatestParallelDebug :app:testLatestUniversalDebugUnitTest
 
       - name: Build offline deterministic video stream
         shell: bash
