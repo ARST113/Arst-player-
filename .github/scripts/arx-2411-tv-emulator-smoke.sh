@@ -162,15 +162,15 @@ except Exception:
 PY
 }
 capture_panel() {
-  local which="$1" menu_label="$2" expected="$3"
+  local which="$1" menu_label="$2" expected="$3" side="${APP_SIDE:-arx}"
   # Resume controller if its normal auto-hide has fired.
   adb shell input tap 960 540 || true
   sleep 1
-  capture "arx-control-before-$which"
+  capture "$side-control-before-$which"
   local more
-  more="$(panel_coordinates "$OUT/arx-control-before-$which.xml" "More")"
+  more="$(panel_coordinates "$OUT/$side-control-before-$which.xml" "More")"
   if [[ -z "$more" ]]; then
-    record "panel-$which" UNVERIFIED 'More button inaccessible on this Android TV UI snapshot'
+    record "panel-$side-$which" UNVERIFIED 'More button inaccessible on this Android TV UI snapshot'
     return
   fi
   # On TV the controller may be fading when the first touch lands.
@@ -180,12 +180,23 @@ capture_panel() {
   for attempt in 1 2 3; do
     adb shell input tap $more
     sleep 2
-    capture "arx-more-before-$which"
-    coords="$(panel_coordinates "$OUT/arx-more-before-$which.xml" "$menu_label")"
+    capture "$side-more-before-$which"
+    coords="$(panel_coordinates "$OUT/$side-more-before-$which.xml" "$menu_label")"
     if [[ -n "$coords" ]]; then break; fi
+    # On TV the lower entries of the More sheet need scrolling.
+    for scroll in 1 2 3; do
+      adb shell input swipe 1620 870 1620 310 360
+      sleep 1
+      capture "$side-more-before-$which"
+      coords="$(panel_coordinates "$OUT/$side-more-before-$which.xml" "$menu_label")"
+      if [[ -n "$coords" ]]; then break; fi
+    done
+    if [[ -n "$coords" ]]; then break; fi
+    adb shell input keyevent 4 || true
+    sleep 1
   done
   if [[ -z "$coords" ]]; then
-    record "panel-$which" UNVERIFIED "Menu row $menu_label not visible after three controller/menu attempts"
+    record "panel-$side-$which" UNVERIFIED "Menu row $menu_label not visible after three controller/menu attempts"
     adb shell input keyevent 4 || true
     return
   fi
@@ -193,20 +204,20 @@ capture_panel() {
   for attempt in 1 2; do
     adb shell input tap $coords
     sleep 2
-    capture "arx-material3-$which"
-    if [[ -s "$OUT/arx-material3-$which.xml" ]] && \
-       grep -q "$expected" "$OUT/arx-material3-$which.xml"; then
+    capture "$side-material3-$which"
+    if [[ -s "$OUT/$side-material3-$which.xml" ]] && \
+       grep -q "$expected" "$OUT/$side-material3-$which.xml"; then
       visible=1
       break
     fi
     # Retry an item tap only if the menu remains on screen; if it closed,
     # do not tap the same coordinate against the underlying video.
-    if ! grep -q "$menu_label" "$OUT/arx-material3-$which.xml"; then break; fi
+    if ! grep -q "$menu_label" "$OUT/$side-material3-$which.xml"; then break; fi
   done
   if (( visible )); then
-    record "panel-$which" PASS "Material 3 $which pane opened, $expected accessibility text captured"
+    record "panel-$side-$which" PASS "Material 3 $which pane opened, $expected accessibility text captured"
   else
-    record "panel-$which" FAIL "Menu opened but no $expected in $which panel accessibility tree"
+    record "panel-$side-$which" FAIL "Menu opened but no $expected in $which panel accessibility tree"
   fi
   adb shell input keyevent 4 || true
   sleep 1
@@ -214,6 +225,29 @@ capture_panel() {
 capture_panel ambient 'Ambient light' 'Lighting mode'
 capture_panel picture 'Picture' 'Picture preset'
 capture_panel equalizer 'Equalizer' 'Enable equalizer'
+
+# The playlist and subtitle dialogs are direct controller actions, not rows
+# in More. Use their accessibility bounds on both player versions.
+capture_native_button() {
+  local side="$1" name="$2" label="$3"
+  adb shell input tap 960 540 || true
+  sleep 1
+  capture "$side-native-before-$name"
+  local coords
+  coords="$(panel_coordinates "$OUT/$side-native-before-$name.xml" "$label")"
+  if [[ -z "$coords" ]]; then
+    record "native-$side-$name" UNVERIFIED "$label control not exposed; screenshot retained"
+    return
+  fi
+  adb shell input tap $coords
+  sleep 2
+  capture "$side-native-$name"
+  record "native-$side-$name" PASS "Dialog opened for $label; screenshot and XML collected"
+  adb shell input keyevent 4 || true
+  sleep 1
+}
+capture_native_button arx playlist 'Playlist'
+capture_native_button arx subtitles 'Subtitles'
 
 # D-pad navigation and timeline manipulation, each with a real screenshot.
 for step in '20 down' '22 right' '22 right2' '21 left' '19 up' '23 select'; do
@@ -276,6 +310,15 @@ if [[ -s vendor/2.4.11.apk ]]; then
     adb shell input keyevent 20
     sleep 1
     capture official-down
+    # Paired UI captures, not inferred feature existence. A missing section
+    # is explicitly UNVERIFIED and will fail the separate strict parity gate.
+    APP_SIDE=official
+    capture_panel ambient 'Ambient light' 'Lighting mode'
+    capture_panel picture 'Picture' 'Picture preset'
+    capture_panel equalizer 'Equalizer' 'Enable equalizer'
+    capture_native_button official playlist 'Playlist'
+    capture_native_button official subtitles 'Subtitles'
+    APP_SIDE=arx
     record reference PASS 'Verified official 2.4.11 installed, TV screen and controls captured for side-by-side visual review'
   else
     record reference UNVERIFIED 'Official APK installation unsuccessful; see reference-install.txt'
