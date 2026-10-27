@@ -206,6 +206,23 @@ final class ArxControlsUi {
         return row;
     }
 
+    /** Clear a segmented preset selection after a slider creates Custom values. */
+    static void clearSegmentSelection(Context ctx, LinearLayout row) {
+        for(int i=0;i<row.getChildCount();i++) {
+            final View view=row.getChildAt(i);
+            if (!(view instanceof TextView)) continue;
+            final TextView text=(TextView)view;
+            final android.graphics.drawable.GradientDrawable bg =
+                    new android.graphics.drawable.GradientDrawable();
+            bg.setColor(0xFF18191E);
+            bg.setStroke(Utils.dpToPx(1), 0xFF52535B);
+            bg.setCornerRadius(Utils.dpToPx(5));
+            text.setBackground(bg);
+            text.setTextColor(0xFFD9DADD);
+            text.setSelected(false);
+        }
+    }
+
     /** Equal-height label/value row matching the real Just+ slider typography. */
     static LinearLayout parameterLabel(Context ctx, String label, TextView[] value) {
         final LinearLayout row = new LinearLayout(ctx);
