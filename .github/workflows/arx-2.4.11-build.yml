@@ -26,9 +26,13 @@ jobs:
         run: bash .github/scripts/arx-241-import-native.sh
       - name: Assert TV play-pause remains centered
         run: python3 .github/scripts/arx-check-tv-center.py
-      - name: Compile, test and assemble signed preview
-        run: ./gradlew --no-daemon :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest :app:assembleLatestUniversalRelease
-      - name: Verify release signature and package version
+      - name: Compile, test and assemble both install identities
+        run: |
+          ./gradlew --no-daemon \
+            :app:assembleLatestUniversalDebug :app:testLatestUniversalDebugUnitTest \
+            :app:assembleLatestUniversalRelease :app:assembleLatestParallelRelease \
+            :app:assembleLatestParallelDebug
+      - name: Verify release signatures, display names, and separate package IDs
         shell: bash
         run: |
           set -euo pipefail
@@ -36,7 +40,18 @@ jobs:
           test -s "$apk"
           signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n1)"
           "$signer" verify --print-certs "$apk"
-          sha256sum "$apk"
+          parallel_apk="$(find app/build/outputs/apk/latestParallel/release -name '*.apk' -type f | head -n1)"
+          test -s "$parallel_apk"
+          "$signer" verify --print-certs "$parallel_apk"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n1)"
+          "$aapt" dump badging "$apk" > /tmp/arx-original.badging
+          "$aapt" dump badging "$parallel_apk" > /tmp/arx-parallel.badging
+          grep -q "package: name='com.justplus.player'" /tmp/arx-original.badging
+          grep -q "package: name='com.arst.tplayer'" /tmp/arx-parallel.badging
+          grep -F "application-label:'ARX TPlayer'" /tmp/arx-original.badging
+          grep -F "application-label:'ARX TPlayer'" /tmp/arx-parallel.badging
+          echo "PASS: same visible name; two distinct Android packages"
+          sha256sum "$apk" "$parallel_apk"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
@@ -48,4 +63,16 @@ jobs:
         with:
           name: ARX-TPlayer-2.4.11-debug
           path: app/build/outputs/apk/latestUniversal/debug/*.apk
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ARX-TPlayer-2.4.11-arx1-preview-parallel-signed
+          path: app/build/outputs/apk/latestParallel/release/*.apk
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ARX-TPlayer-2.4.11-parallel-debug
+          path: app/build/outputs/apk/latestParallel/debug/*.apk
           retention-days: 7
