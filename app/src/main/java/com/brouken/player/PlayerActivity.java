@@ -6517,8 +6517,7 @@ public class PlayerActivity extends Activity {
         titleView.setText(title);
 
         final String headerArt = mPrefs != null && mPrefs.headerArt != null ? mPrefs.headerArt : "logo";
-        final Uri logo = nestedPlaylistSession && itemIndex >= 0 && itemIndex < apiPlaylistLogos.size()
-                ? apiPlaylistLogos.get(itemIndex) : null;
+        final Uri logo = nestedSeriesLogo(itemIndex);
         Uri artworkUri = metadata != null ? metadata.artworkUri : null;
         if (artworkUri == null) {
             artworkUri = playingArtwork;
@@ -19284,7 +19283,9 @@ public class PlayerActivity extends Activity {
 
         startupTitle = new TextView(this);
         startupTitle.setGravity(Gravity.CENTER);
-        startupTitle.setTextColor(Color.rgb(255, 25, 42));
+        // Fallback has to be legible over the dark buffering scrim; never
+        // show the old giant red Just+ lettering when network logo fails.
+        startupTitle.setTextColor(Color.WHITE);
         startupTitle.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
         startupTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, isTvBox ? 60 : 54);
         startupTitle.setMaxLines(2);
@@ -19298,6 +19299,22 @@ public class PlayerActivity extends Activity {
 
         coordinatorLayout.addView(startupSplash, new CoordinatorLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    /**
+     * Native Lampa places the show's transparent logo in playlist.logo. Its
+     * item Bundles do not carry a logo, which is why the old code rendered the
+     * red fallback title even though Lampa had supplied the real series logo.
+     * Prefer an explicit episode logo when there is one; otherwise use the
+     * show's root logo for both the startup screen and the player header.
+     */
+    @Nullable
+    private Uri nestedSeriesLogo(int index) {
+        if (!nestedPlaylistSession) return null;
+        final Uri episodeLogo = index >= 0 && index < apiPlaylistLogos.size()
+                ? apiPlaylistLogos.get(index) : null;
+        return episodeLogo != null ? episodeLogo
+                : nestedPlaylistModel != null ? nestedPlaylistModel.logo : null;
     }
 
     private void showStartupSplash() {
@@ -19326,8 +19343,9 @@ public class PlayerActivity extends Activity {
             artwork = playingArtwork;
         }
 
-        final Uri logo = nestedPlaylistSession && index >= 0 && index < apiPlaylistLogos.size()
-                ? apiPlaylistLogos.get(index) : null;
+        // Lampa sends the SERIES logo on the root playlist Bundle, not on
+        // each episode. Always fall back to that verified root field.
+        final Uri logo = nestedSeriesLogo(index);
         CharSequence title = !TextUtils.isEmpty(apiTitle) ? apiTitle
                 : (metadata != null ? metadata.title : null);
         if (TextUtils.isEmpty(title)) {
@@ -19355,7 +19373,7 @@ public class PlayerActivity extends Activity {
                 @Override
                 public boolean onLoadFailed(GlideException e, Object model, Target<Drawable> target,
                                             boolean firstResource) {
-                    return false; // the red title stays available as a fallback
+                    return false; // the accessible white title remains if artwork fails
                 }
 
                 @Override
