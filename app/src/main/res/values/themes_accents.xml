@@ -19,15 +19,15 @@
 -->
 <resources>
 
-    <!-- Coral / Корал / Коралл -->
+    <!-- ARX blue fallback for the saved Coral preference (including upgrades). -->
     <style name="ThemeOverlay.JustPlus.Accent.Coral" parent="">
         <item name="accentInk">@color/brand</item>
         <item name="accentOnInk">@color/brand_on</item>
-        <item name="accentSkip">#0696BB</item>
+        <item name="accentSkip">#48BEFF</item>
         <item name="accentFill">@color/brand</item>
         <item name="accentOnFill">@color/brand_on</item>
         <item name="accentContainer">@color/brand_container</item>
-        <item name="accentOnContainer">#FFDBD6</item>
+        <item name="accentOnContainer">#D7E9FF</item>
         <item name="accentGround">#131315</item>
         <item name="accentCard">#1F1F22</item>
         <item name="accentCardHigh">#2A2A2C</item>
@@ -36,8 +36,8 @@
     <style name="ThemeOverlay.JustPlus.Accent.Coral.Light">
         <item name="accentFill">@color/brand_accent</item>
         <item name="accentOnFill">@color/white</item>
-        <item name="accentContainer">#F7E3E1</item>
-        <item name="accentOnContainer">#B73D32</item>
+        <item name="accentContainer">#DEECFC</item>
+        <item name="accentOnContainer">#1857A2</item>
         <item name="accentGround">#F9F9FC</item>
         <item name="accentCard">#EEEEF1</item>
         <item name="accentCardHigh">#E8E8EB</item>
