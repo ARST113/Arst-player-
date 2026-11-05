@@ -17,6 +17,10 @@ public final class MetadataSmokeActivity extends Activity {
         "https://lampac.art/tmdb/img/t/p/w500//o4IX9Mm0kpLITVANJMx7inyEUaY.jpg?uid=ot54ujfw";
     private static final String STILL_2 =
         "https://lampac.art/tmdb/img/t/p/w500//l0GJx3IR8YasbztTJi5uK0XqkEo.jpg?uid=ot54ujfw";
+    private static final String ANIME_STILL_1 =
+        "https://lampac.art/tmdb/img/t/p/w500//l2C38X6RsbD5gom4iGvFe6yuPEy.jpg?uid=ot54ujfw";
+    private static final String ANIME_STILL_2 =
+        "https://lampac.art/tmdb/img/t/p/w500//r2MZH3snLABIpqUPj8YOF9HIaBf.jpg?uid=ot54ujfw";
     private static final String POSTER =
         "https://lampac.art/tmdb/img/t/p/w500//oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg?uid=ot54ujfw";
     private static final String BACKDROP =
@@ -28,12 +32,11 @@ public final class MetadataSmokeActivity extends Activity {
         b.putString("title", title);
         b.putString("episode_title", episodeTitle);
         b.putString("thumbnail", thumb);
-        b.putString("logo", POSTER);
         b.putString("background", BACKDROP);
         b.putString("tmdb_id", tmdb);
         b.putString("imdb_id", "tt0944947");
-        b.putInt("season", season);
-        b.putInt("episode", episode);
+        if (season > 0) b.putInt("season", season);
+        if (episode > 0) b.putInt("episode", episode);
         b.putLong("position_ms", 3000L);
         return b;
     }
@@ -54,17 +57,15 @@ public final class MetadataSmokeActivity extends Activity {
                 break;
             case "anime":
                 root.putString("title", "Клинок, рассекающий демонов");
-                root.putString("logo", POSTER);
                 root.putString("background", BACKDROP);
                 items = new Bundle[]{
-                    item("Жестокость", "Жестокость", STILL_1, 1, 1, "85937"),
-                    item("Взращиватель Урокодаки Саконджи", "Взращиватель Урокодаки Саконджи", STILL_2, 1, 2, "85937")
+                    item("Жестокость", "Жестокость", ANIME_STILL_1, 1, 1, "85937"),
+                    item("Взращиватель Урокодаки Саконджи", "Взращиватель Урокодаки Саконджи", ANIME_STILL_2, 1, 2, "85937")
                 };
                 break;
             default:
                 scenario = "series";
                 root.putString("title", "Игра престолов");
-                root.putString("logo", POSTER);
                 root.putString("background", BACKDROP);
                 items = new Bundle[]{
                     item("Зима близко", "Зима близко", STILL_1, 1, 1, "1399"),
