@@ -18,6 +18,8 @@ apk="$(find app/build/outputs/apk/latestUniversal/debug -name '*.apk' -type f | 
 test -s "$apk"
 adb install -r "$apk"
 adb reverse tcp:8765 tcp:8765
+# Suppress the first-launch immersive-mode help overlay, which occluded the first run.
+adb shell settings put secure immersive_mode_confirmations confirmed || true
 adb shell settings put global window_animation_scale 0 || true
 adb shell settings put global transition_animation_scale 0 || true
 adb shell settings put global animator_duration_scale 0 || true
@@ -28,8 +30,35 @@ crash_found() {
   grep -Fq "Process $PKG" "$file" && grep -Fq 'has died' "$file" && return 0
   return 1
 }
+resolve_android_overlays() {
+  local label="$1"
+  # On first boot Google Pixel Launcher may show an ANR dialog over an actively
+  # decoding player; the app itself is healthy. Dismiss the system window.
+  for round in 1 2 3; do
+    adb shell uiautomator dump /sdcard/overlay.xml >/dev/null 2>&1 || true
+    adb pull /sdcard/overlay.xml "$OUT/$label-overlay-$round.xml" >/dev/null 2>&1 || true
+    local focus
+    focus="$(adb shell dumpsys window | grep -F 'mCurrentFocus=' | tail -n 1 || true)"
+    if grep -Eq 'immersive_cling_title|Viewing full screen' "$OUT/$label-overlay-$round.xml" 2>/dev/null; then
+      adb shell input tap 1700 500 || true
+      sleep 1
+      continue
+    fi
+    if [[ "$focus" == *"Not Responding"* || "$focus" == *"nexuslauncher"* || "$focus" == *"ANR"* ]]; then
+      adb shell input tap 820 535 || true   # "Close app" on the launcher-only ANR modal
+      sleep 1
+      continue
+    fi
+    break
+  done
+  # Show controls to check Android-side title rendering.
+  adb shell input keyevent 23 || true
+  sleep 1
+}
+
 capture() {
   local scenario="$1"
+  resolve_android_overlays "$scenario"
   adb exec-out screencap -p > "$OUT/$scenario.png" 2>/dev/null || true
   adb shell uiautomator dump /sdcard/window.xml > /dev/null 2>&1 || true
   adb pull /sdcard/window.xml "$OUT/$scenario.xml" > /dev/null 2>&1 || true
