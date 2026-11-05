@@ -6,6 +6,7 @@ on:
       - test/continuewatch-android-emulator-20261105
     paths:
       - '.github/workflows/continuewatch-metadata-android.yml'
+      - '.github/scripts/continuewatch-metadata-emulator.sh'
   workflow_dispatch:
 
 permissions:
