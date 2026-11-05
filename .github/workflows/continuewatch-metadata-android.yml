@@ -1,0 +1,79 @@
+name: ContinueWatching to ARX Android emulator - metadata and playback
+
+on:
+  push:
+    branches:
+      - test/continuewatch-android-emulator-20261105
+    paths:
+      - '.github/workflows/continuewatch-metadata-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-android-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Java 21 / Gradle cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Build debug APK including dedicated metadata probe
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleLatestUniversalDebug
+          bash -n .github/scripts/continuewatch-metadata-emulator.sh
+
+      - name: Generate a real offline H264/AAC movie and start localhost
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p metadata-fixtures metadata-emulator-evidence
+          command -v ffmpeg >/dev/null || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i 'testsrc2=size=640x360:rate=24' \
+            -f lavfi -i 'sine=frequency=540:sample_rate=48000' \
+            -t 95 -c:v libx264 -preset ultrafast -pix_fmt yuv420p \
+            -c:a aac -b:a 96k -movflags +faststart metadata-fixtures/episode.mp4
+          setsid python3 -m http.server 8765 --bind 127.0.0.1 \
+            --directory metadata-fixtures \
+            </dev/null > metadata-emulator-evidence/http-server.txt 2>&1 &
+          for n in $(seq 1 20); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8765/episode.mp4; then break; fi
+            sleep 1
+          done
+
+      - name: Enable hardware acceleration for Android Emulator
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | \
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Boot real Android 15 emulator and execute playback tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/continuewatch-metadata-emulator.sh
+
+      - name: Upload screenshots, UI dumps, parsers, logcat and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: continuewatch-arx-android-emulator-evidence
+          path: |
+            metadata-emulator-evidence/
+          retention-days: 14
+          if-no-files-found: warn
