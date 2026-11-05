@@ -125,4 +125,21 @@ else
   echo 'NEXT: no definitive UI evidence for KEYCODE_MEDIA_NEXT, review screenshot/logcat' | tee "$OUT/media-next-result.txt"
 fi
 
+# Exercise the visible in-player Next control, not Android's MEDIA_NEXT key.
+# Coordinates are for the 2400x1080 landscape Pixel 6 emulator screenshot.
+adb shell am force-stop "$PKG" || true
+adb shell am start -W -n "$PKG/$ACT" --es scenario series --ei index 0 \
+  > "$OUT/ui-next-launch.txt" 2>&1 || true
+sleep 5
+resolve_android_overlays "ui-next"
+adb shell input tap 1405 540 || true
+sleep 4
+capture ui-next-after-tap
+adb logcat -d -v threadtime > "$OUT/ui-next-logcat.txt" 2>/dev/null || true
+if grep -Fq 'Королевский тракт' "$OUT/ui-next-after-tap.xml" 2>/dev/null; then
+  echo 'UI_NEXT: second episode text captured in Android UI dump' | tee "$OUT/ui-next-result.txt"
+else
+  echo 'UI_NEXT: inspect screenshot for episode 2; Android custom view may not expose title to UiAutomator' | tee "$OUT/ui-next-result.txt"
+fi
+
 exit "$fail"
